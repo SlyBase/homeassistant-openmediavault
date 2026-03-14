@@ -1,0 +1,64 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connect to OpenMediaVault",
+                "data": {
+                    "host": "Host",
+                    "username": "Username",
+                    "password": "Password",
+                    "port": "Poort",
+                    "ssl": "SSL gebruiken",
+                    "verify_ssl": "SSL-certificaat controleren"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Ongeldige inloggegevens",
+            "cannot_connect": "Kan geen verbinding maken met OMV",
+            "unknown": "Onbekende fout"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "scan_interval": "Scaninterval (seconden)",
+                    "smart_disabled": "SMART-bewaking uitschakelen"
+                }
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "cpu_utilization": {
+                "name": "CPU-gebruik"
+            },
+            "memory_usage": {
+                "name": "Geheugengebruik"
+            },
+            "cpu_temperature": {
+                "name": "CPU-temperatuur"
+            },
+            "uptime": {
+                "name": "Uptime"
+            }
+        },
+        "binary_sensor": {
+            "update_available": {
+                "name": "Update beschikbaar"
+            },
+            "reboot_required": {
+                "name": "Herstart vereist"
+            }
+        },
+        "button": {
+            "reboot": {
+                "name": "Herstarten"
+            },
+            "shutdown": {
+                "name": "Uitschakelen"
+            }
+        }
+    }
+}

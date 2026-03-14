@@ -5,44 +5,26 @@ on:
     types: [published]
 
 jobs:
-
-  release_zip:
-    name: Prepare release
+  release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - name: Zip openmediavault dir
+      - name: Set version in manifest
         run: |
-          cd /home/runner/work/homeassistant-openmediavault/homeassistant-openmediavault/custom_components/openmediavault
-          zip openmediavault.zip -r ./
-      - name: Upload zip to release
-        uses: svenstaro/upload-release-action@v1-release
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          jq --arg v "$VERSION" '.version = $v' \
+            custom_components/omv/manifest.json > tmp.json
+          mv tmp.json custom_components/omv/manifest.json
 
+      - name: Create release ZIP
+        run: |
+          cd custom_components
+          zip -r ../omv.zip omv/
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: /home/runner/work/homeassistant-openmediavault/homeassistant-openmediavault/custom_components/openmediavault/openmediavault.zip
-          asset_name: openmediavault.zip
-          tag: ${{ github.ref }}
-          overwrite: true
-
-  releasenotes:
-    name: Prepare releasenotes
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
-
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v1
-        with:
-          python-version: 3.8
-
-      - name: Install requirements
-        run: |
-          python3 -m pip install setuptools wheel PyGithub
-
-      - name: Update release notes
-        run: |
-          python3 /home/runner/work/homeassistant-openmediavault/homeassistant-openmediavault/.github/generate_releasenotes.py --token ${{ secrets.GITHUB_TOKEN }} --release yes --tag ${{ github.ref }}
+          files: omv.zip

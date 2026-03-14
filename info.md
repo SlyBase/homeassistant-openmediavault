@@ -1,23 +1,16 @@
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/tomaae/homeassistant-openmediavault?style=plastic)
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=plastic)](https://github.com/hacs/integration)
-![Project Stage](https://img.shields.io/badge/project%20stage-development-yellow.svg?style=plastic)
-![GitHub all releases](https://img.shields.io/github/downloads/tomaae/homeassistant-openmediavault/total?style=plastic)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 
-![OpenMediaVault Logo](https://raw.githubusercontent.com/tomaae/homeassistant-openmediavault/master/docs/assets/images/ui/header.png)
-
-Monitor your OpenMediaVault 5/6 NAS from Home Assistant.
+Monitor and control your OpenMediaVault NAS from Home Assistant.
 
 Features:
-* Filesystem usage sensors
-* System sensors (CPU, Memory, Uptime)
-* System status sensors (Available updates, Required reboot and Dirty config)
-* Disk and smart sensors
-* Service sensors
+
+- CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
+- Binary sensors for package updates, reboot requirement, and OMV services
+- Reboot and shutdown buttons
+- Async DataUpdateCoordinator based polling for OMV 7 and OMV 8
 
 ## Links
-- [Documentation](https://github.com/tomaae/homeassistant-openmediavault/tree/master)
-- [Configuration](https://github.com/tomaae/homeassistant-openmediavault/tree/master#setup-integration)
-- [Report a Bug](https://github.com/tomaae/homeassistant-openmediavault/issues/new?labels=bug&template=bug_report.md&title=%5BBug%5D)
-- [Suggest an idea](https://github.com/tomaae/homeassistant-openmediavault/issues/new?labels=enhancement&template=feature_request.md&title=%5BFeature%5D)
 
-[![ko-fi](https://www.ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/G2G71MKZG)
+- [Documentation](https://github.com/SlyBase/homeassistant-openmediavault)
+- [Configuration](https://github.com/SlyBase/homeassistant-openmediavault#configuration)
+- [Issues](https://github.com/SlyBase/homeassistant-openmediavault/issues)

@@ -1,0 +1,8 @@
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.xml
+__pycache__/
+reports/*
+docs/*.md

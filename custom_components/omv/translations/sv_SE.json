@@ -1,0 +1,64 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Anslut till OpenMediaVault",
+                "data": {
+                    "host": "Vard",
+                    "username": "Anvandarnamn",
+                    "password": "Losenord",
+                    "port": "Port",
+                    "ssl": "Anvand SSL",
+                    "verify_ssl": "Verifiera SSL-certifikat"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Ogiltiga inloggningsuppgifter",
+            "cannot_connect": "Kan inte ansluta till OMV",
+            "unknown": "Okant fel"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "scan_interval": "Skanningsintervall (sekunder)",
+                    "smart_disabled": "Inaktivera SMART-overvakning"
+                }
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "cpu_utilization": {
+                "name": "CPU-anvandning"
+            },
+            "memory_usage": {
+                "name": "Minnesanvandning"
+            },
+            "cpu_temperature": {
+                "name": "CPU-temperatur"
+            },
+            "uptime": {
+                "name": "Upptid"
+            }
+        },
+        "binary_sensor": {
+            "update_available": {
+                "name": "Uppdatering tillganglig"
+            },
+            "reboot_required": {
+                "name": "Omstart kravs"
+            }
+        },
+        "button": {
+            "reboot": {
+                "name": "Starta om"
+            },
+            "shutdown": {
+                "name": "Stang av"
+            }
+        }
+    }
+}

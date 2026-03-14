@@ -1,131 +1,100 @@
-# OpenMediaVault integration for Home Assistant
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/tomaae/homeassistant-openmediavault?style=plastic)
-[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=plastic)](https://github.com/hacs/integration)
-![Project Stage](https://img.shields.io/badge/project%20stage-development-yellow.svg?style=plastic)
-![GitHub all releases](https://img.shields.io/github/downloads/tomaae/homeassistant-openmediavault/total?style=plastic)
+# OpenMediaVault (OMV) for Home Assistant
 
-![GitHub commits since latest release](https://img.shields.io/github/commits-since/tomaae/homeassistant-openmediavault/latest?style=plastic)
-![GitHub commit activity](https://img.shields.io/github/commit-activity/m/tomaae/homeassistant-openmediavault?style=plastic)
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tomaae/homeassistant-openmediavault/ci.yml?style=plastic)
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 
-[![Help localize](https://img.shields.io/badge/lokalise-join-green?style=plastic&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAAyhpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDUuNi1jMTQ1IDc5LjE2MzQ5OSwgMjAxOC8wOC8xMy0xNjo0MDoyMiAgICAgICAgIj4gPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4gPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9IiIgeG1sbnM6eG1wTU09Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9tbS8iIHhtbG5zOnN0UmVmPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvc1R5cGUvUmVzb3VyY2VSZWYjIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6REVCNzgzOEY4NDYxMTFFQUIyMEY4Njc0NzVDOUZFMkMiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6REVCNzgzOEU4NDYxMTFFQUIyMEY4Njc0NzVDOUZFMkMiIHhtcDpDcmVhdG9yVG9vbD0iQWRvYmUgUGhvdG9zaG9wIENDIDIwMTcgKE1hY2ludG9zaCkiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDozN0ZDRUY4Rjc0M0UxMUU3QUQ2MDg4M0Q0MkE0NjNCNSIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDozN0ZDRUY5MDc0M0UxMUU3QUQ2MDg4M0Q0MkE0NjNCNSIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/Pjs1zyIAAABVSURBVHjaYvz//z8DOYCJgUxAtkYW9+mXyXIrI7l+ZGHc0k5nGxkupdHZxve1yQR1CjbPZURXh9dGoGJZIPUI2QC4JEgjIfyuJuk/uhgj3dMqQIABAPEGTZ/+h0kEAAAAAElFTkSuQmCC)](https://app.lokalise.com/public/106503135ea170ab5e1f70.96389313/)
+Monitor and control your OpenMediaVault NAS from Home Assistant.
 
-![English](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/flags/us.png)
+![OpenMediaVault Logo](docs/assets/images/ui/header.png)
 
-![OpenMediaVault Logo](https://raw.githubusercontent.com/tomaae/homeassistant-openmediavault/master/docs/assets/images/ui/header.png)
+## Features
 
-Monitor your OpenMediaVault 5/6 NAS from Home Assistant.
+- Async OMV JSON-RPC client based on aiohttp
+- DataUpdateCoordinator architecture for predictable polling and updates
+- CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
+- Binary sensors for package updates, reboot requirement, and OMV services
+- Reboot and shutdown buttons
 
-Features:
-* Filesystem usage sensors
-* System sensors (CPU, Memory, Uptime)
-* System status sensors (Available updates, Required reboot and Dirty config)
-* Disk and smart sensors
-* Service sensors
+## Supported Versions
 
-# Features
-## Filesystem usage
-Monitor your filesystem usage.
+- OpenMediaVault 7 and 8
+- Home Assistant 2024.8 or newer
 
-![Filesystem usage](https://raw.githubusercontent.com/tomaae/homeassistant-openmediavault/master/docs/assets/images/ui/filesystem_sensor.png)
+The active integration domain is omv.
 
-## System
-Monitor your OpenMediaVault system.
+## Screenshots
 
-![System](https://raw.githubusercontent.com/tomaae/homeassistant-openmediavault/master/docs/assets/images/ui/system_sensors.png)
+![Filesystem usage](docs/assets/images/ui/filesystem_sensor.png)
+![System sensors](docs/assets/images/ui/system_sensors.png)
+![Disk sensor](docs/assets/images/ui/disk_sensor.png)
+![Add Integration](docs/assets/images/ui/setup_integration.png)
 
-## Disk smart
-Monitor your disks.
+## Installation With HACS
 
-![Disk info](https://raw.githubusercontent.com/tomaae/homeassistant-openmediavault/master/docs/assets/images/ui/disk_sensor.png)
+1. Open HACS.
+2. Go to Integrations.
+3. Add the custom repository https://github.com/SlyBase/homeassistant-openmediavault.
+4. Install OpenMediaVault (OMV).
+5. Restart Home Assistant.
+6. Add the OMV integration from Settings, Devices & Services.
 
-# Install integration
-This integration is distributed using [HACS](https://hacs.xyz/).
+## Setup
 
-You can find it under "Integrations", named "OpenMediaVault"
+The config flow asks for:
 
-## Setup integration
-Setup this integration for your OpenMediaVault NAS in Home Assistant via `Configuration -> Integrations -> Add -> OpenMediaVault`.
-You can add this integration several times for different devices.
+- Host
+- Username
+- Password
+- Port
+- SSL
+- SSL verification
 
-![Add Integration](https://raw.githubusercontent.com/tomaae/homeassistant-openmediavault/master/docs/assets/images/ui/setup_integration.png)
-* "Name of the integration" - Friendly name for this NAS
-* "Host" - Use hostname or IP
-* "Use SSL" - Connect to OMV using SSL
-* "Verify SSL certificate" - Validate SSL certificate (must be trusted certificate)
+## Configuration
 
-# Development
-## Translation
-To help out with the translation you need an account on Lokalise, the easiest way to get one is to [click here](https://lokalise.com/login/) then select "Log in with GitHub".
-After you have created your account [click here to join OpenMediaVault project on Lokalise](https://app.lokalise.com/public/106503135ea170ab5e1f70.96389313/).
+After setup, the options flow lets you adjust:
 
-If you want to add translations for a language that is not listed please [open a Feature request](https://github.com/tomaae/homeassistant-openmediavault/issues/new?labels=enhancement&title=%5BLokalise%5D%20Add%20new%20translations%20language).
+- The scan interval
+- Whether SMART polling should be disabled
 
-## Enabling debug
-To enable debug for OpenMediaVault integration, add following to your configuration.yaml:
+## Entities
+
+The integration currently provides:
+
+- System sensors for CPU utilization, memory usage, CPU temperature, and uptime
+- Disk temperature sensors with SMART-related attributes
+- Filesystem usage sensors
+- Network RX and TX rate sensors
+- RAID status sensors from /proc/mdstat when available
+- Optional ZFS pool status sensors when the ZFS plugin is installed
+- Binary sensors for update availability, reboot requirement, and OMV services
+- Buttons for reboot and shutdown
+
+## Development
+
+### Environment
+
+Install the local test and development dependencies with:
+
+```bash
+pip install -e ".[test,dev]"
 ```
+
+### Local Validation
+
+```bash
+.venv/bin/python -m ruff check custom_components tests
+.venv/bin/python -m pytest tests -q
+.venv/bin/python -m pytest tests --cov=custom_components/omv --cov-report=term-missing
+```
+
+### Debug Logging
+
+```yaml
 logger:
   default: info
   logs:
-    custom_components.openmediavault: debug
-```
-# Changes in this fork
-
-This version includes several changes and improvements over the original repository.
-
-## New Sensors
-
-### GPU Sensors
-This integration now provides sensors to monitor your GPU.
-
-| Sensor ID | Name | Unit |
-|---|---|---|
-| `system_gpuUtilization` | GPU load | % |
-| `system_gpu_freq_cur` | GPU Current Frequency | MHz |
-| `system_gpu_freq_max` | GPU Max Frequency | MHz |
-
-### RAID Sensor
-A new sensor is available to monitor the health of your RAID arrays.
-
-| Sensor ID | Name | Attributes |
-|---|---|---|
-| `raid` | (Name of the RAID device) | `state`, `level`, `health_indicator`, `action_percent` |
-
-## Merged Pull Requests
-
-This version incorporates the following pull requests from the original repository:
-- [Temperature and CPU Fix](https://github.com/tomaae/homeassistant-openmediavault/pull/160)
-- [Add SMART overall drive health to "disk" entry](https://github.com/tomaae/homeassistant-openmediavault/pull/159)
-
-# Prerequisites
-
-This integration relies on information from the following system files:
-*   `/sys/class/drm/card*/device/gpu_busy_percent` for GPU utilization.
-*   `/sys/class/drm/card*/gt_cur_freq_mhz` for GPU current frequency.
-*   `/sys/class/drm/card*/gt_max_freq_mhz` for GPU max frequency.
-*   `/proc/mdstat` for RAID status.
-
-## Docker
-
-When running Home Assistant in a Docker container, you must expose these files and directories from the host to the container for the integration to work correctly.
-
-*   For GPU monitoring, you need to mount the `/sys/class/drm` directory.
-*   For RAID monitoring, you need to mount the `/proc/mdstat` file.
-
-Example `docker run` command:
-
-```bash
-docker run ... -v /sys/class/drm:/sys/class/drm:ro -v /proc/mdstat:/proc/mdstat:ro ...
+    custom_components.omv: debug
 ```
 
-Example `docker-compose.yml`:
+## Compatibility Notes
 
-```yaml
-services:
-  homeassistant:
-    ...
-    volumes:
-      - /sys/class/drm:/sys/class/drm:ro
-      - /proc/mdstat:/proc/mdstat:ro
-    ...
-```
+See docs/omv-rpc-compatibility.md for the current RPC compatibility summary and the live probe workflow for validating OMV7 and OMV8 side by side.

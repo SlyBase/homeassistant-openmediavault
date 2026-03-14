@@ -1,0 +1,64 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connect to OpenMediaVault",
+                "data": {
+                    "host": "Host",
+                    "username": "Username",
+                    "password": "Password",
+                    "port": "Port",
+                    "ssl": "Use SSL",
+                    "verify_ssl": "Verify SSL certificate"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Invalid credentials",
+            "cannot_connect": "Cannot connect to OMV",
+            "unknown": "Unknown error"
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "data": {
+                    "scan_interval": "Scan interval (seconds)",
+                    "smart_disabled": "Disable SMART monitoring"
+                }
+            }
+        }
+    },
+    "entity": {
+        "sensor": {
+            "cpu_utilization": {
+                "name": "CPU utilization"
+            },
+            "memory_usage": {
+                "name": "Memory usage"
+            },
+            "cpu_temperature": {
+                "name": "CPU temperature"
+            },
+            "uptime": {
+                "name": "Uptime"
+            }
+        },
+        "binary_sensor": {
+            "update_available": {
+                "name": "Update available"
+            },
+            "reboot_required": {
+                "name": "Reboot required"
+            }
+        },
+        "button": {
+            "reboot": {
+                "name": "Reboot"
+            },
+            "shutdown": {
+                "name": "Shutdown"
+            }
+        }
+    }
+}
