@@ -24,7 +24,16 @@
             "init": {
                 "data": {
                     "scan_interval": "Abfrageintervall (Sekunden)",
-                    "smart_disabled": "SMART-Überwachung deaktivieren"
+                    "smart_disabled": "SMART-Überwachung deaktivieren",
+                    "virtual_passthrough": "Virtueller Passthrough (z. B. Proxmox)",
+                    "selected_disks": "Ausgewählte Festplatten",
+                    "selected_filesystems": "Ausgewählte Dateisysteme",
+                    "selected_services": "Ausgewählte Dienste",
+                    "selected_network_interfaces": "Ausgewählte Netzwerkschnittstellen",
+                    "selected_raids": "Ausgewählte RAIDs",
+                    "selected_zfs_pools": "Ausgewählte ZFS-Pools",
+                    "selected_compose_projects": "Ausgewählte Compose-Projekte",
+                    "selected_containers": "Ausgewählte Container"
                 }
             }
         }
@@ -42,6 +51,99 @@
             },
             "uptime": {
                 "name": "Laufzeit"
+            },
+            "available_package_updates": {
+                "name": "Verfügbare Paket-Updates"
+            },
+            "gpu_load": {
+                "name": "GPU-Auslastung"
+            },
+            "gpu_cur_freq": {
+                "name": "GPU-Frequenz"
+            },
+            "docker_container_total": {
+                "name": "Docker Container gesamt"
+            },
+            "docker_container_running": {
+                "name": "Docker Container laufend"
+            },
+            "docker_container_not_running": {
+                "name": "Docker Container nicht laufend"
+            },
+            "compose_project_status": {
+                "name": "{resource} Status"
+            },
+            "compose_project_total": {
+                "name": "{resource} Container gesamt"
+            },
+            "compose_project_running": {
+                "name": "{resource} Container laufend"
+            },
+            "compose_project_not_running": {
+                "name": "{resource} Container nicht laufend"
+            },
+            "container_state": {
+                "name": "{resource} Zustand"
+            },
+            "container_status_detail": {
+                "name": "{resource} Statusdetail"
+            },
+            "container_created_at": {
+                "name": "{resource} Erstellt"
+            },
+            "container_started_at": {
+                "name": "{resource} Gestartet"
+            },
+            "container_version": {
+                "name": "{resource} Version"
+            },
+            "container_volume_size": {
+                "name": "Volume {resource} Größe"
+            },
+            "disk_temperature": {
+                "name": "{resource} Temperatur"
+            },
+            "disk_used_percent": {
+                "name": "{resource} Belegt %"
+            },
+            "disk_free_percent": {
+                "name": "{resource} Frei %"
+            },
+            "disk_used_size": {
+                "name": "{resource} Belegt"
+            },
+            "disk_free_size": {
+                "name": "{resource} Frei"
+            },
+            "disk_total_size": {
+                "name": "{resource} Gesamtgröße"
+            },
+            "filesystem_used_percent": {
+                "name": "{resource} Belegt %"
+            },
+            "filesystem_free_percent": {
+                "name": "{resource} Frei %"
+            },
+            "filesystem_used_size": {
+                "name": "{resource} Belegt"
+            },
+            "filesystem_free_size": {
+                "name": "{resource} Frei"
+            },
+            "filesystem_total_size": {
+                "name": "{resource} Gesamtgröße"
+            },
+            "network_tx": {
+                "name": "{resource} Senden"
+            },
+            "network_rx": {
+                "name": "{resource} Empfangen"
+            },
+            "raid": {
+                "name": "{resource} RAID-Status"
+            },
+            "zfs_pool": {
+                "name": "{resource} ZFS-Pool"
             }
         },
         "binary_sensor": {
@@ -50,6 +152,9 @@
             },
             "reboot_required": {
                 "name": "Neustart erforderlich"
+            },
+            "service": {
+                "name": "{resource} Dienst"
             }
         },
         "button": {
@@ -58,6 +163,27 @@
             },
             "shutdown": {
                 "name": "Herunterfahren"
+            },
+            "compose_up": {
+                "name": "Compose up"
+            },
+            "compose_down": {
+                "name": "Compose down"
+            },
+            "compose_start": {
+                "name": "Start"
+            },
+            "compose_stop": {
+                "name": "Stop"
+            },
+            "compose_pull": {
+                "name": "Pull"
+            },
+            "compose_image_prune": {
+                "name": "Docker Image prune"
+            },
+            "compose_container_prune": {
+                "name": "Docker Container prune"
             }
         }
     }

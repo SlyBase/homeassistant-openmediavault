@@ -70,3 +70,114 @@ def test_summarize_response_prefers_record_shape() -> None:
     assert response_type == "dict"
     assert record_count == 1
     assert sample_keys == ["devicename", "overallstatus", "temperature"]
+
+
+def test_summarize_response_flattens_nested_compose_fields() -> None:
+    """Nested compose metadata should show up in the sample key summary."""
+    probe = _load_probe_module()
+
+    response_type, record_count, sample_keys = probe._summarize_response(
+        {
+            "data": [
+                {
+                    "id": "ctr-vaultwarden",
+                    "name": "vaultwarden",
+                    "labels": {
+                        "org.opencontainers.image.version": "1.33.2"
+                    },
+                    "annotations": {
+                        "org.opencontainers.image.version": "1.33.2"
+                    },
+                    "mounts": [
+                        {
+                            "Type": "volume",
+                            "Name": "vaultwarden_data",
+                            "Destination": "/data",
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert response_type == "dict"
+    assert record_count == 1
+    assert "labels.org.opencontainers.image.version" in sample_keys
+    assert "annotations.org.opencontainers.image.version" in sample_keys
+    assert "mounts[].Type" in sample_keys
+    assert "mounts[].Name" in sample_keys
+
+
+@pytest.mark.asyncio
+async def test_probe_target_requests_compose_file_list(monkeypatch) -> None:
+    """The live probe should cover both compose list endpoints."""
+    probe = _load_probe_module()
+    calls: list[tuple[str, str, dict[str, int] | None]] = []
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.closed = False
+
+        async def async_connect(self):
+            return {"version": "8.1.2-1"}
+
+        async def async_close(self) -> None:
+            self.closed = True
+
+    async def fake_call_endpoint(client, *, service, method, optional, params=None):
+        calls.append((service, method, params))
+        if (service, method) == ("DiskMgmt", "enumerateDevices"):
+            return (
+                probe.EndpointResult(
+                    service=service,
+                    method=method,
+                    optional=optional,
+                    status="ok",
+                    elapsed_ms=1,
+                ),
+                [{"devicename": "sda", "canonicaldevicefile": "/dev/sda"}],
+            )
+        if (service, method) == ("Smart", "getListBg"):
+            return (
+                probe.EndpointResult(
+                    service=service,
+                    method=method,
+                    optional=optional,
+                    status="ok",
+                    elapsed_ms=1,
+                ),
+                {"data": []},
+            )
+        return (
+            probe.EndpointResult(
+                service=service,
+                method=method,
+                optional=optional,
+                status="ok",
+                elapsed_ms=1,
+            ),
+            {"data": []},
+        )
+
+    monkeypatch.setattr(probe, "OMVProbeClient", FakeClient)
+    monkeypatch.setattr(probe, "_call_endpoint", fake_call_endpoint)
+
+    target = probe.parse_target(
+        "omv8=192.168.178.40",
+        port=80,
+        use_ssl=False,
+        verify_ssl=True,
+    )
+    report = await probe.probe_target(target, username="admin", password="secret")
+
+    assert report.major_version == 8
+    assert (
+        "compose",
+        "getContainerList",
+        {"start": 0, "limit": 999},
+    ) in calls
+    assert (
+        "compose",
+        "getFileList",
+        {"start": 0, "limit": 999},
+    ) in calls

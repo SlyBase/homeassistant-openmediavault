@@ -24,7 +24,16 @@
             "init": {
                 "data": {
                     "scan_interval": "Scaninterval (seconden)",
-                    "smart_disabled": "SMART-bewaking uitschakelen"
+                    "smart_disabled": "SMART-bewaking uitschakelen",
+                    "virtual_passthrough": "Virtuele passthrough (bijv. Proxmox)",
+                    "selected_disks": "Geselecteerde schijven",
+                    "selected_filesystems": "Geselecteerde bestandssystemen",
+                    "selected_services": "Geselecteerde services",
+                    "selected_network_interfaces": "Geselecteerde netwerkinterfaces",
+                    "selected_raids": "Geselecteerde RAIDs",
+                    "selected_zfs_pools": "Geselecteerde ZFS-pools",
+                    "selected_compose_projects": "Geselecteerde Compose-projecten",
+                    "selected_containers": "Geselecteerde containers"
                 }
             }
         }
@@ -42,6 +51,93 @@
             },
             "uptime": {
                 "name": "Uptime"
+            },
+            "available_package_updates": {
+                "name": "Beschikbare pakketupdates"
+            },
+            "docker_container_total": {
+                "name": "Docker-containers totaal"
+            },
+            "docker_container_running": {
+                "name": "Docker-containers actief"
+            },
+            "docker_container_not_running": {
+                "name": "Docker-containers niet actief"
+            },
+            "compose_project_status": {
+                "name": "{resource} status"
+            },
+            "compose_project_total": {
+                "name": "{resource} containers totaal"
+            },
+            "compose_project_running": {
+                "name": "{resource} containers actief"
+            },
+            "compose_project_not_running": {
+                "name": "{resource} containers niet actief"
+            },
+            "container_state": {
+                "name": "{resource} status"
+            },
+            "container_status_detail": {
+                "name": "{resource} statusdetail"
+            },
+            "container_created_at": {
+                "name": "{resource} aangemaakt"
+            },
+            "container_started_at": {
+                "name": "{resource} gestart"
+            },
+            "container_version": {
+                "name": "{resource} versie"
+            },
+            "container_volume_size": {
+                "name": "Volume {resource} grootte"
+            },
+            "disk_temperature": {
+                "name": "{resource} temperatuur"
+            },
+            "disk_used_percent": {
+                "name": "{resource} gebruikt %"
+            },
+            "disk_free_percent": {
+                "name": "{resource} vrij %"
+            },
+            "disk_used_size": {
+                "name": "{resource} gebruikte grootte"
+            },
+            "disk_free_size": {
+                "name": "{resource} vrije grootte"
+            },
+            "disk_total_size": {
+                "name": "{resource} totale grootte"
+            },
+            "filesystem_used_percent": {
+                "name": "{resource} gebruikt %"
+            },
+            "filesystem_free_percent": {
+                "name": "{resource} vrij %"
+            },
+            "filesystem_used_size": {
+                "name": "{resource} gebruikte grootte"
+            },
+            "filesystem_free_size": {
+                "name": "{resource} vrije grootte"
+            },
+            "filesystem_total_size": {
+                "name": "{resource} totale grootte"
+            },
+            "network_tx": {
+                "name": "{resource} TX"
+            },
+            "network_rx": {
+                "name": "{resource} RX"
+            },
+            "raid": {
+                "name": "{resource} RAID-status"
+            },
+            "zfs_pool": {
+                "name": "{resource} ZFS-pool"
             }
         },
         "binary_sensor": {
@@ -50,6 +146,9 @@
             },
             "reboot_required": {
                 "name": "Herstart vereist"
+            },
+            "service": {
+                "name": "{resource} service"
             }
         },
         "button": {
@@ -58,6 +157,27 @@
             },
             "shutdown": {
                 "name": "Uitschakelen"
+            },
+            "compose_up": {
+                "name": "compose up"
+            },
+            "compose_down": {
+                "name": "compose down"
+            },
+            "compose_start": {
+                "name": "Start"
+            },
+            "compose_stop": {
+                "name": "Stop"
+            },
+            "compose_pull": {
+                "name": "Pull"
+            },
+            "compose_image_prune": {
+                "name": "docker image prune"
+            },
+            "compose_container_prune": {
+                "name": "docker container prune"
             }
         }
     }

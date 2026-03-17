@@ -24,7 +24,16 @@
             "init": {
                 "data": {
                     "scan_interval": "Skanningsintervall (sekunder)",
-                    "smart_disabled": "Inaktivera SMART-overvakning"
+                    "smart_disabled": "Inaktivera SMART-overvakning",
+                    "virtual_passthrough": "Virtuell passthrough (t.ex. Proxmox)",
+                    "selected_disks": "Valda diskar",
+                    "selected_filesystems": "Valda filsystem",
+                    "selected_services": "Valda tjänster",
+                    "selected_network_interfaces": "Valda nätverksgränssnitt",
+                    "selected_raids": "Valda RAID",
+                    "selected_zfs_pools": "Valda ZFS-pooler",
+                    "selected_compose_projects": "Valda Compose-projekt",
+                    "selected_containers": "Valda containrar"
                 }
             }
         }
@@ -42,6 +51,93 @@
             },
             "uptime": {
                 "name": "Upptid"
+            },
+            "available_package_updates": {
+                "name": "Tillgangliga paketuppdateringar"
+            },
+            "docker_container_total": {
+                "name": "Docker-containrar totalt"
+            },
+            "docker_container_running": {
+                "name": "Docker-containrar som kor"
+            },
+            "docker_container_not_running": {
+                "name": "Docker-containrar som inte kor"
+            },
+            "compose_project_status": {
+                "name": "{resource} status"
+            },
+            "compose_project_total": {
+                "name": "{resource} containrar totalt"
+            },
+            "compose_project_running": {
+                "name": "{resource} containrar som kor"
+            },
+            "compose_project_not_running": {
+                "name": "{resource} containrar som inte kor"
+            },
+            "container_state": {
+                "name": "{resource} tillstand"
+            },
+            "container_status_detail": {
+                "name": "{resource} statusdetalj"
+            },
+            "container_created_at": {
+                "name": "{resource} skapad"
+            },
+            "container_started_at": {
+                "name": "{resource} startad"
+            },
+            "container_version": {
+                "name": "{resource} version"
+            },
+            "container_volume_size": {
+                "name": "Volym {resource} storlek"
+            },
+            "disk_temperature": {
+                "name": "{resource} temperatur"
+            },
+            "disk_used_percent": {
+                "name": "{resource} anvant %"
+            },
+            "disk_free_percent": {
+                "name": "{resource} ledigt %"
+            },
+            "disk_used_size": {
+                "name": "{resource} anvand storlek"
+            },
+            "disk_free_size": {
+                "name": "{resource} ledig storlek"
+            },
+            "disk_total_size": {
+                "name": "{resource} total storlek"
+            },
+            "filesystem_used_percent": {
+                "name": "{resource} anvant %"
+            },
+            "filesystem_free_percent": {
+                "name": "{resource} ledigt %"
+            },
+            "filesystem_used_size": {
+                "name": "{resource} anvand storlek"
+            },
+            "filesystem_free_size": {
+                "name": "{resource} ledig storlek"
+            },
+            "filesystem_total_size": {
+                "name": "{resource} total storlek"
+            },
+            "network_tx": {
+                "name": "{resource} TX"
+            },
+            "network_rx": {
+                "name": "{resource} RX"
+            },
+            "raid": {
+                "name": "{resource} RAID-status"
+            },
+            "zfs_pool": {
+                "name": "{resource} ZFS-pool"
             }
         },
         "binary_sensor": {
@@ -50,6 +146,9 @@
             },
             "reboot_required": {
                 "name": "Omstart kravs"
+            },
+            "service": {
+                "name": "{resource} tjanst"
             }
         },
         "button": {
@@ -58,6 +157,27 @@
             },
             "shutdown": {
                 "name": "Stang av"
+            },
+            "compose_up": {
+                "name": "compose up"
+            },
+            "compose_down": {
+                "name": "compose down"
+            },
+            "compose_start": {
+                "name": "Start"
+            },
+            "compose_stop": {
+                "name": "Stop"
+            },
+            "compose_pull": {
+                "name": "Pull"
+            },
+            "compose_image_prune": {
+                "name": "docker image prune"
+            },
+            "compose_container_prune": {
+                "name": "docker container prune"
             }
         }
     }

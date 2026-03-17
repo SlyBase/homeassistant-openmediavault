@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import voluptuous as vol
@@ -17,16 +18,27 @@ from homeassistant.const import (
 )
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_SCAN_INTERVAL,
+    CONF_SELECTED_COMPOSE_PROJECTS,
+    CONF_SELECTED_CONTAINERS,
+    CONF_SELECTED_DISKS,
+    CONF_SELECTED_FILESYSTEMS,
+    CONF_SELECTED_NETWORK_INTERFACES,
+    CONF_SELECTED_RAIDS,
+    CONF_SELECTED_SERVICES,
+    CONF_SELECTED_ZFS_POOLS,
     CONF_SMART_DISABLED,
+    CONF_VIRTUAL_PASSTHROUGH,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SSL,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
 )
+from .coordinator import OMVDataUpdateCoordinator
 from .exceptions import OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
 
@@ -40,6 +52,17 @@ _DEFAULT_USER_FORM_VALUES: dict[str, Any] = {
     CONF_SSL: DEFAULT_SSL,
     CONF_VERIFY_SSL: DEFAULT_VERIFY_SSL,
 }
+
+_RESOURCE_FIELDS: tuple[str, ...] = (
+    CONF_SELECTED_DISKS,
+    CONF_SELECTED_FILESYSTEMS,
+    CONF_SELECTED_SERVICES,
+    CONF_SELECTED_NETWORK_INTERFACES,
+    CONF_SELECTED_RAIDS,
+    CONF_SELECTED_ZFS_POOLS,
+    CONF_SELECTED_COMPOSE_PROJECTS,
+    CONF_SELECTED_CONTAINERS,
+)
 
 
 class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -181,6 +204,7 @@ class OMVOptionsFlow(OptionsFlow):
     """Handle OMV options."""
 
     def __init__(self, entry: ConfigEntry) -> None:
+        """Initialize the options flow."""
         self._entry = entry
 
     async def async_step_init(
@@ -188,22 +212,171 @@ class OMVOptionsFlow(OptionsFlow):
     ) -> FlowResult:
         """Manage the options flow."""
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            data = dict(user_input)
+            if data.get(CONF_VIRTUAL_PASSTHROUGH):
+                data[CONF_SMART_DISABLED] = True
+            for field in _RESOURCE_FIELDS:
+                if field not in data and field in self._entry.options:
+                    data[field] = list(self._entry.options.get(field, []))
+            return self.async_create_entry(data=data)
 
+        inventory = self._get_inventory()
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=self._entry.options.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    ),
+                ): vol.All(int, vol.Range(min=10, max=3600)),
+                vol.Optional(
+                    CONF_SMART_DISABLED,
+                    default=self._entry.options.get(CONF_SMART_DISABLED, False)
+                    or self._entry.options.get(CONF_VIRTUAL_PASSTHROUGH, False),
+                ): bool,
+                vol.Optional(
+                    CONF_VIRTUAL_PASSTHROUGH,
+                    default=self._entry.options.get(CONF_VIRTUAL_PASSTHROUGH, False),
+                ): bool,
+                vol.Optional(
+                    CONF_SELECTED_DISKS,
+                    default=self._default_selection(
+                        CONF_SELECTED_DISKS,
+                        inventory[CONF_SELECTED_DISKS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_DISKS]),
+                vol.Optional(
+                    CONF_SELECTED_FILESYSTEMS,
+                    default=self._default_selection(
+                        CONF_SELECTED_FILESYSTEMS,
+                        inventory[CONF_SELECTED_FILESYSTEMS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_FILESYSTEMS]),
+                vol.Optional(
+                    CONF_SELECTED_SERVICES,
+                    default=self._default_selection(
+                        CONF_SELECTED_SERVICES,
+                        inventory[CONF_SELECTED_SERVICES],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_SERVICES]),
+                vol.Optional(
+                    CONF_SELECTED_NETWORK_INTERFACES,
+                    default=self._default_selection(
+                        CONF_SELECTED_NETWORK_INTERFACES,
+                        inventory[CONF_SELECTED_NETWORK_INTERFACES],
+                    ),
+                ): self._build_multi_select(
+                    inventory[CONF_SELECTED_NETWORK_INTERFACES]
+                ),
+                vol.Optional(
+                    CONF_SELECTED_RAIDS,
+                    default=self._default_selection(
+                        CONF_SELECTED_RAIDS,
+                        inventory[CONF_SELECTED_RAIDS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_RAIDS]),
+                vol.Optional(
+                    CONF_SELECTED_ZFS_POOLS,
+                    default=self._default_selection(
+                        CONF_SELECTED_ZFS_POOLS,
+                        inventory[CONF_SELECTED_ZFS_POOLS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_ZFS_POOLS]),
+                vol.Optional(
+                    CONF_SELECTED_COMPOSE_PROJECTS,
+                    default=self._default_selection(
+                        CONF_SELECTED_COMPOSE_PROJECTS,
+                        inventory[CONF_SELECTED_COMPOSE_PROJECTS],
+                    ),
+                ): self._build_multi_select(
+                    inventory[CONF_SELECTED_COMPOSE_PROJECTS]
+                ),
+                vol.Optional(
+                    CONF_SELECTED_CONTAINERS,
+                    default=self._default_selection(
+                        CONF_SELECTED_CONTAINERS,
+                        inventory[CONF_SELECTED_CONTAINERS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_CONTAINERS]),
+            }
+        )
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Optional(
-                        CONF_SCAN_INTERVAL,
-                        default=self._entry.options.get(
-                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                        ),
-                    ): vol.All(int, vol.Range(min=10, max=3600)),
-                    vol.Optional(
-                        CONF_SMART_DISABLED,
-                        default=self._entry.options.get(CONF_SMART_DISABLED, False),
-                    ): bool,
-                }
-            ),
+            data_schema=schema,
         )
+
+    def _get_inventory(self) -> dict[str, list[dict[str, str]]]:
+        """Load live inventory and merge it with persisted values."""
+        live_inventory: dict[str, list[dict[str, str]]] = {
+            field: [] for field in _RESOURCE_FIELDS
+        }
+
+        coordinator = getattr(self._entry, "runtime_data", None)
+        if coordinator is not None:
+            try:
+                live_inventory = coordinator.get_live_inventory()
+            except Exception:
+                _LOGGER.debug(
+                    "Falling back to cached runtime data for options inventory",
+                    exc_info=True,
+                )
+                cached_data = getattr(coordinator, "data", None)
+                if isinstance(cached_data, dict):
+                    live_inventory = OMVDataUpdateCoordinator.build_inventory(cached_data)
+
+        merged_inventory: dict[str, list[dict[str, str]]] = {}
+        for field in _RESOURCE_FIELDS:
+            persisted_values = self._entry.options.get(field, [])
+            persisted_options = [
+                {"value": str(value), "label": str(value)} for value in persisted_values
+            ]
+            merged_inventory[field] = self._merge_inventory_options(
+                live_inventory.get(field, []),
+                persisted_options,
+            )
+
+        return merged_inventory
+
+    def _default_selection(
+        self,
+        field: str,
+        options: Sequence[Mapping[str, str]],
+    ) -> list[str]:
+        """Return the default selection for a resource category."""
+        if field in self._entry.options:
+            return list(self._entry.options.get(field, []))
+        if any(resource_field in self._entry.options for resource_field in _RESOURCE_FIELDS):
+            return []
+        return [str(option["value"]) for option in options]
+
+    def _build_multi_select(
+        self,
+        options: Sequence[Mapping[str, str]],
+    ) -> selector.SelectSelector:
+        """Build a multi-select selector for options flows."""
+        merged = {str(option["value"]): str(option["label"]) for option in options}
+        return selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    {"value": value, "label": label}
+                    for value, label in merged.items()
+                ],
+                multiple=True,
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
+
+    def _merge_inventory_options(
+        self,
+        live_options: Sequence[Mapping[str, str]],
+        persisted_options: Sequence[Mapping[str, str]],
+    ) -> list[dict[str, str]]:
+        """Merge live and persisted options without dropping missing persisted values."""
+        merged: dict[str, str] = {}
+        for option in list(live_options) + list(persisted_options):
+            value = str(option["value"])
+            merged.setdefault(value, str(option["label"]))
+        return [
+            {"value": value, "label": merged[value]}
+            for value in sorted(merged, key=str.casefold)
+        ]

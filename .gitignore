@@ -1,4 +1,5 @@
 .venv/
+.ruff_cache/
 *.egg-info/
 .pytest_cache/
 .coverage
@@ -6,3 +7,7 @@ coverage.xml
 __pycache__/
 reports/*
 docs/*.md
+.DS_Store
+.github/skills/*
+.github/agents/*
+.github/instructions/*

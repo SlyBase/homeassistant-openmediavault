@@ -28,12 +28,14 @@ SYSTEM_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
         key="update_available",
         translation_key="update_available",
         device_class=BinarySensorDeviceClass.UPDATE,
+        icon="mdi:package-up",
         data_path="hwinfo",
         value_fn=lambda data: bool(data.get("pkgUpdatesAvailable", False)),
     ),
     OMVBinarySensorDescription(
         key="reboot_required",
         translation_key="reboot_required",
+        icon="mdi:restart-alert",
         data_path="hwinfo",
         value_fn=lambda data: bool(data.get("rebootRequired", False)),
     ),
@@ -41,8 +43,9 @@ SYSTEM_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
 
 SERVICE_BINARY_SENSOR = OMVBinarySensorDescription(
     key="service",
-    name="Service",
+    translation_key="service",
     device_class=BinarySensorDeviceClass.RUNNING,
+    icon="mdi:cog-play-outline",
     data_path="service",
     is_collection=True,
     collection_key="name",

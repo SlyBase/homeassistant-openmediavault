@@ -25,6 +25,7 @@ _INVALID_LOGIN_MESSAGES = (
     "authentication failed",
 )
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
+_COMPOSE_LIST_PARAMS = {"start": 0, "limit": 999}
 
 
 class ProbeError(Exception):
@@ -281,10 +282,41 @@ def _sample_keys_from_response(response: Any) -> list[str] | None:
     """Return representative keys from a response payload."""
     records = _records_from_response(response)
     if records:
-        return sorted(str(key) for key in records[0].keys())[:8]
+        return _sample_paths(records[0])
     if isinstance(response, dict):
-        return sorted(str(key) for key in response.keys())[:8]
+        return _sample_paths(response)
     return None
+
+
+def _sample_paths(value: Any, prefix: str = "") -> list[str] | None:
+    """Return flattened sample paths for representative nested payload fields."""
+    if not isinstance(value, dict):
+        return None
+
+    paths: list[str] = []
+    for key, raw_child in sorted(value.items(), key=lambda item: str(item[0])):
+        current = f"{prefix}.{key}" if prefix else str(key)
+        paths.append(current)
+
+        if isinstance(raw_child, dict):
+            paths.extend(_sample_paths(raw_child, current) or [])
+            continue
+
+        if isinstance(raw_child, list) and raw_child:
+            current_list = f"{current}[]"
+            paths.append(current_list)
+            first_mapping = next(
+                (item for item in raw_child if isinstance(item, dict)),
+                None,
+            )
+            if first_mapping is not None:
+                paths.extend(_sample_paths(first_mapping, current_list) or [])
+
+    deduplicated: list[str] = []
+    for path in paths:
+        if path not in deduplicated:
+            deduplicated.append(path)
+    return deduplicated[:20]
 
 
 def _summarize_response(response: Any) -> tuple[str, int | None, list[str] | None]:
@@ -476,8 +508,18 @@ async def probe_target(
             service="compose",
             method="getContainerList",
             optional=True,
+            params=_COMPOSE_LIST_PARAMS,
         )
         endpoint_results.append(compose_result)
+
+        compose_files_result, _ = await _call_endpoint(
+            client,
+            service="compose",
+            method="getFileList",
+            optional=True,
+            params=_COMPOSE_LIST_PARAMS,
+        )
+        endpoint_results.append(compose_files_result)
 
         kvm_result, _ = await _call_endpoint(
             client,
