@@ -183,7 +183,7 @@ COMPOSE_SENSORS: tuple[OMVSensorDescription, ...] = (
     OMVSensorDescription(
         key="docker_container_not_running",
         translation_key="docker_container_not_running",
-        icon="mdi:docker",
+        icon="mdi:docker-off",
         data_path="compose_summary",
         value_fn=lambda data: data.get("not_running"),
         extra_attrs_fn=lambda data: {
