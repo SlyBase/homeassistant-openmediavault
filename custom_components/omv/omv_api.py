@@ -273,5 +273,11 @@ class OMVAPI:
         """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
+            # aiohttp schedules TCP connection-close callbacks on the event loop
+            # after session.close() returns.  A zero-sleep lets those callbacks
+            # run before pytest teardown checks for lingering threads, preventing
+            # aiohttp from spawning a _run_safe_shutdown_loop background thread.
+            # See: https://docs.aiohttp.org/en/stable/client_advanced.html#graceful-shutdown
+            await asyncio.sleep(0)
         self._session = None
         self._session_id = None
