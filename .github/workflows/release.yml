@@ -45,6 +45,28 @@ jobs:
             custom_components/omv/manifest.json > tmp.json
           mv tmp.json custom_components/omv/manifest.json
 
+      - name: Extract release notes from changelog
+        run: |
+          version="${{ steps.release.outputs.version }}"
+
+          awk -v version="$version" '
+            $0 ~ "^## \\[" version "\\]" {
+              in_section = 1
+              found = 1
+            }
+            in_section {
+              if (found && $0 ~ "^## \\[" && $0 !~ "^## \\[" version "\\]") {
+                exit
+              }
+              print
+            }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "No changelog entry found for version $version" >&2
+            exit 1
+          fi
+
       - name: Create release ZIP
         run: |
           cd custom_components
@@ -54,5 +76,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release.outputs.tag }}
+          body_path: release-notes.md
           fail_on_unmatched_files: true
           files: omv.zip
