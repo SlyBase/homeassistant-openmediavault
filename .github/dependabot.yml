@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # Python-Pakete (pyproject.toml)
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    groups:
+      test-dependencies:
+        patterns:
+          - "pytest*"
+          - "aioresponses"
+      dev-tools:
+        patterns:
+          - "ruff"
+          - "mypy"
+          - "pre-commit"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "github-actions"

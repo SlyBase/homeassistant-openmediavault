@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.3] - 2026-03-19
+
+### Build
+
+- **Dependabot** (`.github/dependabot.yml`): Neue Konfiguration für automatische Dependency-Update-PRs. Python-Pakete in Gruppen `test-dependencies` und `dev-tools`, GitHub Actions in `github-actions`. Wöchentlicher Zeitplan montags 09:00 Europe/Berlin mit `open-pull-requests-limit: 5`. Kein Auto-Merge — PRs müssen manuell gemergt werden.
+- **Dependency-Pins** (`pyproject.toml`): Alle Test- und Dev-Dependencies von `>=`-Bounds auf exakte `==`-Pins umgestellt (`pytest==9.0.0`, `pytest-asyncio==1.3.0`, `pytest-cov==7.0.0`, `pytest-homeassistant-custom-component==0.13.317`, `aioresponses==0.7.8`, `ruff==0.15.6`, `mypy==1.19.1`, `pre-commit==4.5.1`). Voraussetzung damit Dependabot Updates erkennt und PRs erstellt.
+
+### Security
+
+- **CI-Härtung** (`.github/workflows/ci.yml`): `hacs/action@main` durch gepinnten `hacs/action@v2` ersetzt. Ein mutierbarer `main`-Ref erlaubt Supply-Chain-Angriffe, bei denen kompromittierter Upstream-Code in der CI ausgeführt werden kann (OWASP A01/A08).
+
 ## [2.0.2] - 2026-03-18
 
 ### Fixed
