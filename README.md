@@ -4,7 +4,9 @@
 
 Monitor and control your OpenMediaVault NAS from Home Assistant.
 
-![OpenMediaVault Logo](docs/assets/images/ui/header.png)
+> **Note:** This is an independent community project and is **not** affiliated with or endorsed by the OpenMediaVault project or its developers.
+
+![OpenMediaVault Logo](docs/assets/images/ui/header.svg)
 
 ## About
 
