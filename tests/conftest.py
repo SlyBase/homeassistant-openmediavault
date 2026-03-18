@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+import asyncio
+import gc
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,29 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 import custom_components
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+
+
+@pytest.fixture(autouse=True)
+async def _drain_aiohttp_on_teardown() -> AsyncGenerator[None, None]:
+    """Drain aiohttp cleanup before verify_cleanup checks for lingering threads.
+
+    In older aiohttp (< 3.11), BaseConnector.__del__ spawns a
+    _run_safe_shutdown_loop background thread when the cyclic garbage collector
+    collects an unclosed connector after the event loop has gone away.  By
+    forcing gc.collect() and draining the event loop here — while still inside
+    an async context so the loop is running — the connector's __del__ uses
+    loop.call_soon_threadsafe() instead of starting a background thread.
+
+    This fixture is set up AFTER pytest-homeassistant-custom-component's
+    verify_cleanup (plugin fixtures register before conftest fixtures) and
+    therefore tears down FIRST (LIFO), giving the event loop a clean drain
+    before the thread-check assertion runs.
+    """
+    yield
+    gc.collect()
+    for _ in range(10):
+        await asyncio.sleep(0)
+    gc.collect()
 
 
 @pytest.fixture(autouse=True)
