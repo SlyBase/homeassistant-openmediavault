@@ -44,6 +44,7 @@ class OMVAPI:
         self._source = source
         self._session_id: str | None = None
         self._session: aiohttp.ClientSession | None = None
+        self._connector: aiohttp.TCPConnector | None = None
         self._lock = asyncio.Lock()
 
     @property
@@ -96,11 +97,16 @@ class OMVAPI:
         """Create or recreate the aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
+            self._session = None
+        if self._connector and not self._connector.closed:
+            await self._connector.close()
+            self._connector = None
 
-        connector = aiohttp.TCPConnector(ssl=self._verify_ssl if self._ssl else False)
+        self._connector = aiohttp.TCPConnector(ssl=self._verify_ssl if self._ssl else False)
         cookie_jar = aiohttp.CookieJar(unsafe=True)
         self._session = aiohttp.ClientSession(
-            connector=connector,
+            connector=self._connector,
+            connector_owner=False,
             cookie_jar=cookie_jar,
             timeout=_REQUEST_TIMEOUT,
         )
@@ -270,8 +276,11 @@ class OMVAPI:
         return data.get("response")
 
     async def async_close(self) -> None:
-        """Close the underlying aiohttp session."""
+        """Close the underlying aiohttp session and connector."""
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
         self._session_id = None
+        if self._connector and not self._connector.closed:
+            await self._connector.close()
+        self._connector = None
