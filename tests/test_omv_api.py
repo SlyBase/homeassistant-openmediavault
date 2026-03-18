@@ -185,9 +185,7 @@ async def test_session_accepts_cookies_for_ip_hosts() -> None:
         response_url=URL("http://192.168.1.1:80/rpc.php"),
     )
 
-    cookies = api._session.cookie_jar.filter_cookies(
-        URL("http://192.168.1.1:80/rpc.php")
-    )
+    cookies = api._session.cookie_jar.filter_cookies(URL("http://192.168.1.1:80/rpc.php"))
 
     assert cookies["X-OPENMEDIAVAULT-SESSIONID"].value == "session123"
     await api.async_close()

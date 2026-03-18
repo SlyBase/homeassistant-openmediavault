@@ -83,9 +83,7 @@ class OMVAPI:
         if not self._session or self._session.closed:
             return []
 
-        cookies = self._session.cookie_jar.filter_cookies(
-            URL(f"{self.base_url}/rpc.php")
-        )
+        cookies = self._session.cookie_jar.filter_cookies(URL(f"{self.base_url}/rpc.php"))
         return sorted(cookies.keys())
 
     @staticmethod
@@ -118,8 +116,7 @@ class OMVAPI:
         )
         if not isinstance(data, dict) or not data.get("authenticated"):
             _LOGGER.debug(
-                "OMV login rejected [%s] host=%r authenticated=%s "
-                "sessionid_present=%s cookie_names=%s",
+                "OMV login rejected [%s] host=%r authenticated=%s sessionid_present=%s cookie_names=%s",
                 self._source,
                 self._host,
                 isinstance(data, dict) and data.get("authenticated"),
@@ -133,8 +130,7 @@ class OMVAPI:
             self._session_id = session_id
 
         _LOGGER.debug(
-            "Successfully authenticated with OMV at %s [%s]; "
-            "sessionid_present=%s cookie_names=%s",
+            "Successfully authenticated with OMV at %s [%s]; sessionid_present=%s cookie_names=%s",
             self._host,
             self._source,
             self._session_id is not None,
@@ -179,8 +175,7 @@ class OMVAPI:
             headers = {"X-OPENMEDIAVAULT-SESSIONID": self._session_id}
 
         _LOGGER.debug(
-            "OMV RPC request [%s] %s.%s host=%r has_session_header=%s "
-            "cookie_names=%s param_keys=%s",
+            "OMV RPC request [%s] %s.%s host=%r has_session_header=%s cookie_names=%s param_keys=%s",
             self._source,
             service,
             method,
@@ -208,8 +203,7 @@ class OMVAPI:
             ) as response:
                 if response.status in (401, 403):
                     _LOGGER.debug(
-                        "OMV RPC HTTP auth failure [%s] %s.%s host=%r status=%s "
-                        "has_session_header=%s cookie_names=%s",
+                        "OMV RPC HTTP auth failure [%s] %s.%s host=%r status=%s has_session_header=%s cookie_names=%s",
                         self._source,
                         service,
                         method,
@@ -234,13 +228,9 @@ class OMVAPI:
                     raise OMVConnectionError(f"OMV returned HTTP {response.status}")
                 data = await response.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError) as err:
-            raise OMVConnectionError(
-                f"Connection to {self._host} failed: {err}"
-            ) from err
+            raise OMVConnectionError(f"Connection to {self._host} failed: {err}") from err
         except ValueError as err:
-            raise OMVConnectionError(
-                f"Invalid JSON response from {self._host}: {err}"
-            ) from err
+            raise OMVConnectionError(f"Invalid JSON response from {self._host}: {err}") from err
 
         if error := data.get("error"):
             code = error.get("code", 0)
@@ -258,11 +248,7 @@ class OMVAPI:
                 self._session_id is not None,
                 self._cookie_names(),
             )
-            if (
-                service == "session"
-                and method == "login"
-                and self._is_invalid_login_message(message)
-            ):
+            if service == "session" and method == "login" and self._is_invalid_login_message(message):
                 raise OMVAuthError(message)
             if code in _SESSION_EXPIRED_CODES:
                 raise OMVAuthError(message)

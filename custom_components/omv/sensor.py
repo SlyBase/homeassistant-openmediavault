@@ -20,8 +20,8 @@ from .entity import (
     get_storage_device_info,
 )
 from .sensor_types import (
-    COMPOSE_SENSORS,
     COMPOSE_PROJECT_SENSORS,
+    COMPOSE_SENSORS,
     CONTAINER_SENSORS,
     CONTAINER_VOLUME_SENSORS,
     DISK_FREE_PERCENT_SENSOR,
@@ -38,10 +38,10 @@ from .sensor_types import (
     GPU_SENSORS,
     NETWORK_RX_SENSOR,
     NETWORK_TX_SENSOR,
-    OMVSensorDescription,
     RAID_SENSOR,
     SYSTEM_SENSORS,
     ZFS_POOL_SENSOR,
+    OMVSensorDescription,
 )
 
 _DISK_SENSORS: tuple[OMVSensorDescription, ...] = (
@@ -280,9 +280,7 @@ async def async_setup_entry(
     entities: list[OMVSensor] = [
         OMVSensor(coordinator, description)
         for description in SYSTEM_SENSORS
-        if not (
-            coordinator.virtual_passthrough and description.key == "cpu_temperature"
-        )
+        if not (coordinator.virtual_passthrough and description.key == "cpu_temperature")
         and _should_add_description(description, coordinator.data.get("hwinfo", {}))
     ]
 
@@ -430,29 +428,26 @@ class OMVSensor(OMVEntity, SensorEntity):
     ) -> None:
         """Initialize the sensor."""
         uid = f"{description.key}-{item_key}" if item_key else description.key
-        if device_info is None and item_key:
-            if description.is_collection:
-                item = next(
-                    (
-                        item
-                        for item in coordinator.data.get(description.data_path, [])
-                        if isinstance(item, dict)
-                        and str(item.get(description.collection_key or "") or "")
-                        == item_key
-                    ),
-                    None,
-                )
-                if item is not None:
-                    if description.data_path == "disk":
-                        device_info = get_disk_device_info(coordinator, item)
-                    elif description.data_path == "fs":
-                        device_info = get_filesystem_device_info(coordinator, item)
-                    elif description.data_path == "compose_projects":
-                        device_info = get_compose_project_device_info(coordinator, item)
-                    elif description.data_path in {"compose", "compose_volumes"}:
-                        device_info = get_container_device_info(coordinator, item)
-                    else:
-                        device_info = get_storage_device_info(coordinator, item)
+        if device_info is None and item_key and description.is_collection:
+            item = next(
+                (
+                    item
+                    for item in coordinator.data.get(description.data_path, [])
+                    if isinstance(item, dict) and str(item.get(description.collection_key or "") or "") == item_key
+                ),
+                None,
+            )
+            if item is not None:
+                if description.data_path == "disk":
+                    device_info = get_disk_device_info(coordinator, item)
+                elif description.data_path == "fs":
+                    device_info = get_filesystem_device_info(coordinator, item)
+                elif description.data_path == "compose_projects":
+                    device_info = get_compose_project_device_info(coordinator, item)
+                elif description.data_path in {"compose", "compose_volumes"}:
+                    device_info = get_container_device_info(coordinator, item)
+                else:
+                    device_info = get_storage_device_info(coordinator, item)
         super().__init__(coordinator, uid, device_info=device_info)
         self.entity_description = description
         self._item_key = item_key
@@ -503,6 +498,4 @@ class OMVSensor(OMVEntity, SensorEntity):
         if not self.entity_description.extra_attrs_fn:
             return None
         attributes = self.entity_description.extra_attrs_fn(self._get_data())
-        return {
-            key: value for key, value in attributes.items() if value not in (None, "")
-        }
+        return {key: value for key, value in attributes.items() if value not in (None, "")}

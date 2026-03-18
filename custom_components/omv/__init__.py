@@ -13,7 +13,8 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_SCAN_INTERVAL,
@@ -46,9 +47,7 @@ def _register_registry_cleanup_listener(
         nonlocal cleanup_task
         if cleanup_task is not None and not cleanup_task.done():
             return
-        cleanup_task = hass.async_create_task(
-            _async_cleanup_stale_registry_entries(hass, entry, coordinator)
-        )
+        cleanup_task = hass.async_create_task(_async_cleanup_stale_registry_entries(hass, entry, coordinator))
 
     entry.async_on_unload(coordinator.async_add_listener(_schedule_cleanup))
 
@@ -59,13 +58,11 @@ async def _async_cleanup_stale_registry_entries(
     coordinator: OMVDataUpdateCoordinator,
 ) -> None:
     """Remove stale entity and disk device registry entries after a reload."""
-    from .sensor import get_expected_sensor_registry_state
     from .binary_sensor import get_expected_binary_sensor_unique_ids
     from .button import get_expected_button_unique_ids
+    from .sensor import get_expected_sensor_registry_state
 
-    expected_entity_unique_ids, expected_device_identifiers = get_expected_sensor_registry_state(
-        coordinator
-    )
+    expected_entity_unique_ids, expected_device_identifiers = get_expected_sensor_registry_state(coordinator)
     expected_entity_unique_ids.update(get_expected_binary_sensor_unique_ids(coordinator))
     expected_entity_unique_ids.update(get_expected_button_unique_ids(entry, coordinator))
 
@@ -79,8 +76,7 @@ async def _async_cleanup_stale_registry_entries(
         resource_identifiers = {
             identifier
             for identifier in device_entry.identifiers
-            if identifier[0] == DOMAIN
-            and identifier[1].startswith(f"{entry.entry_id}:")
+            if identifier[0] == DOMAIN and identifier[1].startswith(f"{entry.entry_id}:")
         }
         if resource_identifiers and not (resource_identifiers & expected_device_identifiers):
             device_registry.async_remove_device(device_entry.id)

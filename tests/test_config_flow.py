@@ -74,9 +74,7 @@ async def test_flow_user_success(hass) -> None:
         )
         assert result["type"] == "form"
 
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], USER_INPUT
-        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
 
     assert result["type"] == "create_entry"
     assert result["title"] == "OMV (nas)"
@@ -96,9 +94,7 @@ async def test_flow_auth_error(hass) -> None:
             DOMAIN,
             context={"source": "user"},
         )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], USER_INPUT
-        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
 
     assert result["type"] == "form"
     assert result["errors"]["base"] == "invalid_auth"
@@ -136,9 +132,7 @@ async def test_flow_duplicate_abort(hass, config_entry) -> None:
             DOMAIN,
             context={"source": "user"},
         )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], USER_INPUT
-        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
 
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"
@@ -208,9 +202,7 @@ async def test_options_flow_uses_live_inventory_and_defaults_to_all(hass, config
 
 
 @pytest.mark.asyncio
-async def test_options_flow_defaults_to_all_when_selection_was_never_set(
-    hass, config_entry
-) -> None:
+async def test_options_flow_defaults_to_all_when_selection_was_never_set(hass, config_entry) -> None:
     """Test new entries default to all currently available resources."""
     config_entry.runtime_data = type(
         "RuntimeCoordinator",
@@ -226,12 +218,8 @@ async def test_options_flow_defaults_to_all_when_selection_was_never_set(
                 CONF_SELECTED_NETWORK_INTERFACES: [{"value": "net-1", "label": "eth0"}],
                 CONF_SELECTED_RAIDS: [{"value": "md0", "label": "md0"}],
                 CONF_SELECTED_ZFS_POOLS: [{"value": "tank", "label": "tank"}],
-                CONF_SELECTED_COMPOSE_PROJECTS: [
-                    {"value": "paperless", "label": "paperless (2)"}
-                ],
-                CONF_SELECTED_CONTAINERS: [
-                    {"value": "ctr-paperless-app", "label": "paperless-app [paperless]"}
-                ],
+                CONF_SELECTED_COMPOSE_PROJECTS: [{"value": "paperless", "label": "paperless (2)"}],
+                CONF_SELECTED_CONTAINERS: [{"value": "ctr-paperless-app", "label": "paperless-app [paperless]"}],
             }
         },
     )()
@@ -247,9 +235,7 @@ async def test_options_flow_defaults_to_all_when_selection_was_never_set(
 
 
 @pytest.mark.asyncio
-async def test_options_flow_does_not_auto_select_new_compose_resources_on_existing_entries(
-    hass, config_entry
-) -> None:
+async def test_options_flow_does_not_auto_select_new_compose_resources_on_existing_entries(hass, config_entry) -> None:
     """Test newly introduced compose fields stay unselected on existing entries."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,
@@ -271,12 +257,8 @@ async def test_options_flow_does_not_auto_select_new_compose_resources_on_existi
                 CONF_SELECTED_NETWORK_INTERFACES: [],
                 CONF_SELECTED_RAIDS: [],
                 CONF_SELECTED_ZFS_POOLS: [],
-                CONF_SELECTED_COMPOSE_PROJECTS: [
-                    {"value": "vaultwarden", "label": "vaultwarden (1)"}
-                ],
-                CONF_SELECTED_CONTAINERS: [
-                    {"value": "ctr-vaultwarden", "label": "vaultwarden [vaultwarden]"}
-                ],
+                CONF_SELECTED_COMPOSE_PROJECTS: [{"value": "vaultwarden", "label": "vaultwarden (1)"}],
+                CONF_SELECTED_CONTAINERS: [{"value": "ctr-vaultwarden", "label": "vaultwarden [vaultwarden]"}],
             }
         },
     )()
@@ -344,9 +326,7 @@ async def test_options_flow_persists_missing_resource_fields(hass, config_entry)
 
 
 @pytest.mark.asyncio
-async def test_options_flow_virtual_passthrough_forces_smart_disabled(
-    hass, config_entry
-) -> None:
+async def test_options_flow_virtual_passthrough_forces_smart_disabled(hass, config_entry) -> None:
     """Test virtual passthrough always persists with SMART disabled."""
     config_entry.runtime_data = type(
         "RuntimeCoordinator",

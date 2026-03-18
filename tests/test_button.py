@@ -38,13 +38,9 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
 
 @pytest.mark.asyncio
-async def test_async_setup_entry_omits_prune_buttons_without_docker_service(
-    coordinator, config_entry
-) -> None:
+async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coordinator, config_entry) -> None:
     """Test global Docker prune buttons only appear when the service exists."""
-    coordinator.data["service"] = [
-        {"name": "ssh", "title": "SSH", "enabled": True, "running": True}
-    ]
+    coordinator.data["service"] = [{"name": "ssh", "title": "SSH", "enabled": True, "running": True}]
     added = []
 
     def add_entities(entities):
@@ -54,9 +50,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(
 
     assert len(added) == 17
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
-    assert not any(
-        entity.unique_id.endswith("99-compose_container_prune") for entity in added
-    )
+    assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
 
 @pytest.mark.asyncio

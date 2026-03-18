@@ -10,9 +10,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .binary_sensor_types import (
-    OMVBinarySensorDescription,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
+    OMVBinarySensorDescription,
 )
 from .coordinator import OMVDataUpdateCoordinator
 from .entity import OMVEntity, build_host_object_id
@@ -129,15 +129,10 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
         if state.startswith("running "):
             return True
 
-        status = str(
-            container.get("status_detail") or container.get("status") or ""
-        ).strip().lower()
+        status = str(container.get("status_detail") or container.get("status") or "").strip().lower()
         if status in {"running", "up", "healthy"}:
             return True
-        if status.startswith("up ") or status.startswith("running "):
-            return True
-
-        return False
+        return status.startswith("up ") or status.startswith("running ")
 
     def _is_container_service(self, data: dict[str, Any]) -> bool:
         """Return whether the sensor represents Docker/Compose."""

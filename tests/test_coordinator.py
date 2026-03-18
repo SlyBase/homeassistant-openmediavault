@@ -6,8 +6,10 @@ import json
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
+from custom_components.omv import _async_cleanup_stale_registry_entries
 from custom_components.omv.const import (
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
@@ -19,7 +21,6 @@ from custom_components.omv.const import (
     CONF_SELECTED_ZFS_POOLS,
     DOMAIN,
 )
-from custom_components.omv import _async_cleanup_stale_registry_entries
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
 
 
@@ -194,21 +195,18 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
         for call in api.async_call.await_args_list
     )
     assert any(
-        call.args == ("compose", "getFileList", {"start": 0, "limit": 999})
-        for call in api.async_call.await_args_list
+        call.args == ("compose", "getFileList", {"start": 0, "limit": 999}) for call in api.async_call.await_args_list
     )
     assert any(
-        call.args == (
+        call.args
+        == (
             "Compose",
             "getVolumesBg",
             {"start": 0, "limit": -1, "sortdir": "asc", "sortfield": "name"},
         )
         for call in api.async_call.await_args_list
     )
-    assert any(
-        call.args[:2] == ("Compose", "doContainerCommand")
-        for call in api.async_call.await_args_list
-    )
+    assert any(call.args[:2] == ("Compose", "doContainerCommand") for call in api.async_call.await_args_list)
 
 
 @pytest.mark.asyncio
@@ -248,9 +246,7 @@ async def test_container_version_prefers_metadata_over_image_tag(hass, config_en
         coordinator._extract_container_version(
             {
                 "image": "custom/app:latest",
-                "Config": {
-                    "Labels": {"org.opencontainers.image.version": "2026.3.0"}
-                },
+                "Config": {"Labels": {"org.opencontainers.image.version": "2026.3.0"}},
             }
         )
         == "2026.3.0"
@@ -281,9 +277,7 @@ async def test_parse_json_text_strips_shell_boilerplate(hass, config_entry) -> N
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(
-        hass, config_entry, api, scan_interval=60, smart_disabled=True
-    )
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
     shell_prefix = (
         "export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin; "
@@ -294,9 +288,7 @@ async def test_parse_json_text_strips_shell_boilerplate(hass, config_entry) -> N
         {
             "Id": "abc123",
             "Config": {"Labels": {"org.opencontainers.image.version": "1.29.6"}},
-            "ImageManifestDescriptor": {
-                "annotations": {"org.opencontainers.image.version": "1.29.6"}
-            },
+            "ImageManifestDescriptor": {"annotations": {"org.opencontainers.image.version": "1.29.6"}},
         }
     ]
     raw = shell_prefix + json.dumps(inspect_payload)
@@ -305,9 +297,7 @@ async def test_parse_json_text_strips_shell_boilerplate(hass, config_entry) -> N
 
     # Also verify that version extraction works end-to-end once parsed
     inspect_data = parsed[0]
-    version = coordinator._extract_container_version(
-        {"image": "nginx:latest", **inspect_data}
-    )
+    version = coordinator._extract_container_version({"image": "nginx:latest", **inspect_data})
     assert version == "1.29.6"
 
 
@@ -351,9 +341,7 @@ async def test_fetch_optional_background_json_with_shell_boilerplate(hass, confi
         raise AssertionError((service, method, params))
 
     api.async_call = AsyncMock(side_effect=async_call)
-    coordinator = OMVDataUpdateCoordinator(
-        hass, config_entry, api, scan_interval=60, smart_disabled=True
-    )
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
     result = await coordinator._fetch_optional_background_json(
         "Compose",
@@ -415,9 +403,7 @@ async def test_fetch_optional_background_json_handles_inline_output(hass, config
     inspect = coordinator._normalize_compose_inspect_response(result)
     assert inspect is not None
     assert isinstance(inspect.get("Config"), dict)
-    version = coordinator._extract_container_version(
-        {"image": "nginx:latest", **inspect}
-    )
+    version = coordinator._extract_container_version({"image": "nginx:latest", **inspect})
     assert version == "1.35.4"
 
 
@@ -432,7 +418,7 @@ async def test_fetch_optional_background_json_handles_raw_json_string(hass, conf
 
     async def async_call(service, method, params=None):
         if (service, method) == ("Compose", "doContainerCommand"):
-            # Raw JSON string – not a filename
+            # Raw JSON string - not a filename
             return json.dumps(inspect_data)
         raise AssertionError((service, method, params))
 
@@ -454,16 +440,12 @@ async def test_fetch_optional_background_json_handles_raw_json_string(hass, conf
     assert result == inspect_data
     inspect = coordinator._normalize_compose_inspect_response(result)
     assert inspect is not None
-    version = coordinator._extract_container_version(
-        {"image": "nginx:latest", **inspect}
-    )
+    version = coordinator._extract_container_version({"image": "nginx:latest", **inspect})
     assert version == "1.35.4"
 
 
 @pytest.mark.asyncio
-async def test_compose_inspect_targets_includes_containers_without_project_key(
-    hass, config_entry
-) -> None:
+async def test_compose_inspect_targets_includes_containers_without_project_key(hass, config_entry) -> None:
     """Containers with no project_key must still be inspect targets when selected_projects is set.
 
     filter_data_by_selection() keeps project_key='' containers through the
@@ -471,14 +453,11 @@ async def test_compose_inspect_targets_includes_containers_without_project_key(
     must behave identically so those containers also receive inspect calls and
     get a proper version string.
     """
-    from unittest.mock import patch
 
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-
-    from homeassistant.config_entries import ConfigEntry as _CE
 
     options = {
         CONF_SELECTED_CONTAINERS: ["nginx"],
@@ -521,9 +500,7 @@ async def test_compose_inspect_targets_includes_containers_without_project_key(
 
 
 @pytest.mark.asyncio
-async def test_compose_volume_normalization_skips_bind_mounts_and_parses_data_size(
-    hass, config_entry
-) -> None:
+async def test_compose_volume_normalization_skips_bind_mounts_and_parses_data_size(hass, config_entry) -> None:
     """Test bind mounts are ignored while real volumes keep parsed sizes."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -571,12 +548,10 @@ async def test_compose_volume_normalization_skips_bind_mounts_and_parses_data_si
                     }
                 ],
             },
-        ]
+        ],
     )
 
-    assert [volume["volume_key"] for volume in volumes] == [
-        "ctr-vaultwarden:vaultwarden_data"
-    ]
+    assert [volume["volume_key"] for volume in volumes] == ["ctr-vaultwarden:vaultwarden_data"]
     assert volumes[0]["size_gb"] == 5.2
     assert volumes[0]["container_name"] == "vaultwarden"
 
@@ -642,9 +617,7 @@ async def test_compose_volume_normalization_omv7_string_mounts(hass, config_entr
 
 
 @pytest.mark.asyncio
-async def test_compose_volume_normalization_omv7_string_mounts_fallback(
-    hass, config_entry
-) -> None:
+async def test_compose_volume_normalization_omv7_string_mounts_fallback(hass, config_entry) -> None:
     """When getVolumesBg returns nothing, the string-mount fallback still creates records."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -754,9 +727,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
 
 
 @pytest.mark.asyncio
-async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(
-    hass, config_entry
-) -> None:
+async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(hass, config_entry) -> None:
     """Test OMV7+ falls back to Smart.getList when getListBg returns a task id."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -769,15 +740,9 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(
             ("FileSystemMgmt", "enumerateFilesystems"): [],
             ("Services", "getStatus"): [],
             ("Network", "enumerateDevices"): [],
-            ("DiskMgmt", "enumerateDevices"): [
-                {"devicename": "sda", "canonicaldevicefile": "/dev/sda"}
-            ],
+            ("DiskMgmt", "enumerateDevices"): [{"devicename": "sda", "canonicaldevicefile": "/dev/sda"}],
             ("Smart", "getListBg"): "task-123",
-            ("Smart", "getList"): {
-                "data": [
-                    {"devicename": "sda", "temperature": 32, "overallstatus": "GOOD"}
-                ]
-            },
+            ("Smart", "getList"): {"data": [{"devicename": "sda", "temperature": 32, "overallstatus": "GOOD"}]},
             ("Smart", "getAttributes"): [],
             ("compose", "getContainerList"): {"data": []},
             ("compose", "getFileList"): {"data": []},
@@ -801,16 +766,11 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(
 
     assert data["disk"][0]["overallstatus"] == "GOOD"
     assert any(call.args[:2] == ("Smart", "getListBg") for call in api.async_call.await_args_list)
-    assert any(
-        call.args == ("Smart", "getList", {"start": 0, "limit": 100})
-        for call in api.async_call.await_args_list
-    )
+    assert any(call.args == ("Smart", "getList", {"start": 0, "limit": 100}) for call in api.async_call.await_args_list)
 
 
 @pytest.mark.asyncio
-async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data(
-    hass, config_entry
-) -> None:
+async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data(hass, config_entry) -> None:
     """Test live inventory stays unfiltered while runtime data honors saved selections."""
     config_entry = config_entry.__class__(
         domain=config_entry.domain,
@@ -855,26 +815,26 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
             "raid": [{"device": "md0"}, {"device": "md1"}],
             "zfs": [{"name": "tank"}, {"name": "backup"}],
             "smart": [],
-                "compose": [
-                    {
-                        "container_key": "ctr-paperless-app",
-                        "name": "paperless-app",
-                        "project_key": "paperless",
-                    },
-                    {
-                        "container_key": "ctr-web-nginx",
-                        "name": "nginx",
-                        "project_key": "web",
-                    },
-                ],
-                "compose_projects": [
-                    {"project_key": "paperless", "name": "paperless", "container_total": 1},
-                    {"project_key": "web", "name": "web", "container_total": 1},
-                ],
-                "compose_volumes": [
-                    {"volume_key": "ctr-paperless-app:data", "container_key": "ctr-paperless-app"},
-                    {"volume_key": "ctr-web-nginx:cache", "container_key": "ctr-web-nginx"},
-                ],
+            "compose": [
+                {
+                    "container_key": "ctr-paperless-app",
+                    "name": "paperless-app",
+                    "project_key": "paperless",
+                },
+                {
+                    "container_key": "ctr-web-nginx",
+                    "name": "nginx",
+                    "project_key": "web",
+                },
+            ],
+            "compose_projects": [
+                {"project_key": "paperless", "name": "paperless", "container_total": 1},
+                {"project_key": "web", "name": "web", "container_total": 1},
+            ],
+            "compose_volumes": [
+                {"volume_key": "ctr-paperless-app:data", "container_key": "ctr-paperless-app"},
+                {"volume_key": "ctr-web-nginx:cache", "container_key": "ctr-web-nginx"},
+            ],
             "kvm": [],
         },
         config_entry.options,
@@ -927,21 +887,13 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
         "ctr-paperless-app",
         "ctr-web-nginx",
     ]
-    assert [container["container_key"] for container in coordinator.data["compose"]] == [
-        "ctr-paperless-app"
-    ]
-    assert [project["project_key"] for project in coordinator.data["compose_projects"]] == [
-        "paperless"
-    ]
-    assert [volume["volume_key"] for volume in coordinator.data["compose_volumes"]] == [
-        "ctr-paperless-app:data"
-    ]
+    assert [container["container_key"] for container in coordinator.data["compose"]] == ["ctr-paperless-app"]
+    assert [project["project_key"] for project in coordinator.data["compose_projects"]] == ["paperless"]
+    assert [volume["volume_key"] for volume in coordinator.data["compose_volumes"]] == ["ctr-paperless-app:data"]
 
 
 @pytest.mark.asyncio
-async def test_filesystem_mapping_uses_parent_and_canonical_device_files(
-    hass, config_entry
-) -> None:
+async def test_filesystem_mapping_uses_parent_and_canonical_device_files(hass, config_entry) -> None:
     """Test filesystem to disk mapping uses path hints and ZFS size fallback."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -1108,12 +1060,11 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
 
 
 @pytest.mark.asyncio
-async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(
-    hass, config_entry
-) -> None:
+async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, config_entry) -> None:
     """Test md arrays are synthesized from filesystems and reused by RAID/ZFS mapping."""
     config_entry.add_to_hass(hass)
     api = Mock()
+
     async def async_call(service, method, params=None):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
@@ -1214,9 +1165,7 @@ async def test_zfs_pool_mapping_accepts_child_mountpoints(hass, config_entry) ->
 
 
 @pytest.mark.asyncio
-async def test_zfs_pool_mapping_uses_origin_or_id_device_references(
-    hass, config_entry
-) -> None:
+async def test_zfs_pool_mapping_uses_origin_or_id_device_references(hass, config_entry) -> None:
     """Test ZFS pools can map directly via origin/id device references."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -1282,18 +1231,11 @@ async def test_container_version_falls_back_to_image_tag(hass, config_entry) -> 
         smart_disabled=True,
     )
 
-    assert (
-        coordinator._extract_container_version(
-            {"image": "vaultwarden/server:1.33.2"}
-        )
-        == "1.33.2"
-    )
+    assert coordinator._extract_container_version({"image": "vaultwarden/server:1.33.2"}) == "1.33.2"
 
 
 @pytest.mark.asyncio
-async def test_cleanup_removes_deselected_entities_and_child_devices(
-    hass, coordinator, config_entry
-) -> None:
+async def test_cleanup_removes_deselected_entities_and_child_devices(hass, coordinator, config_entry) -> None:
     """Test stale registry entries are removed when resources are deselected."""
     entity_registry = er.async_get(hass)
     device_registry = dr.async_get(hass)
@@ -1364,16 +1306,22 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(
 
     await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
 
-    assert entity_registry.async_get_entity_id(
-        DOMAIN,
-        "sensor",
-        f"{config_entry.entry_id}-disk_used_size-sdx",
-    ) is None
-    assert entity_registry.async_get_entity_id(
-        DOMAIN,
-        "binary_sensor",
-        f"{config_entry.entry_id}-service-smb",
-    ) is None
+    assert (
+        entity_registry.async_get_entity_id(
+            DOMAIN,
+            "sensor",
+            f"{config_entry.entry_id}-disk_used_size-sdx",
+        )
+        is None
+    )
+    assert (
+        entity_registry.async_get_entity_id(
+            DOMAIN,
+            "binary_sensor",
+            f"{config_entry.entry_id}-service-smb",
+        )
+        is None
+    )
     assert device_registry.async_get_device({(DOMAIN, f"{config_entry.entry_id}:disk:sdx")}, set()) is None
     assert (
         entity_registry.async_get_entity_id(
@@ -1408,9 +1356,7 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(
 
 
 @pytest.mark.asyncio
-async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(
-    hass, config_entry
-) -> None:
+async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(hass, config_entry) -> None:
     """Test virtual passthrough suppresses SMART and CPU temperature fetching."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -1486,9 +1432,7 @@ async def test_network_rates_are_calculated_from_previous_counters(hass, config_
 
 
 @pytest.mark.asyncio
-async def test_smart_skips_getattributes_for_hotpluggable_disk(
-    hass, config_entry
-) -> None:
+async def test_smart_skips_getattributes_for_hotpluggable_disk(hass, config_entry) -> None:
     """SMART getAttributes must not be called for hotpluggable (USB) disks."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -1513,11 +1457,7 @@ async def test_smart_skips_getattributes_for_hotpluggable_disk(
     ]
     # Smart.getList returns one matching SMART record
     api.async_call = AsyncMock(
-        return_value={
-            "data": [
-                {"devicename": "sdb", "temperature": 30, "overallstatus": "PASSED"}
-            ]
-        }
+        return_value={"data": [{"devicename": "sdb", "temperature": 30, "overallstatus": "PASSED"}]}
     )
     coordinator.omv_version = 7
 
@@ -1525,17 +1465,13 @@ async def test_smart_skips_getattributes_for_hotpluggable_disk(
 
     # getAttributes must NOT have been called for the hotpluggable disk
     for call in api.async_call.await_args_list:
-        assert not (
-            len(call.args) >= 2
-            and call.args[0] == "Smart"
-            and call.args[1] == "getAttributes"
-        ), "getAttributes was called for a hotpluggable disk"
+        assert not (len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"), (
+            "getAttributes was called for a hotpluggable disk"
+        )
 
 
 @pytest.mark.asyncio
-async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(
-    hass, config_entry
-) -> None:
+async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(hass, config_entry) -> None:
     """SMART getAttributes must still be called for regular (non-hotpluggable) disks."""
     config_entry.add_to_hass(hass)
     api = Mock()
@@ -1559,11 +1495,7 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(
 
     async def async_call(service, method, params=None):
         if method == "getListBg":
-            return {
-                "data": [
-                    {"devicename": "sda", "temperature": 35, "overallstatus": "PASSED"}
-                ]
-            }
+            return {"data": [{"devicename": "sda", "temperature": 35, "overallstatus": "PASSED"}]}
         if method == "getAttributes":
             return {"data": [{"attrname": "Raw_Read_Error_Rate", "rawvalue": "0"}]}
         return []
@@ -1574,25 +1506,19 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(
     await coordinator._async_get_smart(disks)
 
     assert any(
-        len(call.args) >= 2
-        and call.args[0] == "Smart"
-        and call.args[1] == "getAttributes"
+        len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"
         for call in api.async_call.await_args_list
     ), "getAttributes was not called for a regular disk"
 
 
 @pytest.mark.asyncio
-async def test_normalize_hwinfo_prefers_memutilization_api_field(
-    hass, config_entry
-) -> None:
+async def test_normalize_hwinfo_prefers_memutilization_api_field(hass, config_entry) -> None:
     """memUsage must use the API-provided memUtilization when present."""
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(
-        hass, config_entry, api, scan_interval=60, smart_disabled=True
-    )
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
     # OMV delivers memUtilization=42.7 — should be used directly
     result = coordinator._normalize_hwinfo(
@@ -1611,17 +1537,13 @@ async def test_normalize_hwinfo_prefers_memutilization_api_field(
 
 
 @pytest.mark.asyncio
-async def test_normalize_hwinfo_falls_back_to_calculated_memusage(
-    hass, config_entry
-) -> None:
+async def test_normalize_hwinfo_falls_back_to_calculated_memusage(hass, config_entry) -> None:
     """memUsage must fall back to memUsed/memTotal when memUtilization is absent."""
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(
-        hass, config_entry, api, scan_interval=60, smart_disabled=True
-    )
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
     result = coordinator._normalize_hwinfo(
         {
@@ -1640,17 +1562,13 @@ async def test_normalize_hwinfo_falls_back_to_calculated_memusage(
 
 
 @pytest.mark.asyncio
-async def test_normalize_disks_stores_hotpluggable_flag(
-    hass, config_entry
-) -> None:
+async def test_normalize_disks_stores_hotpluggable_flag(hass, config_entry) -> None:
     """_normalize_disks must store the hotpluggable flag from the API response."""
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(
-        hass, config_entry, api, scan_interval=60, smart_disabled=True
-    )
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
     disks = coordinator._normalize_disks(
         [

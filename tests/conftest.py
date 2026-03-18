@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
-import custom_components
 import pytest
 from homeassistant.const import (
     CONF_HOST,
@@ -20,6 +19,7 @@ from homeassistant.const import (
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+import custom_components
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
 
@@ -75,7 +75,7 @@ def sample_data() -> dict[str, Any]:
             "memUsed": 10000,
             "memUsage": 62.5,
             "loadAverage": {"1min": 0.1, "5min": 0.2, "15min": 0.3},
-            "uptimeEpoch": datetime(2026, 3, 13, 12, 0, tzinfo=timezone.utc),
+            "uptimeEpoch": datetime(2026, 3, 13, 12, 0, tzinfo=UTC),
             "availablePkgUpdates": 3,
             "pkgUpdatesAvailable": True,
             "rebootRequired": False,
@@ -116,7 +116,7 @@ def sample_data() -> dict[str, Any]:
         ],
         "service": [
             {"name": "ssh", "title": "SSH", "enabled": True, "running": True},
-            {"name": "compose", "title": "Docker", "enabled": True, "running": True}
+            {"name": "compose", "title": "Docker", "enabled": True, "running": True},
         ],
         "network": [
             {
@@ -201,7 +201,7 @@ def sample_data() -> dict[str, Any]:
                 "storage_label": "tank",
                 "vendor": "ATA",
                 "overallstatus": "PASSED",
-            }
+            },
         ],
         "smart": [{"devicename": "sda", "temperature": 34, "overallstatus": "PASSED"}],
         "compose": [
@@ -213,8 +213,8 @@ def sample_data() -> dict[str, Any]:
                 "version": "2.15.3",
                 "state": "running",
                 "status_detail": "Up 5 minutes",
-                "created_at": datetime(2026, 3, 13, 10, 0, tzinfo=timezone.utc),
-                "started_at": datetime(2026, 3, 13, 10, 5, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 3, 13, 10, 0, tzinfo=UTC),
+                "started_at": datetime(2026, 3, 13, 10, 5, tzinfo=UTC),
                 "project_key": "paperless",
                 "project_name": "paperless",
                 "project_uuid": "proj-paperless",
@@ -231,8 +231,8 @@ def sample_data() -> dict[str, Any]:
                 "version": "1.27.4",
                 "state": "running",
                 "status_detail": "Up 5 minutes",
-                "created_at": datetime(2026, 3, 13, 9, 0, tzinfo=timezone.utc),
-                "started_at": datetime(2026, 3, 13, 9, 2, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 3, 13, 9, 0, tzinfo=UTC),
+                "started_at": datetime(2026, 3, 13, 9, 2, tzinfo=UTC),
                 "project_key": "web",
                 "project_name": "web",
                 "project_uuid": "proj-web",
@@ -249,8 +249,8 @@ def sample_data() -> dict[str, Any]:
                 "version": "1.33.2",
                 "state": "running",
                 "status_detail": "Up 10 minutes",
-                "created_at": datetime(2026, 3, 13, 11, 0, tzinfo=timezone.utc),
-                "started_at": datetime(2026, 3, 13, 11, 1, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 3, 13, 11, 0, tzinfo=UTC),
+                "started_at": datetime(2026, 3, 13, 11, 1, tzinfo=UTC),
                 "project_key": "vaultwarden",
                 "project_name": "vaultwarden",
                 "project_uuid": "proj-vaultwarden",
@@ -267,8 +267,8 @@ def sample_data() -> dict[str, Any]:
                 "version": "16.4",
                 "state": "exited",
                 "status_detail": "Exited (0) 2 hours ago",
-                "created_at": datetime(2026, 3, 12, 18, 0, tzinfo=timezone.utc),
-                "started_at": datetime(2026, 3, 12, 18, 3, tzinfo=timezone.utc),
+                "created_at": datetime(2026, 3, 12, 18, 0, tzinfo=UTC),
+                "started_at": datetime(2026, 3, 12, 18, 3, tzinfo=UTC),
                 "project_key": "paperless",
                 "project_name": "paperless",
                 "project_uuid": "proj-paperless",

@@ -7,8 +7,8 @@ import pytest
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.sensor import OMVSensor, async_setup_entry
 from custom_components.omv.sensor_types import (
-    COMPOSE_SENSORS,
     COMPOSE_PROJECT_SENSORS,
+    COMPOSE_SENSORS,
     CONTAINER_SENSORS,
     CONTAINER_VOLUME_SENSORS,
     DISK_FREE_PERCENT_SENSOR,
@@ -22,8 +22,8 @@ from custom_components.omv.sensor_types import (
     FILESYSTEM_SENSOR,
     FILESYSTEM_TOTAL_SIZE_SENSOR,
     FILESYSTEM_USED_SIZE_SENSOR,
-    SYSTEM_SENSORS,
     RAID_SENSOR,
+    SYSTEM_SENSORS,
     ZFS_POOL_SENSOR,
 )
 
@@ -70,11 +70,7 @@ async def test_system_sensor_reads_native_value(coordinator) -> None:
 @pytest.mark.asyncio
 async def test_available_package_updates_sensor_exposes_numeric_count(coordinator) -> None:
     """Test the package update count sensor exposes the exact update count."""
-    description = next(
-        description
-        for description in SYSTEM_SENSORS
-        if description.key == "available_package_updates"
-    )
+    description = next(description for description in SYSTEM_SENSORS if description.key == "available_package_updates")
     sensor = OMVSensor(coordinator, description)
 
     assert sensor.native_value == 3
@@ -90,9 +86,7 @@ async def test_available_package_updates_sensor_exposes_numeric_count(coordinato
         (COMPOSE_SENSORS[2], 1),
     ],
 )
-async def test_docker_summary_sensors_expose_container_counts(
-    coordinator, description, expected
-) -> None:
+async def test_docker_summary_sensors_expose_container_counts(coordinator, description, expected) -> None:
     """Test dedicated Docker sensors expose summarized container counts."""
     sensor = OMVSensor(coordinator, description)
 
@@ -108,9 +102,7 @@ async def test_docker_summary_sensors_expose_container_counts(
         (COMPOSE_PROJECT_SENSORS[3], 1),
     ],
 )
-async def test_compose_project_sensors_expose_project_counts(
-    coordinator, description, expected
-) -> None:
+async def test_compose_project_sensors_expose_project_counts(coordinator, description, expected) -> None:
     """Test compose project sensors expose grouped container counts."""
     sensor = OMVSensor(coordinator, description, item_key="paperless")
 
@@ -184,9 +176,7 @@ async def test_disk_sensor_exposes_smart_attributes_and_disk_device_info(coordin
         (DISK_TOTAL_SIZE_SENSOR, 100.0),
     ],
 )
-async def test_disk_capacity_sensors_use_projected_storage_metrics(
-    coordinator, description, expected
-) -> None:
+async def test_disk_capacity_sensors_use_projected_storage_metrics(coordinator, description, expected) -> None:
     """Test disk entities expose projected capacity metrics on the disk device."""
     sensor = OMVSensor(coordinator, description, item_key="sda")
 
@@ -227,9 +217,7 @@ async def test_zfs_sensor_uses_pool_state(coordinator) -> None:
     sensor = OMVSensor(coordinator, ZFS_POOL_SENSOR, item_key="tank")
 
     assert sensor.native_value == "ONLINE"
-    assert sensor.device_info["identifiers"] == {
-        (DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")
-    }
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
 
 
 @pytest.mark.asyncio
@@ -263,9 +251,7 @@ async def test_container_volume_size_sensor_uses_container_device(coordinator) -
     }
     assert sensor.device_info["name"] == "Container vaultwarden"
     assert sensor.extra_state_attributes["destination"] == "/data"
-    assert sensor._attr_suggested_object_id == (
-        "nas_container_vaultwarden_volume_vaultwarden_data_volume_size"
-    )
+    assert sensor._attr_suggested_object_id == ("nas_container_vaultwarden_volume_vaultwarden_data_volume_size")
 
 
 @pytest.mark.asyncio

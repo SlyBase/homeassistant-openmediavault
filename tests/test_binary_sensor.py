@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.omv.const import DOMAIN
 from custom_components.omv.binary_sensor import OMVBinarySensor, async_setup_entry
-from custom_components.omv.binary_sensor_types import SERVICE_BINARY_SENSOR, SYSTEM_BINARY_SENSORS
+from custom_components.omv.binary_sensor_types import (
+    SERVICE_BINARY_SENSOR,
+    SYSTEM_BINARY_SENSORS,
+)
+from custom_components.omv.const import DOMAIN
 
 
 @pytest.mark.asyncio

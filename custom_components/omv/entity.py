@@ -49,9 +49,7 @@ def build_host_object_id(
 ) -> str:
     """Build a host-qualified suggested object ID."""
     normalized_parts = [_slugify_object_id_part(get_hostname_slug(coordinator))]
-    normalized_parts.extend(
-        _slugify_object_id_part(part) for part in parts if str(part or "").strip()
-    )
+    normalized_parts.extend(_slugify_object_id_part(part) for part in parts if str(part or "").strip())
     return "_".join(part for part in normalized_parts if part)
 
 
@@ -95,9 +93,7 @@ def _is_generic_storage_label(disk_key: str, label: str) -> bool:
         normalized = normalized[len("mapper/") :]
     if normalized == disk_key:
         return True
-    return bool(
-        re.fullmatch(rf"{re.escape(disk_key)}(?:p\d+|\d+)", normalized)
-    )
+    return bool(re.fullmatch(rf"{re.escape(disk_key)}(?:p\d+|\d+)", normalized))
 
 
 def _build_disk_device_model(disk: dict[str, Any]) -> str | None:
@@ -125,11 +121,7 @@ def _get_disk_by_key(
         coordinator._inventory_source.get("disk", []),
     ):
         match = next(
-            (
-                item
-                for item in source
-                if isinstance(item, dict) and str(item.get("disk_key") or "") == disk_key
-            ),
+            (item for item in source if isinstance(item, dict) and str(item.get("disk_key") or "") == disk_key),
             None,
         )
         if match is not None:
@@ -152,23 +144,17 @@ def get_hub_device_info(coordinator: OMVDataUpdateCoordinator) -> DeviceInfo:
     )
 
 
-def get_disk_device_identifier(
-    coordinator: OMVDataUpdateCoordinator, disk_key: str
-) -> tuple[str, str]:
+def get_disk_device_identifier(coordinator: OMVDataUpdateCoordinator, disk_key: str) -> tuple[str, str]:
     """Return the stable device registry identifier tuple for a disk."""
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:disk:{disk_key}")
 
 
-def get_compose_project_device_identifier(
-    coordinator: OMVDataUpdateCoordinator, project_key: str
-) -> tuple[str, str]:
+def get_compose_project_device_identifier(coordinator: OMVDataUpdateCoordinator, project_key: str) -> tuple[str, str]:
     """Return the stable device registry identifier tuple for a compose project."""
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:compose_project:{project_key}")
 
 
-def get_container_device_identifier(
-    coordinator: OMVDataUpdateCoordinator, container_key: str
-) -> tuple[str, str]:
+def get_container_device_identifier(coordinator: OMVDataUpdateCoordinator, container_key: str) -> tuple[str, str]:
     """Return the stable device registry identifier tuple for a container."""
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:container:{container_key}")
 
@@ -235,12 +221,7 @@ def get_compose_project_device_info(
 
 def _container_display_name(data: dict[str, Any]) -> str:
     """Return the most useful display name for a container-backed device."""
-    return str(
-        data.get("container_name")
-        or data.get("name")
-        or data.get("container_key")
-        or ""
-    ).strip()
+    return str(data.get("container_name") or data.get("name") or data.get("container_key") or "").strip()
 
 
 def get_container_device_info(

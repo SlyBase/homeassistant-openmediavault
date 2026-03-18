@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
 
 def _load_probe_module():
     """Load the compatibility probe script as a module."""
-    module_path = (
-        Path(__file__).resolve().parents[1]
-        / "scripts"
-        / "check_omv_rpc_compatibility.py"
-    )
+    module_path = Path(__file__).resolve().parents[1] / "scripts" / "check_omv_rpc_compatibility.py"
     spec = importlib.util.spec_from_file_location("omv_live_probe", module_path)
     assert spec is not None
     assert spec.loader is not None
@@ -82,12 +78,8 @@ def test_summarize_response_flattens_nested_compose_fields() -> None:
                 {
                     "id": "ctr-vaultwarden",
                     "name": "vaultwarden",
-                    "labels": {
-                        "org.opencontainers.image.version": "1.33.2"
-                    },
-                    "annotations": {
-                        "org.opencontainers.image.version": "1.33.2"
-                    },
+                    "labels": {"org.opencontainers.image.version": "1.33.2"},
+                    "annotations": {"org.opencontainers.image.version": "1.33.2"},
                     "mounts": [
                         {
                             "Type": "volume",

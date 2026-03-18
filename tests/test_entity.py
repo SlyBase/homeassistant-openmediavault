@@ -105,9 +105,7 @@ def test_container_device_info_uses_name_image_and_project_parent(coordinator) -
 def test_volume_bound_device_info_uses_container_name_not_volume_name(coordinator) -> None:
     """Test volume-backed sensors keep the real container device name."""
     volume = next(
-        item
-        for item in coordinator.data["compose_volumes"]
-        if item["volume_key"] == "ctr-vaultwarden:vaultwarden_data"
+        item for item in coordinator.data["compose_volumes"] if item["volume_key"] == "ctr-vaultwarden:vaultwarden_data"
     )
 
     info = get_container_device_info(coordinator, volume)

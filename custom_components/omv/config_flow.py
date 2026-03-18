@@ -79,14 +79,10 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         self._user_form_values.update(
             {
                 CONF_HOST: user_input.get(CONF_HOST, self._user_form_values[CONF_HOST]),
-                CONF_USERNAME: user_input.get(
-                    CONF_USERNAME, self._user_form_values[CONF_USERNAME]
-                ),
+                CONF_USERNAME: user_input.get(CONF_USERNAME, self._user_form_values[CONF_USERNAME]),
                 CONF_PORT: user_input.get(CONF_PORT, self._user_form_values[CONF_PORT]),
                 CONF_SSL: user_input.get(CONF_SSL, self._user_form_values[CONF_SSL]),
-                CONF_VERIFY_SSL: user_input.get(
-                    CONF_VERIFY_SSL, self._user_form_values[CONF_VERIFY_SSL]
-                ),
+                CONF_VERIFY_SSL: user_input.get(CONF_VERIFY_SSL, self._user_form_values[CONF_VERIFY_SSL]),
                 CONF_PASSWORD: "",
             }
         )
@@ -95,21 +91,11 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         """Build the user schema from the latest remembered values."""
         return vol.Schema(
             {
-                vol.Required(
-                    CONF_HOST, default=self._user_form_values[CONF_HOST]
-                ): str,
-                vol.Required(
-                    CONF_USERNAME, default=self._user_form_values[CONF_USERNAME]
-                ): str,
-                vol.Required(
-                    CONF_PASSWORD, default=self._user_form_values[CONF_PASSWORD]
-                ): str,
-                vol.Optional(
-                    CONF_PORT, default=self._user_form_values[CONF_PORT]
-                ): int,
-                vol.Optional(
-                    CONF_SSL, default=self._user_form_values[CONF_SSL]
-                ): bool,
+                vol.Required(CONF_HOST, default=self._user_form_values[CONF_HOST]): str,
+                vol.Required(CONF_USERNAME, default=self._user_form_values[CONF_USERNAME]): str,
+                vol.Required(CONF_PASSWORD, default=self._user_form_values[CONF_PASSWORD]): str,
+                vol.Optional(CONF_PORT, default=self._user_form_values[CONF_PORT]): int,
+                vol.Optional(CONF_SSL, default=self._user_form_values[CONF_SSL]): bool,
                 vol.Optional(
                     CONF_VERIFY_SSL,
                     default=self._user_form_values[CONF_VERIFY_SSL],
@@ -117,9 +103,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial user step."""
         errors: dict[str, str] = {}
 
@@ -177,8 +161,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                 await api.async_close()
 
         _LOGGER.debug(
-            "OMV config flow show form host=%r username=%r port=%s ssl=%s "
-            "verify_ssl=%s errors=%s",
+            "OMV config flow show form host=%r username=%r port=%s ssl=%s verify_ssl=%s errors=%s",
             self._user_form_values[CONF_HOST],
             self._user_form_values[CONF_USERNAME],
             self._user_form_values[CONF_PORT],
@@ -207,9 +190,7 @@ class OMVOptionsFlow(OptionsFlow):
         """Initialize the options flow."""
         self._entry = entry
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Manage the options flow."""
         if user_input is not None:
             data = dict(user_input)
@@ -225,9 +206,7 @@ class OMVOptionsFlow(OptionsFlow):
             {
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
-                    default=self._entry.options.get(
-                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
-                    ),
+                    default=self._entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 ): vol.All(int, vol.Range(min=10, max=3600)),
                 vol.Optional(
                     CONF_SMART_DISABLED,
@@ -265,9 +244,7 @@ class OMVOptionsFlow(OptionsFlow):
                         CONF_SELECTED_NETWORK_INTERFACES,
                         inventory[CONF_SELECTED_NETWORK_INTERFACES],
                     ),
-                ): self._build_multi_select(
-                    inventory[CONF_SELECTED_NETWORK_INTERFACES]
-                ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_NETWORK_INTERFACES]),
                 vol.Optional(
                     CONF_SELECTED_RAIDS,
                     default=self._default_selection(
@@ -288,9 +265,7 @@ class OMVOptionsFlow(OptionsFlow):
                         CONF_SELECTED_COMPOSE_PROJECTS,
                         inventory[CONF_SELECTED_COMPOSE_PROJECTS],
                     ),
-                ): self._build_multi_select(
-                    inventory[CONF_SELECTED_COMPOSE_PROJECTS]
-                ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_COMPOSE_PROJECTS]),
                 vol.Optional(
                     CONF_SELECTED_CONTAINERS,
                     default=self._default_selection(
@@ -307,9 +282,7 @@ class OMVOptionsFlow(OptionsFlow):
 
     def _get_inventory(self) -> dict[str, list[dict[str, str]]]:
         """Load live inventory and merge it with persisted values."""
-        live_inventory: dict[str, list[dict[str, str]]] = {
-            field: [] for field in _RESOURCE_FIELDS
-        }
+        live_inventory: dict[str, list[dict[str, str]]] = {field: [] for field in _RESOURCE_FIELDS}
 
         coordinator = getattr(self._entry, "runtime_data", None)
         if coordinator is not None:
@@ -327,9 +300,7 @@ class OMVOptionsFlow(OptionsFlow):
         merged_inventory: dict[str, list[dict[str, str]]] = {}
         for field in _RESOURCE_FIELDS:
             persisted_values = self._entry.options.get(field, [])
-            persisted_options = [
-                {"value": str(value), "label": str(value)} for value in persisted_values
-            ]
+            persisted_options = [{"value": str(value), "label": str(value)} for value in persisted_values]
             merged_inventory[field] = self._merge_inventory_options(
                 live_inventory.get(field, []),
                 persisted_options,
@@ -357,10 +328,7 @@ class OMVOptionsFlow(OptionsFlow):
         merged = {str(option["value"]): str(option["label"]) for option in options}
         return selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[
-                    {"value": value, "label": label}
-                    for value, label in merged.items()
-                ],
+                options=[{"value": value, "label": label} for value, label in merged.items()],
                 multiple=True,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )
@@ -376,7 +344,4 @@ class OMVOptionsFlow(OptionsFlow):
         for option in list(live_options) + list(persisted_options):
             value = str(option["value"])
             merged.setdefault(value, str(option["label"]))
-        return [
-            {"value": value, "label": merged[value]}
-            for value in sorted(merged, key=str.casefold)
-        ]
+        return [{"value": value, "label": merged[value]} for value in sorted(merged, key=str.casefold)]

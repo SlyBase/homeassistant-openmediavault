@@ -5,9 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from pathlib import Path, PurePosixPath
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -155,9 +155,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._hwinfo = await self._async_get_hwinfo()
                 self._hwinfo_counter = 0
 
-            raw_filesystems = await self._fetch_or_empty(
-                "FileSystemMgmt", "enumerateFilesystems"
-            )
+            raw_filesystems = await self._fetch_or_empty("FileSystemMgmt", "enumerateFilesystems")
             raw_services = await self._fetch_or_empty("Services", "getStatus")
             raw_network = await self._fetch_or_empty("Network", "enumerateDevices")
             raw_disks = await self._fetch_or_empty("DiskMgmt", "enumerateDevices")
@@ -222,9 +220,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "compose_summary": self._summarize_compose(compose, services),
                 "compose_volumes": compose_volumes,
                 "kvm": self._normalize_named_collection(
-                    await self._fetch_optional(
-                        "Kvm", "getVmList", {"start": 0, "limit": 999}
-                    )
+                    await self._fetch_optional("Kvm", "getVmList", {"start": 0, "limit": 999})
                 ),
                 "zfs": zfs_pools,
                 "raid": raids,
@@ -241,9 +237,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         except OMVApiError as err:
             raise UpdateFailed(f"OMV API error: {err}") from err
 
-    def get_live_inventory(
-        self, data: dict[str, Any] | None = None
-    ) -> dict[str, list[dict[str, str]]]:
+    def get_live_inventory(self, data: dict[str, Any] | None = None) -> dict[str, list[dict[str, str]]]:
         """Return the current unfiltered resources for the options flow."""
         source = data or self._inventory_source or self.data
         return self.build_inventory(source)
@@ -278,12 +272,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             value = str(filesystem.get("uuid") or "")
             if not value:
                 continue
-            label = str(
-                filesystem.get("label")
-                or filesystem.get("mountdir")
-                or filesystem.get("devicefile")
-                or value
-            )
+            label = str(filesystem.get("label") or filesystem.get("mountdir") or filesystem.get("devicefile") or value)
             inventory[CONF_SELECTED_FILESYSTEMS].append({"value": value, "label": label})
 
         for service in data.get("service", []):
@@ -332,9 +321,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (TypeError, ValueError):
                 total = 0
             label = value if total <= 0 else f"{value} ({total})"
-            inventory[CONF_SELECTED_COMPOSE_PROJECTS].append(
-                {"value": value, "label": label}
-            )
+            inventory[CONF_SELECTED_COMPOSE_PROJECTS].append({"value": value, "label": label})
 
         for container in data.get("compose", []):
             if not isinstance(container, dict):
@@ -356,16 +343,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             unique: dict[str, str] = {}
             for option in options:
                 unique.setdefault(str(option["value"]), str(option["label"]))
-            inventory[key] = [
-                {"value": value, "label": unique[value]}
-                for value in sorted(unique, key=str.casefold)
-            ]
+            inventory[key] = [{"value": value, "label": unique[value]} for value in sorted(unique, key=str.casefold)]
 
         return inventory
 
-    def filter_data_by_selection(
-        self, data: dict[str, Any], options: dict[str, Any]
-    ) -> dict[str, Any]:
+    def filter_data_by_selection(self, data: dict[str, Any], options: dict[str, Any]) -> dict[str, Any]:
         """Filter runtime collections by the persisted selection options."""
         filtered = dict(data)
         filtered["hwinfo"] = data.get("hwinfo", {})
@@ -376,8 +358,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 disk
                 for disk in data.get("disk", [])
                 if isinstance(disk, dict)
-                and str(disk.get("disk_key") or disk.get("devicename") or "")
-                in selected_disks
+                and str(disk.get("disk_key") or disk.get("devicename") or "") in selected_disks
             ]
         else:
             filtered["disk"] = list(data.get("disk", []))
@@ -388,8 +369,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             filesystems = [
                 filesystem
                 for filesystem in filesystems
-                if isinstance(filesystem, dict)
-                and str(filesystem.get("uuid") or "") in selected_filesystems
+                if isinstance(filesystem, dict) and str(filesystem.get("uuid") or "") in selected_filesystems
             ]
         filtered["fs"] = filesystems
 
@@ -400,9 +380,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lambda item: str(item.get("name") or ""),
         )
 
-        selected_network = self._selected_values(
-            options, CONF_SELECTED_NETWORK_INTERFACES
-        )
+        selected_network = self._selected_values(options, CONF_SELECTED_NETWORK_INTERFACES)
         filtered["network"] = self._filter_collection(
             data.get("network", []),
             selected_network,
@@ -469,8 +447,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         filtered["compose_volumes"] = [
             volume
             for volume in data.get("compose_volumes", [])
-            if isinstance(volume, dict)
-            and str(volume.get("container_key") or "") in filtered_container_keys
+            if isinstance(volume, dict) and str(volume.get("container_key") or "") in filtered_container_keys
         ]
 
         filtered["smart"] = list(data.get("smart", []))
@@ -523,12 +500,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if smart_record is not None:
                 if smart_record.get("temperature") not in (None, ""):
-                    disk["temperature"] = self._coerce_optional_float(
-                        smart_record.get("temperature")
-                    )
-                disk["overallstatus"] = str(
-                    smart_record.get("overallstatus", disk.get("overallstatus", "unknown"))
-                )
+                    disk["temperature"] = self._coerce_optional_float(smart_record.get("temperature"))
+                disk["overallstatus"] = str(smart_record.get("overallstatus", disk.get("overallstatus", "unknown")))
                 disk["smart_details"] = {
                     key: value
                     for key, value in smart_record.items()
@@ -624,11 +597,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             self._gpu_load_counter = 0
 
-        if (
-            not self._last_stable_gpu
-            or load == 0
-            or self._gpu_load_counter >= _GPU_CONFIRMATION_CYCLES
-        ):
+        if not self._last_stable_gpu or load == 0 or self._gpu_load_counter >= _GPU_CONFIRMATION_CYCLES:
             self._last_stable_gpu = gpu_raw
         else:
             _LOGGER.debug(
@@ -726,10 +695,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Return an OMV background-task filename from a response payload."""
         if isinstance(response, str):
             stripped = response.strip()
-            # JSON payloads start with { or [ – treat them as inline data, not paths.
-            if stripped and not stripped.startswith(("{", "[")):
-                if "/" in stripped or "." in stripped or "bgstatus" in stripped:
-                    return stripped
+            # JSON payloads start with { or [ - treat them as inline data, not paths.
+            path_like = "/" in stripped or "." in stripped or "bgstatus" in stripped
+            if stripped and not stripped.startswith(("{", "[")) and path_like:
+                return stripped
             return ""
 
         if not isinstance(response, dict):
@@ -804,12 +773,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         available_updates = int(self._coerce_float(info.get("availablePkgUpdates", 0)))
         load_average = info.get("loadAverage") if isinstance(info.get("loadAverage"), dict) else {}
 
-        cpu_model = str(
-            info.get("cpuModelName")
-            or info.get("cpuModel")
-            or info.get("cpu")
-            or "unknown"
-        )
+        cpu_model = str(info.get("cpuModelName") or info.get("cpuModel") or info.get("cpu") or "unknown")
         kernel = str(info.get("kernel") or info.get("utsname") or "unknown")
 
         return {
@@ -822,7 +786,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "memUsage": (
                 round(mem_utilization_api, 1)
                 if mem_utilization_api is not None
-                else round((mem_used / mem_total) * 100, 1) if mem_total else 0
+                else round((mem_used / mem_total) * 100, 1)
+                if mem_total
+                else 0
             ),
             "loadAverage": {
                 "1min": self._coerce_float(load_average.get("1min")),
@@ -830,7 +796,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "15min": self._coerce_float(load_average.get("15min")),
             },
             "uptime": uptime_raw,
-            "uptimeEpoch": datetime.now(timezone.utc) - timedelta(seconds=uptime_seconds),
+            "uptimeEpoch": datetime.now(UTC) - timedelta(seconds=uptime_seconds),
             "configDirty": self._coerce_bool(info.get("configDirty")),
             "rebootRequired": self._coerce_bool(info.get("rebootRequired")),
             "availablePkgUpdates": available_updates,
@@ -878,12 +844,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "devicefile": str(record.get("devicefile") or ""),
                 "canonicaldevicefile": str(record.get("canonicaldevicefile") or ""),
                 "parentdevicefile": str(record.get("parentdevicefile") or ""),
-                "mountdir": str(
-                    record.get("mountdir")
-                    or record.get("mountpoint")
-                    or record.get("dir")
-                    or ""
-                ),
+                "mountdir": str(record.get("mountdir") or record.get("mountpoint") or record.get("dir") or ""),
                 "size": round(size_bytes / 1000000000, 1),
                 "available": round(available_bytes / 1000000000, 1),
                 "used": round(used_bytes / 1000000000, 1),
@@ -930,12 +891,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
 
             stats = record.get("stats") if isinstance(record.get("stats"), dict) else {}
-            current_rx = self._coerce_float(
-                stats.get("rx_bytes", stats.get("rx_packets", 0))
-            )
-            current_tx = self._coerce_float(
-                stats.get("tx_bytes", stats.get("tx_packets", 0))
-            )
+            current_rx = self._coerce_float(stats.get("rx_bytes", stats.get("rx_packets", 0)))
+            current_tx = self._coerce_float(stats.get("tx_bytes", stats.get("tx_packets", 0)))
             previous = self._network_counters.get(uuid)
 
             if previous is None:
@@ -1018,9 +975,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> list[dict[str, Any]]:
         """Add synthetic logical devices like md arrays when OMV omits them."""
         known_disk_keys = {
-            str(disk.get("disk_key") or disk.get("devicename") or "")
-            for disk in disks
-            if isinstance(disk, dict)
+            str(disk.get("disk_key") or disk.get("devicename") or "") for disk in disks if isinstance(disk, dict)
         }
 
         for record in self._records_from_response(filesystem_response):
@@ -1090,11 +1045,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raids.append(
                 {
                     "device": disk_key,
-                    "devicefile": str(
-                        disk.get("canonicaldevicefile")
-                        or disk.get("devicefile")
-                        or f"/dev/{disk_key}"
-                    ),
+                    "devicefile": str(disk.get("canonicaldevicefile") or disk.get("devicefile") or f"/dev/{disk_key}"),
                     "disk_key": disk_key,
                     "state": "active",
                     "level": self._extract_raid_level(str(disk.get("description") or "")),
@@ -1199,8 +1150,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "project_key": project_name,
                 "project_name": project_name,
                 "compose_service": service_name,
-                "running": self._coerce_bool(record.get("running"))
-                or self._is_container_running(record),
+                "running": self._coerce_bool(record.get("running")) or self._is_container_running(record),
             }
             container["status"] = self._derive_container_project_status(container)
             containers.append(container)
@@ -1226,8 +1176,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             targets = [
                 container
                 for container in targets
-                if str(container.get("container_key") or container.get("name") or "")
-                in selected_containers
+                if str(container.get("container_key") or container.get("name") or "") in selected_containers
             ]
         if selected_projects is not None:
             targets = [
@@ -1248,10 +1197,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not isinstance(container, dict):
                 continue
             container_id = str(
-                container.get("container_id")
-                or container.get("container_key")
-                or container.get("name")
-                or ""
+                container.get("container_id") or container.get("container_key") or container.get("name") or ""
             )
             container_key = str(container.get("container_key") or container.get("name") or "")
             if not container_id or not container_key:
@@ -1300,18 +1246,15 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
 
             merged_container = {**container, **inspect}
-            merged_container["project_key"] = (
-                str(container.get("project_key") or "")
-                or self._extract_compose_project(merged_container)
+            merged_container["project_key"] = str(container.get("project_key") or "") or self._extract_compose_project(
+                merged_container
             )
-            merged_container["project_name"] = (
-                str(container.get("project_name") or "")
-                or str(merged_container.get("project_key") or "")
+            merged_container["project_name"] = str(container.get("project_name") or "") or str(
+                merged_container.get("project_key") or ""
             )
-            merged_container["compose_service"] = (
-                str(container.get("compose_service") or "")
-                or self._extract_compose_service(merged_container)
-            )
+            merged_container["compose_service"] = str(
+                container.get("compose_service") or ""
+            ) or self._extract_compose_service(merged_container)
             merged_container["version"] = self._extract_container_version(merged_container)
             merged_container["status"] = self._derive_container_project_status(merged_container)
             merged.append(merged_container)
@@ -1413,8 +1356,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "project_key": project_key,
                     "project_name": project_name,
                     "project_uuid": self._extract_text_value(project, "uuid"),
-                    "project_status": project_status
-                    or self._derive_container_project_status(container),
+                    "project_status": project_status or self._derive_container_project_status(container),
                     "project_uptime": self._extract_text_value(project, "uptime"),
                 }
             )
@@ -1675,9 +1617,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     ]
                 )
 
-            if container_name == project_name or any(
-                container_name.startswith(prefix) for prefix in prefixes
-            ):
+            if container_name == project_name or any(container_name.startswith(prefix) for prefix in prefixes):
                 return project
 
         return None
@@ -1870,11 +1810,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if isinstance(mounts, str):
             normalized = mounts.replace("<br/>", "\n")
-            return [
-                part.strip()
-                for part in re.split(r"[,\n]", normalized)
-                if part.strip()
-            ]
+            return [part.strip() for part in re.split(r"[,\n]", normalized) if part.strip()]
 
         return []
 
@@ -1981,15 +1917,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if state.startswith("running "):
             return True
 
-        status = str(
-            container.get("status_detail") or container.get("status") or ""
-        ).strip().lower()
+        status = str(container.get("status_detail") or container.get("status") or "").strip().lower()
         if status in {"running", "up", "healthy"}:
             return True
-        if status.startswith("up ") or status.startswith("running "):
-            return True
-
-        return False
+        return status.startswith("up ") or status.startswith("running ")
 
     def _apply_storage_metrics(
         self,
@@ -2074,18 +2005,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> str | None:
         """Map a ZFS pool to the same owner as its mounted filesystem."""
         normalized_mountpoint = mountpoint.rstrip("/") if mountpoint else ""
-        mountpoint_name = (
-            PurePosixPath(normalized_mountpoint).name if normalized_mountpoint else ""
-        )
+        mountpoint_name = PurePosixPath(normalized_mountpoint).name if normalized_mountpoint else ""
         for filesystem in filesystems:
             if not isinstance(filesystem, dict):
                 continue
             filesystem_mountdir = str(filesystem.get("mountdir") or "")
             normalized_filesystem_mountdir = filesystem_mountdir.rstrip("/")
             filesystem_mount_name = (
-                PurePosixPath(normalized_filesystem_mountdir).name
-                if normalized_filesystem_mountdir
-                else ""
+                PurePosixPath(normalized_filesystem_mountdir).name if normalized_filesystem_mountdir else ""
             )
 
             if (
@@ -2093,12 +2020,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 and normalized_filesystem_mountdir
                 and (
                     normalized_filesystem_mountdir == normalized_mountpoint
-                    or normalized_filesystem_mountdir.startswith(
-                        f"{normalized_mountpoint}/"
-                    )
-                    or normalized_mountpoint.startswith(
-                        f"{normalized_filesystem_mountdir}/"
-                    )
+                    or normalized_filesystem_mountdir.startswith(f"{normalized_mountpoint}/")
+                    or normalized_mountpoint.startswith(f"{normalized_filesystem_mountdir}/")
                 )
             ):
                 return str(filesystem.get("disk_key") or "") or None
@@ -2172,9 +2095,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             for disk in disks
             if self._coerce_float(disk.get("total_size_gb")) >= size_gb
             and self._coerce_float(disk.get("total_size_gb")) > 0
-            and (
-                self._coerce_float(disk.get("total_size_gb")) - size_gb
-            ) / self._coerce_float(disk.get("total_size_gb"))
+            and (self._coerce_float(disk.get("total_size_gb")) - size_gb)
+            / self._coerce_float(disk.get("total_size_gb"))
             <= 0.08
         }
         approximate_candidates.discard("")
@@ -2347,12 +2269,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if value in (None, ""):
             return None
         if isinstance(value, datetime):
-            return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+            return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
         if isinstance(value, (int, float)):
             timestamp = float(value)
             if timestamp > 10_000_000_000:
                 timestamp /= 1000
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            return datetime.fromtimestamp(timestamp, tz=UTC)
         if isinstance(value, str):
             stripped = value.strip()
             if not stripped:
@@ -2365,7 +2287,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 parsed = datetime.fromisoformat(normalized)
             except ValueError:
                 return None
-            return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+            return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
         return None
 
     def _coerce_bool(self, value: Any) -> bool:

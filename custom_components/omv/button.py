@@ -74,14 +74,10 @@ def get_expected_button_unique_ids(
         if not project_key:
             continue
         for order, translation_key, _command, _icon in _COMPOSE_PROJECT_ACTIONS:
-            unique_ids.add(
-                f"{entry.entry_id}-{_compose_button_unique_suffix(order, translation_key, project_key)}"
-            )
+            unique_ids.add(f"{entry.entry_id}-{_compose_button_unique_suffix(order, translation_key, project_key)}")
     if coordinator._has_container_service(coordinator.data.get("service", [])):
         for order, translation_key, _command, _icon in _SYSTEM_COMPOSE_ACTIONS:
-            unique_ids.add(
-                f"{entry.entry_id}-{_system_button_unique_suffix(order, translation_key)}"
-            )
+            unique_ids.add(f"{entry.entry_id}-{_system_button_unique_suffix(order, translation_key)}")
     return unique_ids
 
 
