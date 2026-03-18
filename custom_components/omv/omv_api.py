@@ -44,7 +44,6 @@ class OMVAPI:
         self._source = source
         self._session_id: str | None = None
         self._session: aiohttp.ClientSession | None = None
-        self._connector: aiohttp.TCPConnector | None = None
         self._lock = asyncio.Lock()
 
     @property
@@ -97,17 +96,8 @@ class OMVAPI:
         """Create or recreate the aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
-            self._session = None
-        if self._connector and not self._connector.closed:
-            await self._connector.close()
-            self._connector = None
-
-        self._connector = aiohttp.TCPConnector(ssl=self._verify_ssl if self._ssl else False)
-        cookie_jar = aiohttp.CookieJar(unsafe=True)
         self._session = aiohttp.ClientSession(
-            connector=self._connector,
-            connector_owner=False,
-            cookie_jar=cookie_jar,
+            cookie_jar=aiohttp.CookieJar(unsafe=True),
             timeout=_REQUEST_TIMEOUT,
         )
 
@@ -201,11 +191,15 @@ class OMVAPI:
         elif service != "session":
             payload["options"] = {"updatelastaccess": True}
 
+        # ssl=False means "SSL enabled, skip certificate verification" in aiohttp;
+        # for plain http:// URLs the parameter is ignored.
+        ssl_param: bool | None = False if (self._ssl and not self._verify_ssl) else None
         try:
             async with self._session.post(
                 f"{self.base_url}/rpc.php",
                 headers=headers,
                 json=payload,
+                ssl=ssl_param,
             ) as response:
                 if response.status in (401, 403):
                     _LOGGER.debug(
@@ -276,11 +270,8 @@ class OMVAPI:
         return data.get("response")
 
     async def async_close(self) -> None:
-        """Close the underlying aiohttp session and connector."""
+        """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
         self._session_id = None
-        if self._connector and not self._connector.closed:
-            await self._connector.close()
-        self._connector = None
