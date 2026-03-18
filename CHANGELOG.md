@@ -12,6 +12,7 @@
 ### Changed
 
 - **HACS Default** (`info.md`): Badge updated from *HACS Custom* to *HACS Default* following acceptance into the HACS Default Store.
+- **readme** (`readme.md`): Changed header image of OMV logo and added a info
 
 ### Internal
 
