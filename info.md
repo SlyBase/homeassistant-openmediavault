@@ -24,7 +24,7 @@ Monitor and control your OpenMediaVault NAS from Home Assistant.
 ## Supported Versions
 
 - OpenMediaVault 7 and 8
-- Home Assistant 2024.8 or newer
+- Home Assistant 2025.5 or newer
 
 ## Links
 

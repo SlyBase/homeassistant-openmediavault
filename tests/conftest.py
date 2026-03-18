@@ -27,7 +27,7 @@ from custom_components.omv.coordinator import OMVDataUpdateCoordinator
 
 
 @pytest.fixture(autouse=True)
-async def _drain_aiohttp_on_teardown() -> AsyncGenerator[None, None]:
+async def _drain_aiohttp_on_teardown() -> AsyncGenerator[None]:
     """Drain aiohttp cleanup before verify_cleanup checks for lingering threads.
 
     In older aiohttp (< 3.11), BaseConnector.__del__ spawns a
@@ -56,7 +56,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 @pytest.fixture(autouse=True)
-def fix_custom_components_namespace() -> Generator[None, None, None]:
+def fix_custom_components_namespace() -> Generator[None]:
     """Ensure HA only scans real custom_components directories during tests."""
     workspace_custom_components = Path(__file__).resolve().parents[1] / "custom_components"
     original_path = custom_components.__path__

@@ -28,7 +28,8 @@ The original integration relied on a synchronous, poll-based controller that no 
 ## Supported Versions
 
 - OpenMediaVault 7 and 8
-- Home Assistant 2024.8 or newer
+- Home Assistant 2025.5 or newer
+- Python 3.13.2 or newer for local development and CI
 
 The active integration domain is omv.
 

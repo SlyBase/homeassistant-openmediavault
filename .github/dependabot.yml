@@ -13,6 +13,7 @@ updates:
       test-dependencies:
         patterns:
           - "pytest*"
+          - "pycares"
           - "aioresponses"
       dev-tools:
         patterns:
