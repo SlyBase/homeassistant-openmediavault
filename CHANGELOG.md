@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.2] - 2026-03-18
+
+### Fixed
+
+- **Docker container icon** (`sensor_types.py`): Reverted `docker_container_not_running` icon to `mdi:docker` — `mdi:docker-off` does not exist in the Material Design Icons set and caused missing icons in the HA frontend.
+- **Lint** (`diagnostics.py`): Removed spurious extra whitespace before an inline comment (Ruff E262).
+
+### Changed
+
+- **HACS Default** (`info.md`): Badge updated from *HACS Custom* to *HACS Default* following acceptance into the HACS Default Store.
+
 ## [2.0.1] - 2026-03-18
 
 ### Security

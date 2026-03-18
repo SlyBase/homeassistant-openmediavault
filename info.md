@@ -1,4 +1,4 @@
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://hacs.xyz)
 
 Monitor and control your OpenMediaVault NAS from Home Assistant.
 
