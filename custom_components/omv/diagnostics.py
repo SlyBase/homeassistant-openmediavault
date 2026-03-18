@@ -13,7 +13,7 @@ TO_REDACT = {
     "password",
     # Hardware identifiers that can de-anonymise a user's device
     "serialnumber",
-    "address",   # IP address of network interfaces
+    "address",  # IP address of network interfaces
     "netmask",
     "gateway",
     "macaddress",
