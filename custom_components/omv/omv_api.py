@@ -273,5 +273,8 @@ class OMVAPI:
         """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:
             await self._session.close()
+            # Let aiohttp run deferred transport shutdown callbacks before
+            # pytest cleanup checks for lingering background threads.
+            await asyncio.sleep(0)
         self._session = None
         self._session_id = None

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import aiohttp
 import pytest
 from aioresponses import aioresponses
@@ -189,3 +191,17 @@ async def test_session_accepts_cookies_for_ip_hosts() -> None:
 
     assert cookies["X-OPENMEDIAVAULT-SESSIONID"].value == "session123"
     await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_async_close_yields_for_aiohttp_cleanup() -> None:
+    """Test async_close yields one loop tick for aiohttp transport cleanup."""
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    await api._async_ensure_session()
+
+    with patch("custom_components.omv.omv_api.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+        await api.async_close()
+
+    sleep_mock.assert_awaited_once_with(0)
+    assert api._session is None
+    assert api._session_id is None
