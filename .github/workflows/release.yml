@@ -3,6 +3,12 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v2.0.0)"
+        required: true
+        type: string
 
 jobs:
   release:
@@ -14,7 +20,9 @@ jobs:
 
       - name: Set version in manifest
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          REF="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}"
+          VERSION="${REF#refs/tags/v}"
+          VERSION="${VERSION#v}"
           jq --arg v "$VERSION" '.version = $v' \
             custom_components/omv/manifest.json > tmp.json
           mv tmp.json custom_components/omv/manifest.json
