@@ -132,7 +132,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     err,
                 )
         else:
-            assert last_error is not None
+            if last_error is None:
+                raise OMVApiError("No Compose service available")
             raise last_error
 
         filename = self._extract_background_filename(response)
@@ -698,7 +699,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # JSON payloads start with { or [ - treat them as inline data, not paths.
             path_like = "/" in stripped or "." in stripped or "bgstatus" in stripped
             if stripped and not stripped.startswith(("{", "[")) and path_like:
-                return stripped
+                return self._sanitize_background_path(stripped)
             return ""
 
         if not isinstance(response, dict):
@@ -707,9 +708,25 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for key in ("filename", "file", "path", "bgstatusfile", "bgstatus"):
             value = response.get(key)
             if value not in (None, ""):
-                return str(value).strip()
+                return self._sanitize_background_path(str(value).strip())
 
         return ""
+
+    @staticmethod
+    def _sanitize_background_path(path: str) -> str:
+        """Return the path if it is free of traversal sequences, otherwise empty string.
+
+        Prevents a compromised or malicious OMV server from injecting paths
+        like '../../etc/shadow' into Exec.getOutput calls (path traversal,
+        OWASP A01/A03).
+        """
+        if ".." in PurePosixPath(path).parts:
+            _LOGGER.warning(
+                "Rejected suspicious background-task path %r (path traversal detected)",
+                path,
+            )
+            return ""
+        return path
 
     def _extract_exec_output_text(self, response: Any) -> str:
         """Extract the text payload from Exec.getOutput responses."""

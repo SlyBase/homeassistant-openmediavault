@@ -11,6 +11,13 @@ from homeassistant.core import HomeAssistant
 TO_REDACT = {
     "username",
     "password",
+    # Hardware identifiers that can de-anonymise a user's device
+    "serialnumber",
+    "address",   # IP address of network interfaces
+    "netmask",
+    "gateway",
+    "macaddress",
+    "mac",
 }
 
 
