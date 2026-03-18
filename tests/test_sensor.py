@@ -230,10 +230,10 @@ async def test_disk_free_percent_sensor_exposes_icon(coordinator) -> None:
 
 @pytest.mark.asyncio
 async def test_docker_not_running_sensor_exposes_icon(coordinator) -> None:
-    """Test Docker not running summary keeps the docker-off icon."""
+    """Test Docker not running summary exposes the docker icon."""
     sensor = OMVSensor(coordinator, COMPOSE_SENSORS[2])
 
-    assert sensor.icon == "mdi:docker-off"
+    assert sensor.icon == "mdi:docker"
 
 
 @pytest.mark.asyncio
