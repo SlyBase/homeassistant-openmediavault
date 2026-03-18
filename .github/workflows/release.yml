@@ -1,8 +1,12 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v2.0.0)"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -16,14 +20,28 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Resolve release tag
+        id: release
+        run: |
+          TAG_INPUT="${{ inputs.tag || github.event.inputs.tag }}"
+          TAG_INPUT="${TAG_INPUT#refs/tags/}"
+          VERSION="${TAG_INPUT#v}"
+
+          if [ -z "$VERSION" ]; then
+            echo "Release tag input is required" >&2
+            exit 1
+          fi
+
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ steps.release.outputs.tag }}
 
       - name: Set version in manifest
         run: |
-          REF="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}"
-          VERSION="${REF#refs/tags/v}"
-          VERSION="${VERSION#v}"
-          jq --arg v "$VERSION" '.version = $v' \
+          jq --arg v "${{ steps.release.outputs.version }}" '.version = $v' \
             custom_components/omv/manifest.json > tmp.json
           mv tmp.json custom_components/omv/manifest.json
 
@@ -35,4 +53,6 @@ jobs:
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          fail_on_unmatched_files: true
           files: omv.zip
