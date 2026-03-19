@@ -1,0 +1,27 @@
+name: Question
+description: Ask a question about this integration
+title: "[Question]: "
+labels: ["question"]
+assignees:
+  - slydlake
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe your question as clearly as possible.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add any other context that might help answer your question (e.g. configuration, logs, screenshots).
+    validations:
+      required: false
