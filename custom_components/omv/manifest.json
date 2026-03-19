@@ -6,9 +6,9 @@
     ],
     "config_flow": true,
     "documentation": "https://github.com/slybase/homeassistant-openmediavault",
+    "integration_type": "hub",
     "issue_tracker": "https://github.com/slybase/homeassistant-openmediavault/issues",
     "iot_class": "local_polling",
-    "version": "2.0.3",
     "requirements": [],
-    "integration_type": "hub"
+    "version": "2.0.3"
 }
