@@ -48,12 +48,19 @@ jobs:
         with:
           category: integration
 
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: home-assistant/actions/hassfest@master
+
   release:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     needs:
       - lint
       - test
       - hacs
+      - hassfest
     permissions:
       contents: write
     uses: ./.github/workflows/release.yml
