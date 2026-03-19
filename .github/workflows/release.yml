@@ -69,8 +69,8 @@ jobs:
 
       - name: Create release ZIP
         run: |
-          cd custom_components
-          zip -r ../omv.zip omv/
+          cd custom_components/omv
+          zip -r ../../omv.zip .
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
