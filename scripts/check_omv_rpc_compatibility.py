@@ -5,15 +5,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 import getpass
 import json
 import os
-from pathlib import Path
 import re
 import sys
 import time
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -132,9 +132,7 @@ class OMVProbeClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
-        connector = aiohttp.TCPConnector(
-            ssl=self._target.verify_ssl if self._target.use_ssl else False
-        )
+        connector = aiohttp.TCPConnector(ssl=self._target.verify_ssl if self._target.use_ssl else False)
         self._session = aiohttp.ClientSession(
             connector=connector,
             cookie_jar=aiohttp.CookieJar(unsafe=True),
@@ -195,23 +193,15 @@ class OMVProbeClient:
                     raise ProbeConnectionError(f"OMV returned HTTP {response.status}")
                 data = await response.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError) as err:
-            raise ProbeConnectionError(
-                f"Connection to {self._target.host} failed: {err}"
-            ) from err
+            raise ProbeConnectionError(f"Connection to {self._target.host} failed: {err}") from err
         except ValueError as err:
-            raise ProbeConnectionError(
-                f"Invalid JSON response from {self._target.host}: {err}"
-            ) from err
+            raise ProbeConnectionError(f"Invalid JSON response from {self._target.host}: {err}") from err
 
         error = data.get("error")
         if error:
             code = error.get("code", 0)
             message = str(error.get("message", "Unknown error"))
-            if (
-                service == "session"
-                and method == "login"
-                and _is_invalid_login_message(message)
-            ):
+            if service == "session" and method == "login" and _is_invalid_login_message(message):
                 raise ProbeAuthError(message)
             if code in _SESSION_EXPIRED_CODES:
                 raise ProbeAuthError(message)
@@ -229,17 +219,13 @@ def _is_invalid_login_message(message: str) -> bool:
 def parse_target(value: str, *, port: int, use_ssl: bool, verify_ssl: bool) -> TargetConfig:
     """Parse a target specification in the form name=host."""
     if "=" not in value:
-        raise argparse.ArgumentTypeError(
-            "Target must be specified as name=host, for example omv7=192.168.178.41"
-        )
+        raise argparse.ArgumentTypeError("Target must be specified as name=host, for example omv7=192.168.178.41")
 
     name, host = value.split("=", 1)
     name = name.strip()
     host = host.strip()
     if not name or not host:
-        raise argparse.ArgumentTypeError(
-            "Target must include both a non-empty name and host"
-        )
+        raise argparse.ArgumentTypeError("Target must include both a non-empty name and host")
 
     return TargetConfig(
         name=name,
@@ -267,9 +253,7 @@ def _records_from_response(response: Any) -> list[dict[str, Any]]:
         if isinstance(data, list):
             return [item for item in data if isinstance(item, dict)]
         if isinstance(response.get("records"), list):
-            return [
-                item for item in response["records"] if isinstance(item, dict)
-            ]
+            return [item for item in response["records"] if isinstance(item, dict)]
     return []
 
 
@@ -564,9 +548,7 @@ async def probe_target(
 
 def build_parser() -> argparse.ArgumentParser:
     """Create the command-line parser."""
-    parser = argparse.ArgumentParser(
-        description="Probe OMV RPC compatibility against live targets"
-    )
+    parser = argparse.ArgumentParser(description="Probe OMV RPC compatibility against live targets")
     parser.add_argument(
         "--target",
         action="append",
@@ -632,9 +614,7 @@ def _print_summary(reports: list[TargetReport]) -> None:
     """Render a concise terminal summary."""
     for report in reports:
         version = report.version or "unknown"
-        print(
-            f"\n[{report.name}] {report.base_url} | OMV {version} | major={report.major_version}"
-        )
+        print(f"\n[{report.name}] {report.base_url} | OMV {version} | major={report.major_version}")
         for endpoint in report.endpoints:
             prefix = f"  {endpoint.service}.{endpoint.method}: {endpoint.status}"
             details: list[str] = []
@@ -667,10 +647,7 @@ async def _async_main(args: argparse.Namespace) -> int:
         for value in args.target
     ]
 
-    reports = [
-        await probe_target(target, username=args.username, password=password)
-        for target in targets
-    ]
+    reports = [await probe_target(target, username=args.username, password=password) for target in targets]
     _print_summary(reports)
 
     if args.output:
@@ -679,12 +656,16 @@ async def _async_main(args: argparse.Namespace) -> int:
         args.output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
         print(f"\nJSON report written to {args.output}")
 
-    return 0 if all(
-        endpoint.status not in {"error"}
-        for report in reports
-        for endpoint in report.endpoints
-        if not endpoint.optional
-    ) else 1
+    return (
+        0
+        if all(
+            endpoint.status not in {"error"}
+            for report in reports
+            for endpoint in report.endpoints
+            if not endpoint.optional
+        )
+        else 1
+    )
 
 
 def main() -> int:
