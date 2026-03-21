@@ -1512,30 +1512,35 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(hass,
 
 
 @pytest.mark.asyncio
-async def test_normalize_hwinfo_prefers_memutilization_api_field(hass, config_entry) -> None:
-    """memUsage is calculated as (total-free)/total, consistent with `free -m`."""
+async def test_normalize_hwinfo_uses_api_memused_field(hass, config_entry) -> None:
+    """memUsed must use the API's memUsed field (= total - available), not total - free.
+
+    On systems with aggressive kernel caching (e.g. Raspberry Pi), memFree is
+    tiny while memAvailable is large. Using total-free would give ~93% instead
+    of the correct ~28% that the OMV GUI itself shows.
+    """
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
     coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
-    # memFree provided: memUsed = total - free = 16000 - 9600 = 6400 → 40.0%
+    # memFree is tiny (lots of kernel cache), but memUsed (= total - available) is small
     result = coordinator._normalize_hwinfo(
         {
             "hostname": "nas",
             "version": "8.1.2-1",
             "cpuUtilization": 10.0,
             "memTotal": 16000,
-            "memFree": 9600,
-            "memUsed": 8000,
-            "memUtilization": 0.427,
+            "memFree": 500,  # tiny free → total-free would be 96.9%
+            "memUsed": 4480,  # API's memUsed = total - available (= 28%)
             "uptime": 0,
             "availablePkgUpdates": 0,
         }
     )
-    assert result["memUsage"] == 40.0
-    assert result["memUsed"] == 6400
+    # Must use API's memUsed (4480), not total-free (15500)
+    assert result["memUsed"] == 4480
+    assert result["memUsage"] == 28.0
 
 
 @pytest.mark.asyncio

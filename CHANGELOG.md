@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.5] - 2026-03-21
+
+### Fixed
+
+- **CPU and memory sensors not updating** (`coordinator.py`): `_HWINFO_REFRESH_MULTIPLIER` was set to `60`, meaning CPU utilization and memory were only refreshed every 60 scan cycles. With a 10-second scan interval this resulted in updates only every ~10 minutes. The multiplier is now `1` so hwinfo refreshes on every scan cycle.
+- **Memory used calculation** (`coordinator.py`): Reverted an incorrect earlier change that computed `memUsed` as `total − free`. On systems with aggressive kernel disk caching (e.g. Raspberry Pi), `memFree` is near zero while large amounts of memory are reclaimable, causing values like 93 % instead of the correct ~28 %. The integration now uses the OMV API's own `memUsed` field (`total − available`), which excludes reclaimable cache and matches what the OMV GUI displays.
+
 ## [2.0.4] - 2026-03-21
 
 ### Fixed

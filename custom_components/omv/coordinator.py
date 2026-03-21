@@ -30,7 +30,7 @@ from .exceptions import OMVApiError, OMVConnectionError
 from .omv_api import OMVAPI
 
 _LOGGER = logging.getLogger(__name__)
-_HWINFO_REFRESH_MULTIPLIER = 60
+_HWINFO_REFRESH_MULTIPLIER = 1
 _COMPOSE_LIST_PARAMS = {"start": 0, "limit": 999}
 _COMPOSE_BG_VOLUME_PARAMS = {
     "start": 0,
@@ -783,10 +783,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _normalize_hwinfo(self, info: dict[str, Any]) -> dict[str, Any]:
         """Normalize the OMV system information payload."""
         mem_total = int(self._coerce_float(info.get("memTotal")))
-        mem_free = int(self._coerce_float(info.get("memFree")))
-        # Use total-free (includes kernel cache/buffers) for a value consistent
-        # with `free -m` and hypervisor views like Proxmox.
-        mem_used = mem_total - mem_free if mem_total and mem_free else int(self._coerce_float(info.get("memUsed")))
+        # Use the API's memUsed (= total - available), which excludes reclaimable
+        # kernel cache/buffers. This matches what the OMV GUI displays and avoids
+        # reporting 90%+ on systems (e.g. Pi) where the kernel aggressively caches.
+        mem_used = int(self._coerce_float(info.get("memUsed")))
         uptime_raw = info.get("uptime", 0)
         uptime_seconds = self._parse_uptime_seconds(uptime_raw)
         available_updates = int(self._coerce_float(info.get("availablePkgUpdates", 0)))
