@@ -802,11 +802,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "cputemp": round(self._coerce_float(info.get("cputemp")), 1),
             "memTotal": mem_total,
             "memUsed": mem_used,
-            "memUsage": (
-                round((mem_used / mem_total) * 100, 1)
-                if mem_total
-                else 0
-            ),
+            "memUsage": (round((mem_used / mem_total) * 100, 1) if mem_total else 0),
             "loadAverage": {
                 "1min": self._coerce_float(load_average.get("1min")),
                 "5min": self._coerce_float(load_average.get("5min")),
