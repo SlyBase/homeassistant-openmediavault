@@ -783,8 +783,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _normalize_hwinfo(self, info: dict[str, Any]) -> dict[str, Any]:
         """Normalize the OMV system information payload."""
         mem_total = int(self._coerce_float(info.get("memTotal")))
-        mem_used = int(self._coerce_float(info.get("memUsed")))
-        mem_utilization_api = self._coerce_optional_float(info.get("memUtilization"))
+        mem_free = int(self._coerce_float(info.get("memFree")))
+        # Use total-free (includes kernel cache/buffers) for a value consistent
+        # with `free -m` and hypervisor views like Proxmox.
+        mem_used = mem_total - mem_free if mem_total and mem_free else int(self._coerce_float(info.get("memUsed")))
+        _mem_util_raw = info.get("memUtilization")
+        mem_utilization_api = (
+            self._coerce_float(_mem_util_raw) if _mem_util_raw not in (None, "") else None
+        )
         uptime_raw = info.get("uptime", 0)
         uptime_seconds = self._parse_uptime_seconds(uptime_raw)
         available_updates = int(self._coerce_float(info.get("availablePkgUpdates", 0)))
@@ -801,9 +807,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "memTotal": mem_total,
             "memUsed": mem_used,
             "memUsage": (
-                round(mem_utilization_api, 1)
-                if mem_utilization_api is not None
-                else round((mem_used / mem_total) * 100, 1)
+                round((mem_used / mem_total) * 100, 1)
                 if mem_total
                 else 0
             ),

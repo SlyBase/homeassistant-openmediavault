@@ -1513,27 +1513,29 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(hass,
 
 @pytest.mark.asyncio
 async def test_normalize_hwinfo_prefers_memutilization_api_field(hass, config_entry) -> None:
-    """memUsage must use the API-provided memUtilization when present."""
+    """memUsage is calculated as (total-free)/total, consistent with `free -m`."""
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
     coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
 
-    # OMV delivers memUtilization=42.7 — should be used directly
+    # memFree provided: memUsed = total - free = 16000 - 9600 = 6400 → 40.0%
     result = coordinator._normalize_hwinfo(
         {
             "hostname": "nas",
             "version": "8.1.2-1",
             "cpuUtilization": 10.0,
             "memTotal": 16000,
+            "memFree": 9600,
             "memUsed": 8000,
-            "memUtilization": 42.7,
+            "memUtilization": 0.427,
             "uptime": 0,
             "availablePkgUpdates": 0,
         }
     )
-    assert result["memUsage"] == 42.7
+    assert result["memUsage"] == 40.0
+    assert result["memUsed"] == 6400
 
 
 @pytest.mark.asyncio

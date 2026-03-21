@@ -1,25 +1,37 @@
 # Changelog
 
+## [2.0.4] - 2026-03-21
+
+### Fixed
+
+- **Memory usage percentage** (`coordinator.py`): `memUtilization` from the OMV API is a fraction (0–1) but was incorrectly used directly as a percentage. Multiplied by 100 so that e.g. `0.168` is now correctly displayed as `16.8 %`.
+- **Memory used calculation** (`coordinator.py`): `memUsed` is now calculated as `memTotal − memFree` (consistent with `free -m` and hypervisor views like Proxmox) instead of the OMV API's `memUsed` field, which only counts application memory and excludes kernel cache/buffers.
+
+### Added
+
+- **"Memory total" sensor** (`sensor_types.py`, translations): New sensor showing total RAM in MB.
+- **"Memory used" sensor** (`sensor_types.py`, translations): New sensor showing used RAM in MB (including kernel cache/buffers, consistent with `free -m`).
+
 ## [2.0.3] - 2026-03-19
 
 ### Build
 
-- **GitHub Actions Node-24 migration** (`.github/workflows/ci.yml`, `.github/workflows/release.yml`): `actions/checkout` auf `v6`, `actions/setup-python` auf `v6` und `codecov/codecov-action` auf `v5` angehoben, damit die Workflows nicht mehr auf das abgekündigte Node-20-Runtime angewiesen sind. Der Test-Job nutzt für Codecov jetzt OIDC auf Pushes und nicht-geforkten PRs; Fork-PRs bleiben wegen bekannter GitHub- und Codecov-Einschränkungen beim tokenlosen Pfad.
-- **Release automation** (`.github/workflows/ci.yml`, `.github/workflows/release.yml`): Versions-Tags wie `v2.0.4` triggern jetzt ebenfalls die CI. Nur wenn `lint`, `test` und `hacs` erfolgreich sind, ruft die CI den Release-Workflow als wiederverwendbaren Workflow auf. Der Release-Workflow normalisiert den übergebenen Tag, checkt genau diesen Tag aus und veröffentlicht das ZIP-Asset deterministisch für denselben Release-Tag statt sich auf den Event-Ref des manuellen oder UI-basierten Starts zu verlassen.
-- **Release notes from changelog** (`.github/workflows/release.yml`, `CHANGELOG.md`): Der Release-Workflow extrahiert jetzt den vollständigen Abschnitt der veröffentlichten Version direkt aus `CHANGELOG.md` und übergibt ihn per `body_path` an den GitHub Release. Fehlt der Versionsabschnitt, bricht der Workflow explizit ab, damit kein Release mit leeren oder generischen Notes veröffentlicht wird.
-- **Dependabot** (`.github/dependabot.yml`): Neue Konfiguration für automatische Dependency-Update-PRs. Python-Pakete in Gruppen `test-dependencies` und `dev-tools`, GitHub Actions in `github-actions`. Wöchentlicher Zeitplan montags 09:00 Europe/Berlin mit `open-pull-requests-limit: 5`. Kein Auto-Merge — PRs müssen manuell gemergt werden.
-- **Dependabot compatibility guardrails** (`.github/dependabot.yml`): Inkompatible Sprünge auf `pytest>=9`, `pytest-asyncio>=1`, `pytest-cov>=7`, `pytest-homeassistant-custom-component>=0.13.247` und `pycares>=5` werden bis zu einer späteren Home-Assistant-Anhebung ignoriert. Der aktuelle Repo-Stand bleibt damit auf der validierten HA-2025.5-/PHCC-0.13.246-Kombination.
-- **Platform baseline** (`pyproject.toml`, `.github/workflows/ci.yml`, `custom_components/omv/manifest.json`, `hacs.json`): Mindestversionen auf Python `>=3.13.2` und Home Assistant `>=2025.5.0` angehoben. Der Test-Stack folgt jetzt der stabilen Home-Assistant-2025.5-Linie mit `pytest-homeassistant-custom-component==0.13.246`, `homeassistant==2025.5.3`, `pytest==8.3.5`, `pytest-asyncio==0.26.0`, `pytest-cov==6.0.0` und `pycares==4.11.0`.
-- **Test bootstrap compatibility** (`pyproject.toml`): `pycares==4.11.0` direkt gepinnt, weil `homeassistant==2025.5.3` aktuell `aiodns==3.4.0` zieht und diese Kombination unter Python 3.13 mit `pycares 5.x` bereits beim pytest-Plugin-Import scheitert.
-- **Packaging** (`pyproject.toml`): Setuptools-Build-Konfiguration ergänzt, damit `pip install -e ".[test]"` nicht mehr an einer versehentlichen Flat-Layout-Autodiscovery von `reports` und `custom_components` scheitert.
+- **GitHub Actions Node-24 migration** (`.github/workflows/ci.yml`, `.github/workflows/release.yml`): Bumped `actions/checkout` to `v6`, `actions/setup-python` to `v6`, and `codecov/codecov-action` to `v5` to remove the dependency on the deprecated Node 20 runtime. The test job now uses OIDC for Codecov on pushes and non-forked PRs; forked PRs remain on the tokenless path due to known GitHub and Codecov limitations.
+- **Release automation** (`.github/workflows/ci.yml`, `.github/workflows/release.yml`): Version tags such as `v2.0.4` now also trigger CI. The CI calls the release workflow as a reusable workflow only when `lint`, `test`, and `hacs` all pass. The release workflow normalises the provided tag, checks out exactly that tag, and publishes the ZIP asset deterministically for the same release tag instead of relying on the event ref of a manual or UI-triggered run.
+- **Release notes from changelog** (`.github/workflows/release.yml`, `CHANGELOG.md`): The release workflow now extracts the full section for the published version directly from `CHANGELOG.md` and passes it via `body_path` to the GitHub Release. If the version section is missing the workflow fails explicitly so no release is published with empty or generic notes.
+- **Dependabot** (`.github/dependabot.yml`): New configuration for automated dependency-update PRs. Python packages are grouped into `test-dependencies` and `dev-tools`, GitHub Actions into `github-actions`. Weekly schedule on Mondays at 09:00 Europe/Berlin with `open-pull-requests-limit: 5`. No auto-merge — PRs must be merged manually.
+- **Dependabot compatibility guardrails** (`.github/dependabot.yml`): Incompatible jumps to `pytest>=9`, `pytest-asyncio>=1`, `pytest-cov>=7`, `pytest-homeassistant-custom-component>=0.13.247`, and `pycares>=5` are ignored until a later Home Assistant upgrade. The repository therefore stays on the validated HA-2025.5 / PHCC-0.13.246 combination.
+- **Platform baseline** (`pyproject.toml`, `.github/workflows/ci.yml`, `custom_components/omv/manifest.json`, `hacs.json`): Minimum versions raised to Python `>=3.13.2` and Home Assistant `>=2025.5.0`. The test stack now follows the stable Home Assistant 2025.5 line with `pytest-homeassistant-custom-component==0.13.246`, `homeassistant==2025.5.3`, `pytest==8.3.5`, `pytest-asyncio==0.26.0`, `pytest-cov==6.0.0`, and `pycares==4.11.0`.
+- **Test bootstrap compatibility** (`pyproject.toml`): `pycares==4.11.0` pinned directly because `homeassistant==2025.5.3` currently pulls `aiodns==3.4.0`, and that combination fails at pytest plugin import under Python 3.13 with `pycares 5.x`.
+- **Packaging** (`pyproject.toml`): Added setuptools build configuration so that `pip install -e ".[test]"` no longer fails due to accidental flat-layout autodiscovery of `reports` and `custom_components`.
 
 ### Fixed
 
-- **aiohttp graceful shutdown** (`custom_components/omv/omv_api.py`): `OMVAPI.async_close()` wartet nach `await session.close()` einen Event-Loop-Tick mit `await asyncio.sleep(0)`, damit aiohttp seine verzögerten Transport-Cleanup-Callbacks noch innerhalb des aktiven Loops ausführen kann. Das reduziert plattform- und versionsabhängige Teardown-Fehler mit `_run_safe_shutdown_loop` und macht den Shutdown robuster auch ohne reine Abhängigkeit von neueren Test-Pins.
+- **aiohttp graceful shutdown** (`custom_components/omv/omv_api.py`): `OMVAPI.async_close()` now awaits one event-loop tick via `await asyncio.sleep(0)` after `await session.close()` so that aiohttp can run its deferred transport-cleanup callbacks while the loop is still active. This reduces platform- and version-dependent teardown errors involving `_run_safe_shutdown_loop` and makes shutdown more robust without relying solely on newer test pins.
 
 ### Security
 
-- **CI-Härtung** (`.github/workflows/ci.yml`): `hacs/action@main` durch den unveränderlichen Release-Commit `d556e736723344f83838d08488c983a15381059a` der HACS-Action `22.5.0` ersetzt. Ein mutierbarer `main`-Ref erlaubt Supply-Chain-Angriffe, bei denen kompromittierter Upstream-Code in der CI ausgeführt werden kann, und der zwischenzeitlich getestete Ref `hacs/action@v2` existiert im Upstream-Repository nicht (OWASP A01/A08).
+- **CI hardening** (`.github/workflows/ci.yml`): Replaced `hacs/action@main` with the immutable release commit `d556e736723344f83838d08488c983a15381059a` of HACS action `22.5.0`. A mutable `main` ref allows supply-chain attacks where compromised upstream code can be executed in CI; the previously tested ref `hacs/action@v2` does not exist in the upstream repository (OWASP A01/A08).
 
 ## [2.0.2] - 2026-03-18
 

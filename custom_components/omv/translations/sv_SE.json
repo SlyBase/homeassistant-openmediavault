@@ -46,6 +46,12 @@
             "memory_usage": {
                 "name": "Minnesanvandning"
             },
+            "memory_total": {
+                "name": "Totalt minne"
+            },
+            "memory_used": {
+                "name": "Använt minne"
+            },
             "cpu_temperature": {
                 "name": "CPU-temperatur"
             },

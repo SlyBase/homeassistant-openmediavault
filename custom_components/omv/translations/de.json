@@ -46,6 +46,12 @@
             "memory_usage": {
                 "name": "Speicherauslastung"
             },
+            "memory_total": {
+                "name": "Gesamtspeicher"
+            },
+            "memory_used": {
+                "name": "Genutzter Speicher"
+            },
             "cpu_temperature": {
                 "name": "CPU-Temperatur"
             },
