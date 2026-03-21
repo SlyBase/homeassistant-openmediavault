@@ -1901,7 +1901,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     return None
                 # Raw integer/float byte counts: compute with enough precision
                 # to avoid rounding tiny volumes (< 50 MB) to 0.0 GB.
-                if isinstance(value, (int, float)):
+                if isinstance(value, int | float):
                     return round(raw / 1_000_000_000, 4)
                 size_gb = self._coerce_storage_gb(value)
                 return size_gb if size_gb > 0 else None
@@ -2184,7 +2184,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Best-effort conversion of storage values to decimal gigabytes."""
         if value in (None, ""):
             return 0.0
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return round(float(value) / 1000000000, 1)
         if isinstance(value, str):
             match = re.search(r"(-?\d+(?:[\.,]\d+)?)\s*([kmgtpezy]?i?b)?", value.strip(), re.IGNORECASE)
@@ -2234,7 +2234,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _parse_uptime_seconds(self, value: Any) -> int:
         """Convert OMV uptime values into seconds."""
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return max(0, int(value))
 
         if isinstance(value, str):
@@ -2262,7 +2262,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return 0.0
         if isinstance(value, bool):
             return float(value)
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return float(value)
         if isinstance(value, str):
             normalized = value.strip().replace(",", ".")
@@ -2283,7 +2283,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         if isinstance(value, datetime):
             return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             timestamp = float(value)
             if timestamp > 10_000_000_000:
                 timestamp /= 1000
@@ -2307,7 +2307,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Normalize OMV bool-like values."""
         if isinstance(value, bool):
             return value
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return bool(value)
         if isinstance(value, str):
             return value.lower() in {"1", "true", "yes", "on", "up"}
