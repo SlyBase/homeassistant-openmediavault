@@ -35,7 +35,7 @@ jobs:
           python-version: "3.13"
       - run: pip install -e ".[test]"
       - run: pytest tests/ --cov=custom_components/omv --cov-report=xml
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         if: always()
         with:
           use_oidc: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
