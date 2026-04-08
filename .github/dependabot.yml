@@ -9,17 +9,6 @@ updates:
       time: "09:00"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
-    groups:
-      test-dependencies:
-        patterns:
-          - "pytest*"
-          - "pycares"
-          - "aioresponses"
-      dev-tools:
-        patterns:
-          - "ruff"
-          - "mypy"
-          - "pre-commit"
     labels:
       - "dependencies"
       - "python"
@@ -49,10 +38,6 @@ updates:
       time: "09:00"
       timezone: Europe/Berlin
     open-pull-requests-limit: 5
-    groups:
-      github-actions:
-        patterns:
-          - "*"
     labels:
       - "dependencies"
       - "github-actions"

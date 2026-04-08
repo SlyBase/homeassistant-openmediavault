@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **Release workflow Node-24 readiness** (`.github/workflows/release.yml`): Switched from `softprops/action-gh-release@v2` (Node 20 runtime) to `ncipollo/release-action` pinned to immutable commit `339a81892b84b4eeb0f6e744e4574d79d0d9b8dd` (`v1.21.0`, Node 24 runtime), preserving tag-based release body and asset upload behavior.
+- **Dependabot PR titles** (`.github/dependabot.yml`): Removed grouped version updates for `pip` and `github-actions` because Dependabot currently formats grouped pull request titles for single-directory repos as `... group across 1 directory with N updates` and does not offer a repository-side title override. Future updates will be raised as individual pull requests again.
+
 ## [2.0.5] - 2026-03-21
 
 ### Fixed

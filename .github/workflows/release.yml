@@ -73,9 +73,11 @@ jobs:
           zip -r ../../omv.zip .
 
       - name: Upload release asset
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
-          tag_name: ${{ steps.release.outputs.tag }}
-          body_path: release-notes.md
-          fail_on_unmatched_files: true
-          files: omv.zip
+          tag: ${{ steps.release.outputs.tag }}
+          bodyFile: release-notes.md
+          artifacts: omv.zip
+          allowUpdates: true
+          replacesArtifacts: true
+          artifactErrorsFailBuild: true
