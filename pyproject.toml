@@ -9,7 +9,7 @@ requires-python = ">=3.13.2"
 
 [project.optional-dependencies]
 test = [
-  "pytest==8.3.5",
+  "pytest==8.4.2",
   "pytest-asyncio==0.26.0",
   "pytest-cov==6.0.0",
   "pytest-homeassistant-custom-component==0.13.246",
