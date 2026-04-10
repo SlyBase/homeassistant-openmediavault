@@ -1,9 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [2.1.0] - 2026-04-10
 
 ### Changed
 
+- **Test stack upgrade to HA 2026.2** (`pyproject.toml`, `manifest.json`, `hacs.json`, `.github/dependabot.yml`): Bumped test dependencies to `pytest==9.0.0`, `pytest-asyncio==1.3.0`, `pytest-cov==7.0.0`, `pytest-homeassistant-custom-component==0.13.316` (which pulls `homeassistant==2026.2.3`), and `pycares==5.0.1` (required by `aiodns==4.0.0` bundled with HA 2026.2). The minimum supported Home Assistant version in `manifest.json` and `hacs.json` is raised to `2026.2.3`. All previous Dependabot ignore rules for `pytest`, `pytest-asyncio`, `pytest-cov`, `pytest-homeassistant-custom-component`, and `pycares` have been removed from `.github/dependabot.yml`.
+
+### Added
+
+- **Manifest consistency tests** (`tests/test_manifest.py`): New test module that validates `manifest.json` structure (required fields, domain, version formats) and asserts that `hacs.json` and `manifest.json` declare identical minimum Home Assistant versions — preventing silent version drift between the two files.
 - **Release workflow Node-24 readiness** (`.github/workflows/release.yml`): Switched from `softprops/action-gh-release@v2` (Node 20 runtime) to `ncipollo/release-action` pinned to immutable commit `339a81892b84b4eeb0f6e744e4574d79d0d9b8dd` (`v1.21.0`, Node 24 runtime), preserving tag-based release body and asset upload behavior.
 - **Dependabot PR titles** (`.github/dependabot.yml`): Removed grouped version updates for `pip` and `github-actions` because Dependabot currently formats grouped pull request titles for single-directory repos as `... group across 1 directory with N updates` and does not offer a repository-side title override. Future updates will be raised as individual pull requests again.
 
