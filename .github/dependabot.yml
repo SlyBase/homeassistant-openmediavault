@@ -12,22 +12,6 @@ updates:
     labels:
       - "dependencies"
       - "python"
-    ignore:
-      - dependency-name: "pytest"
-        versions:
-          - ">=9"
-      - dependency-name: "pytest-asyncio"
-        versions:
-          - ">=1"
-      - dependency-name: "pytest-cov"
-        versions:
-          - ">=7"
-      - dependency-name: "pytest-homeassistant-custom-component"
-        versions:
-          - ">=0.13.247"
-      - dependency-name: "pycares"
-        versions:
-          - ">=5"
 
   # GitHub Actions
   - package-ecosystem: github-actions
