@@ -12,6 +12,14 @@ updates:
     labels:
       - "dependencies"
       - "python"
+    assignees:
+      - "slydlake"
+    ignore:
+      # Transitiv durch pytest-homeassistant-custom-component kontrolliert;
+      # nur zusammen mit einem PHCC-Update ändern.
+      - dependency-name: "pytest"
+      - dependency-name: "pytest-cov"
+      - dependency-name: "pytest-asyncio"
 
   # GitHub Actions
   - package-ecosystem: github-actions
@@ -25,3 +33,5 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    assignees:
+      - "slydlake"
