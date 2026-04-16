@@ -9,7 +9,7 @@
 
 ### Added
 
-- **Dependency updates in release notes** (`.github/workflows/release.yml`): The release workflow now automatically appends a "Dependencies" section listing all merged Dependabot PRs between the previous and current tag to the GitHub release notes.
+- **Dependency updates in release notes** (`.github/release.yml`, `.github/workflows/release.yml`): Replaced the custom `gh pr list` step with GitHub's native auto-generated release notes (`generateReleaseNotes`). Merged PRs are now automatically categorized by label (Features, Bug Fixes, Dependencies) via `.github/release.yml`.
 
 ## [2.1.1] - 2026-04-16
 
