@@ -7,6 +7,10 @@
 - **Dependabot assignees and ignore rules** (`.github/dependabot.yml`): Added `slydlake` as assignee for both `pip` and `github-actions` ecosystems so dependency PRs trigger notifications. Added ignore rules for `pytest`, `pytest-cov`, and `pytest-asyncio` which are transitively pinned by `pytest-homeassistant-custom-component` and must only be updated together with PHCC.
 - **Missing Dependabot labels** (GitHub): Created `dependencies`, `python`, and `github-actions` labels in the repository to match the label configuration in `dependabot.yml`.
 
+### Added
+
+- **Dependency updates in release notes** (`.github/workflows/release.yml`): The release workflow now automatically appends a "Dependencies" section listing all merged Dependabot PRs between the previous and current tag to the GitHub release notes.
+
 ## [2.1.1] - 2026-04-16
 
 ### Fixed
