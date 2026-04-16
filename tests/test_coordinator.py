@@ -1596,3 +1596,66 @@ async def test_normalize_disks_stores_hotpluggable_flag(hass, config_entry) -> N
 
     assert disks[0]["hotpluggable"] is True
     assert disks[1]["hotpluggable"] is False
+
+
+@pytest.mark.asyncio
+async def test_virtual_filesystems_skip_size_based_disk_mapping(hass, config_entry) -> None:
+    """Virtual/pooling filesystems must not be matched to a disk via size fallback."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.168.1.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+        smart_disabled=True,
+    )
+
+    disks = [
+        {
+            "disk_key": "sdb",
+            "devicename": "sdb",
+            "devicefile": "/dev/sdb",
+            "canonicaldevicefile": "/dev/sdb",
+            "total_size_gb": 119.2,
+        },
+    ]
+
+    filesystems = coordinator._normalize_filesystems(
+        [
+            {
+                "uuid": "f6ec31b6-a888-4ba8-84dc-b40e73fbfcc7",
+                "type": "fuse.mergerfs",
+                "label": "mergerfs_test",
+                "devicename": "/srv/mergerfs/mergerfs_test",
+                "devicefile": "/srv/mergerfs/mergerfs_test",
+                "canonicaldevicefile": "/srv/mergerfs/mergerfs_test",
+                "parentdevicefile": False,
+                "mounted": True,
+                "mountpoint": "/srv/mergerfs/mergerfs_test",
+                "available": 117 * 1000000000,
+                "size": 117 * 1000000000,
+                "percentage": 1,
+            },
+            {
+                "uuid": "nfs-uuid-789",
+                "type": "nfs4",
+                "label": "nas-share",
+                "devicename": "192.168.1.100:/share",
+                "devicefile": "192.168.1.100:/share",
+                "canonicaldevicefile": "192.168.1.100:/share",
+                "parentdevicefile": False,
+                "mounted": True,
+                "mountpoint": "/srv/nfs",
+                "available": 100 * 1000000000,
+                "size": 119 * 1000000000,
+                "percentage": 16,
+            },
+        ],
+        disks,
+    )
+
+    assert filesystems[0]["disk_key"] is None, "mergerfs must not map to a disk via size"
+    assert filesystems[1]["disk_key"] is None, "nfs must not map to a disk via size"

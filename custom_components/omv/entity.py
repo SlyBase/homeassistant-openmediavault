@@ -159,6 +159,11 @@ def get_container_device_identifier(coordinator: OMVDataUpdateCoordinator, conta
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:container:{container_key}")
 
 
+def get_filesystem_device_identifier(coordinator: OMVDataUpdateCoordinator, fs_uuid: str) -> tuple[str, str]:
+    """Return the stable device registry identifier tuple for a filesystem."""
+    return (DOMAIN, f"{coordinator.config_entry.entry_id}:filesystem:{fs_uuid}")
+
+
 def get_disk_device_info(
     coordinator: OMVDataUpdateCoordinator,
     disk: dict[str, Any],
@@ -180,6 +185,50 @@ def get_disk_device_info(
     )
 
 
+def _format_filesystem_type_label(fs_type: str) -> str:
+    """Return a human-readable type prefix for virtual filesystem devices."""
+    lowered = fs_type.lower()
+    if lowered.startswith("fuse."):
+        inner = fs_type[5:]
+        return inner.title() if inner else "FUSE"
+    _TYPE_LABELS: dict[str, str] = {
+        "nfs": "NFS",
+        "nfs4": "NFS",
+        "cifs": "CIFS",
+        "smbfs": "SMB",
+        "sshfs": "SSHFS",
+        "9p": "9P",
+        "virtiofs": "VirtioFS",
+        "overlay": "Overlay",
+    }
+    return _TYPE_LABELS.get(lowered, fs_type)
+
+
+def _build_standalone_filesystem_device_info(
+    coordinator: OMVDataUpdateCoordinator,
+    filesystem: dict[str, Any],
+) -> DeviceInfo:
+    """Return device info for a filesystem without a parent disk."""
+    fs_uuid = str(filesystem.get("uuid") or "")
+    fs_type = _normalized_device_value(filesystem.get("type")) or "unknown"
+    label = _normalized_device_value(filesystem.get("label"))
+    mountdir = _normalized_device_value(filesystem.get("mountdir"))
+
+    type_label = _format_filesystem_type_label(fs_type)
+    display = label or mountdir or fs_uuid
+    name = f"{type_label} ({display})" if display else type_label
+
+    return DeviceInfo(
+        identifiers={get_filesystem_device_identifier(coordinator, fs_uuid)},
+        via_device=(DOMAIN, coordinator.config_entry.entry_id),
+        name=name,
+        manufacturer="OpenMediaVault",
+        model=fs_type,
+        hw_version=fs_uuid,
+        configuration_url=coordinator.api.base_url,
+    )
+
+
 def get_filesystem_device_info(
     coordinator: OMVDataUpdateCoordinator,
     filesystem: dict[str, Any],
@@ -188,6 +237,9 @@ def get_filesystem_device_info(
     disk_key = str(filesystem.get("disk_key") or "")
     if disk_key and (disk := _get_disk_by_key(coordinator, disk_key)) is not None:
         return get_disk_device_info(coordinator, disk)
+    fs_uuid = str(filesystem.get("uuid") or "")
+    if fs_uuid:
+        return _build_standalone_filesystem_device_info(coordinator, filesystem)
     return get_hub_device_info(coordinator)
 
 

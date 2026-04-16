@@ -185,13 +185,13 @@ async def test_disk_capacity_sensors_use_projected_storage_metrics(coordinator, 
 
 @pytest.mark.asyncio
 async def test_filesystem_sensors_attach_to_disk_or_hub(coordinator) -> None:
-    """Test filesystem sensors use disk devices when mapped and the hub otherwise."""
+    """Test filesystem sensors use disk devices when mapped, standalone filesystem devices otherwise."""
     mapped = OMVSensor(coordinator, FILESYSTEM_SENSOR, item_key="fs-1")
     unmapped = OMVSensor(coordinator, FILESYSTEM_SENSOR, item_key="fs-2")
 
     assert mapped.native_value == 40.0
     assert mapped.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sda")}
-    assert unmapped.device_info["identifiers"] == {(DOMAIN, coordinator.config_entry.entry_id)}
+    assert unmapped.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:filesystem:fs-2")}
 
 
 @pytest.mark.asyncio

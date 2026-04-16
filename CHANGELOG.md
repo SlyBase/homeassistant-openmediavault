@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.1.1] - 2026-04-16
+
+### Fixed
+
+- **Standalone device for unmapped filesystems** (`entity.py`): Filesystems without a parent disk (e.g. mergerfs, FUSE mounts, NFS/CIFS shares) now get their own dedicated device in Home Assistant instead of being silently attached to the main OMV hub device. A new `get_filesystem_device_identifier()` and `_build_standalone_filesystem_device_info()` create a proper device with the filesystem label, type, and UUID. Disk-backed filesystems continue to map to their parent disk device as before.
+- **Virtual filesystem size-based disk matching** (`coordinator.py`): Virtual and network-backed filesystems (mergerfs, NFS, CIFS, SSHFS, overlay, and any FUSE mount) are no longer incorrectly matched to a physical disk via the 8% size tolerance fallback. Previously, a mergerfs pool whose aggregated size happened to be close to a physical disk's size would be silently attached to that disk device.
+- **Standalone filesystem device naming** (`entity.py`): Virtual filesystem devices now follow the same naming pattern as other devices — e.g. `Mergerfs (mergerfs_test)`, `NFS (share-name)`, `CIFS (backup)` instead of the generic `Filesystem` prefix.
+
 ## [2.1.0] - 2026-04-10
 
 ### Changed

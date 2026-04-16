@@ -2055,6 +2055,21 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self._match_disk_by_size(record.get("size"), disks)
 
+    _VIRTUAL_FS_TYPE_PREFIXES = ("fuse.",)
+    _VIRTUAL_FS_TYPES = frozenset(
+        {
+            "mergerfs",
+            "nfs",
+            "nfs4",
+            "cifs",
+            "smbfs",
+            "sshfs",
+            "9p",
+            "virtiofs",
+            "overlay",
+        }
+    )
+
     def _map_filesystem_to_disk(
         self,
         filesystem: dict[str, Any],
@@ -2082,7 +2097,17 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if parent_candidate in self._disk_record_keys(disk):
                     return str(disk.get("disk_key") or disk.get("devicename") or "")
 
+        if self._is_virtual_filesystem_type(str(filesystem.get("type") or "")):
+            return None
+
         return self._match_disk_by_size(filesystem.get("size"), disks)
+
+    def _is_virtual_filesystem_type(self, fs_type: str) -> bool:
+        """Return whether a filesystem type is virtual or network-backed."""
+        lowered = fs_type.lower()
+        if lowered in self._VIRTUAL_FS_TYPES:
+            return True
+        return any(lowered.startswith(prefix) for prefix in self._VIRTUAL_FS_TYPE_PREFIXES)
 
     def _match_disk_by_size(
         self,
