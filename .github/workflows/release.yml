@@ -32,8 +32,15 @@ jobs:
             exit 1
           fi
 
+          if echo "$VERSION" | grep -Eqi 'beta|alpha|rc'; then
+            PRERELEASE=true
+          else
+            PRERELEASE=false
+          fi
+
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v6
         with:
@@ -76,6 +83,7 @@ jobs:
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           tag: ${{ steps.release.outputs.tag }}
+          prerelease: ${{ steps.release.outputs.prerelease }}
           bodyFile: release-notes.md
           generateReleaseNotes: true
           artifacts: omv.zip
