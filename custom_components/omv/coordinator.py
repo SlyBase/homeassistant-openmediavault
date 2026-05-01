@@ -237,7 +237,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 dict(self.config_entry.options),
             )
         except (OMVConnectionError, OMVApiError) as err:
-            # Issue #26: If we have cached data, use it as fallback instead of failing
+            # Issue #26: If we have cached data, use it as fallback instead of failing.
+            # On first refresh there is no cache yet, so we must propagate the error
+            # to let HA show a proper setup failure instead of hanging.
             if self._last_valid_data:
                 _LOGGER.warning(
                     "API error occurred, using cached data as fallback: %s",
@@ -250,6 +252,15 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if isinstance(err, OMVConnectionError):
                 raise UpdateFailed(f"Cannot connect to OMV: {err}") from err
             raise UpdateFailed(f"OMV API error: {err}") from err
+        except Exception as err:
+            # Catch-all for unexpected errors (e.g. asyncio.CancelledError from lock contention)
+            _LOGGER.error("Unexpected error during OMV data update: %s", err, exc_info=True)
+            if self._last_valid_data:
+                return self.filter_data_by_selection(
+                    self._last_valid_data,
+                    dict(self.config_entry.options),
+                )
+            raise UpdateFailed(f"Unexpected error: {err}") from err
 
     def get_live_inventory(self, data: dict[str, Any] | None = None) -> dict[str, list[dict[str, str]]]:
         """Return the current unfiltered resources for the options flow."""
@@ -489,7 +500,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Fetch SMART information and merge relevant fields into disks."""
         method = "getListBg" if self.omv_version >= 7 else "getList"
         params = {"start": 0, "limit": 100}
-        response = await self.api.async_call("Smart", method, params)
+        # Use _fetch_optional so HTTP 500 / transient errors don't abort the full update
+        response = await self._fetch_optional("Smart", method, params)
 
         if method == "getListBg" and not self._response_contains_records(response):
             _LOGGER.debug(
@@ -497,7 +509,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 type(response).__name__,
                 self.omv_version,
             )
-            response = await self.api.async_call("Smart", "getList", params)
+            response = await self._fetch_optional("Smart", "getList", params)
 
         smart_records = self._records_from_response(response)
         smart_by_key: dict[str, dict[str, Any]] = {}
