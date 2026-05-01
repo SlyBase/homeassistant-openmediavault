@@ -67,6 +67,7 @@ async def test_flow_user_success(hass) -> None:
             new=AsyncMock(return_value={"hostname": "nas"}),
         ),
         patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
     ):
         result = await hass.config_entries.flow.async_init(
             DOMAIN,

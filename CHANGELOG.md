@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **CI test hang** (`tests/test_config_flow.py`, `pyproject.toml`): `test_flow_user_success` hung indefinitely because creating a config entry via the flow caused HA to invoke `async_setup_entry`, which created a real `OMVAPI` session. The mocked `async_connect` returned without setting `_session_id`, so subsequent coordinator refresh calls triggered the retry/backoff loop and eventually scheduled a ~24-hour HA config entry retry—blocking the event loop indefinitely. Fixed by adding `patch("custom_components.omv.async_setup_entry", return_value=True)` to the test and adding `timeout = 60` to `[tool.pytest.ini_options]` in `pyproject.toml` as a safety net.
+
 ## [2.1.3] - 2026-05-01
 
 ### Fixed
