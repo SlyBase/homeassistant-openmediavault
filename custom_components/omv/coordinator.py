@@ -94,6 +94,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._inventory_source: dict[str, Any] = {}
         self._last_stable_gpu: dict[str, Any] = {}
         self._gpu_load_counter: int = 0
+        self._last_valid_data: dict[str, Any] = {}
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""
@@ -149,7 +150,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return response
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch all coordinator data from OMV."""
+        """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
         try:
             self._hwinfo_counter += 1
             if self._hwinfo_counter >= _HWINFO_REFRESH_MULTIPLIER or not self._hwinfo:
@@ -229,13 +230,25 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             }
 
             self._inventory_source = unfiltered_data
+            # Cache valid data for fallback on next failure (Issue #26)
+            self._last_valid_data = unfiltered_data
             return self.filter_data_by_selection(
                 unfiltered_data,
                 dict(self.config_entry.options),
             )
-        except OMVConnectionError as err:
-            raise UpdateFailed(f"Cannot connect to OMV: {err}") from err
-        except OMVApiError as err:
+        except (OMVConnectionError, OMVApiError) as err:
+            # Issue #26: If we have cached data, use it as fallback instead of failing
+            if self._last_valid_data:
+                _LOGGER.warning(
+                    "API error occurred, using cached data as fallback: %s",
+                    err,
+                )
+                return self.filter_data_by_selection(
+                    self._last_valid_data,
+                    dict(self.config_entry.options),
+                )
+            if isinstance(err, OMVConnectionError):
+                raise UpdateFailed(f"Cannot connect to OMV: {err}") from err
             raise UpdateFailed(f"OMV API error: {err}") from err
 
     def get_live_inventory(self, data: dict[str, Any] | None = None) -> dict[str, list[dict[str, str]]]:
@@ -1047,27 +1060,76 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return bool(value) and value.startswith("md")
 
     def _normalize_raids(self, disks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Build RAID records from OMV disk inventory."""
-        raids: list[dict[str, Any]] = []
+        """Build RAID records from OMV disk inventory - deduplicated by device.
+
+        Issue #27: Previously created duplicate RAID records when md raids had multiple
+        member disks (e.g., md0 with sda+sdb would create 2 RAID entries). Now groups
+        all member disks under a single RAID device record.
+        """
+        raids_by_device: dict[str, dict[str, Any]] = {}
+
         for disk in disks:
             if not isinstance(disk, dict) or not disk.get("israid"):
                 continue
-            disk_key = str(disk.get("disk_key") or disk.get("devicename") or "")
-            if not disk_key:
+
+            # Extract the RAID device name (md0, md1, etc.) - not the member disk
+            raid_device = self._extract_raid_device(disk)
+            if not raid_device:
                 continue
-            raids.append(
-                {
-                    "device": disk_key,
-                    "devicefile": str(disk.get("canonicaldevicefile") or disk.get("devicefile") or f"/dev/{disk_key}"),
-                    "disk_key": disk_key,
+
+            # Only create one record per RAID device (not per member disk)
+            if raid_device not in raids_by_device:
+                raids_by_device[raid_device] = {
+                    "device": raid_device,
+                    "devicefile": str(
+                        disk.get("canonicaldevicefile") or disk.get("devicefile") or f"/dev/{raid_device}"
+                    ),
+                    "disk_key": raid_device,  # Use RAID device, not member disk
                     "state": "active",
                     "level": self._extract_raid_level(str(disk.get("description") or "")),
                     "health": self._raid_health_from_disk(disk),
                     "health_indicator": "",
                     "action_percent": None,
+                    "member_disks": [],  # Track all physical member disks
                 }
-            )
-        return raids
+
+            # Track which physical disk is a member of this RAID
+            member_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+            if member_key and member_key not in raids_by_device[raid_device]["member_disks"]:
+                raids_by_device[raid_device]["member_disks"].append(member_key)
+
+        return list(raids_by_device.values())
+
+    def _extract_raid_device(self, disk: dict[str, Any]) -> str | None:
+        """Extract RAID device name (md0, md1, etc.) from disk record.
+
+        Priority:
+        1. Direct fields: raid_device, md, mdadm, md_device
+        2. Parse from description: "RAID 1 (md0)" → "md0"
+        3. Parse from canonicaldevicefile: "/dev/md0" → "md0"
+        """
+        if not isinstance(disk, dict):
+            return None
+
+        # Try direct OMV fields first
+        for field in ("raid_device", "md", "mdadm", "md_device"):
+            value = disk.get(field)
+            if isinstance(value, str) and value:
+                return value
+
+        # Extract from description: "RAID 1 (md0)" → "md0"
+        description = str(disk.get("description") or "")
+        if description:
+            match = re.search(r"\(?(md\d+)\)?", description, re.IGNORECASE)
+            if match:
+                return match.group(1)
+
+        # Extract from canonicaldevicefile: "/dev/md0" → "md0"
+        devicefile = str(disk.get("canonicaldevicefile") or "")
+        if "/dev/md" in devicefile:
+            return devicefile.split("/")[-1]
+
+        return None
 
     def _normalize_zfs_pools(
         self,

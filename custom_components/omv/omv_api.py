@@ -138,8 +138,13 @@ class OMVAPI:
         service: str,
         method: str,
         params: dict[str, Any] | None = None,
+        _retry_count: int = 0,
     ) -> Any:
-        """Execute a JSON-RPC call and recover from session expiry."""
+        """Execute a JSON-RPC call with automatic reconnection on transient failures.
+
+        Issue #26: Implements exponential backoff and automatic session recovery
+        for connection errors that can occur with OMV 8.2.10-1+.
+        """
         async with self._lock:
             try:
                 return await self._async_raw_call(service, method, params)
@@ -153,6 +158,49 @@ class OMVAPI:
                 )
                 await self._async_login()
                 return await self._async_raw_call(service, method, params)
+            except (OMVConnectionError, aiohttp.ClientError) as err:
+                # Issue #26: Retry with exponential backoff on transient connection errors
+                if _retry_count >= 3:
+                    _LOGGER.error(
+                        "Max retries exceeded for %s.%s on %s after %d attempts: %s",
+                        service,
+                        method,
+                        self._host,
+                        _retry_count,
+                        err,
+                    )
+                    raise OMVConnectionError(f"Failed to reach OMV after {_retry_count} retries: {err}") from err
+
+                # Exponential backoff: 1s, 2s, 4s
+                wait_seconds = 2**_retry_count
+                _LOGGER.warning(
+                    "Connection error for %s.%s on %s, retrying in %ds (attempt %d/3): %s",
+                    service,
+                    method,
+                    self._host,
+                    wait_seconds,
+                    _retry_count + 1,
+                    err,
+                )
+                await asyncio.sleep(wait_seconds)
+
+                # Attempt session recovery
+                try:
+                    await self._async_ensure_session()
+                    await self._async_login()
+                except Exception as reconnect_err:
+                    _LOGGER.debug(
+                        "Failed to reconnect during retry: %s",
+                        reconnect_err,
+                    )
+
+                # Retry the call
+                return await self.async_call(
+                    service,
+                    method,
+                    params,
+                    _retry_count=_retry_count + 1,
+                )
 
     async def _async_raw_call(
         self,

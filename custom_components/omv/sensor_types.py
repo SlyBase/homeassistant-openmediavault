@@ -605,6 +605,7 @@ RAID_SENSOR = OMVSensorDescription(
     extra_attrs_fn=lambda data: {
         "devicefile": data.get("devicefile"),
         "disk_key": data.get("disk_key"),
+        "member_disks": data.get("member_disks", []),
         "health": data.get("health"),
         "state": data.get("state"),
         "level": data.get("level"),
