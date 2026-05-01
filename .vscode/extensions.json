@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "spencerwmiles.vscode-task-buttons",
+        "ms-python.python",
+        "ms-python.pylance",
+        "charliermarsh.ruff"
+    ]
+}

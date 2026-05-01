@@ -1,0 +1,37 @@
+{
+    "VsCodeTaskButtons.showCounter": false,
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "$(beaker) HASS",
+            "alignment": "left",
+            "tooltip": "Run HASS integration workspace tasks",
+            "tasks": [
+                {
+                    "label": "$(play) Run tests",
+                    "task": "HASS: Run Tests",
+                    "description": "Run pytest for all tests in tests/"
+                },
+                {
+                    "label": "$(graph) Run tests with coverage",
+                    "task": "HASS: Run Tests with Coverage",
+                    "description": "Run pytest with coverage report for custom_components/omv"
+                },
+                {
+                    "label": "$(search) Lint (ruff)",
+                    "task": "HASS: Lint (ruff)",
+                    "description": "Check custom_components/ and tests/ with ruff"
+                },
+                {
+                    "label": "$(cloud-upload) Deploy to HomeAssistant (SSH)",
+                    "task": "HASS: Deploy to HomeAssistant (SSH)",
+                    "description": "Sync integration to pi, restart hass container, wait for HA to come up"
+                },
+                {
+                    "label": "$(rocket) Test and Deploy",
+                    "task": "HASS: Test and Deploy",
+                    "description": "Run pytest, then deploy to HomeAssistant via SSH"
+                }
+            ]
+        }
+    ]
+}

@@ -1,0 +1,103 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "HASS: Run Tests",
+            "type": "shell",
+            "command": ".venv/bin/python",
+            "args": [
+                "-m",
+                "pytest",
+                "tests/",
+                "-q"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "HASS: Run Tests with Coverage",
+            "type": "shell",
+            "command": ".venv/bin/python",
+            "args": [
+                "-m",
+                "pytest",
+                "tests/",
+                "--cov=custom_components/omv",
+                "--cov-report=term-missing"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "HASS: Lint (ruff)",
+            "type": "shell",
+            "command": ".venv/bin/python",
+            "args": [
+                "-m",
+                "ruff",
+                "check",
+                "custom_components/",
+                "tests/"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "HASS: Deploy to HomeAssistant (SSH)",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                ".github/scripts/deploy-to-homeassistant.sh"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true,
+                "showReuseMessage": false
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "HASS: Test and Deploy",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "HASS: Run Tests",
+                "HASS: Deploy to HomeAssistant (SSH)"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "clear": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

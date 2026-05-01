@@ -8,7 +8,3 @@ __pycache__/
 reports/*
 docs/*.md
 .DS_Store
-.github/skills/*
-.github/agents/*
-.github/instructions/*
-.github/prompts/*
