@@ -6,7 +6,7 @@ Monitor and control your OpenMediaVault NAS from Home Assistant.
 
 > **Note:** This is an independent community project and is **not** affiliated with or endorsed by the OpenMediaVault project or its developers.
 
-![OpenMediaVault Logo](docs/assets/images/ui/header.svg)
+![OpenMediaVault Logo](https://raw.githubusercontent.com/slybase/homeassistant-openmediavault/main/docs/assets/images/ui/header.svg)
 
 ## About
 
@@ -35,20 +35,25 @@ The active integration domain is omv.
 
 ## Screenshots
 
-<img src="docs/assets/images/ui/omv-system.png" alt="OMV Sensors" height="600">
-<img src="docs/assets/images/ui/omv-container.png" alt="Container" height="400">
-<img src="docs/assets/images/ui/omv-disk.png" alt="Disk" height="600">
-<img src="docs/assets/images/ui/omv-raid.png" alt="Raid" height="600">
-<img src="docs/assets/images/ui/omv-cards.png" alt="Card samples" width="600">
+<img src="https://raw.githubusercontent.com/slybase/homeassistant-openmediavault/main/docs/assets/images/ui/omv-system.png" alt="OMV Sensors" height="600">
+<img src="https://raw.githubusercontent.com/slybase/homeassistant-openmediavault/main/docs/assets/images/ui/omv-container.png" alt="Container" height="400">
+<img src="https://raw.githubusercontent.com/slybase/homeassistant-openmediavault/main/docs/assets/images/ui/omv-disk.png" alt="Disk" height="600">
+<img src="https://raw.githubusercontent.com/slybase/homeassistant-openmediavault/main/docs/assets/images/ui/omv-raid.png" alt="Raid" height="600">
+<img src="https://raw.githubusercontent.com/slybase/homeassistant-openmediavault/main/docs/assets/images/ui/omv-cards.png" alt="Card samples" width="600">
 
-## Installation With HACS
+## Installation
 
-1. Open HACS.
-2. Go to Integrations.
-3. Add the custom repository https://github.com/slybase/homeassistant-openmediavault.
-4. Install OpenMediaVault (OMV).
-5. Restart Home Assistant.
-6. Add the OMV integration from Settings, Devices & Services.
+### Install using HACS (recommended)
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=slybase&repository=homeassistant-openmediavault&category=integration)
+
+To add manually: open **HACS** > **Integrations** > three-dot menu > **Custom repositories** > add `https://github.com/slybase/homeassistant-openmediavault` (category: Integration) > **Download**.
+
+After installing, restart Home Assistant. Then open **Settings** > **Devices & Services** > **Add Integration** and search for **OpenMediaVault**.
+
+### Install manually
+
+Copy `custom_components/omv/` from this repository into your HA `config/custom_components/` directory. Restart Home Assistant, then add the integration as described above.
 
 ## Setup
 
