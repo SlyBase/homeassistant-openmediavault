@@ -937,17 +937,42 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return services
 
     def _normalize_network(self, response: Any) -> list[dict[str, Any]]:
-        """Normalize network interfaces and calculate transfer rates."""
-        network: list[dict[str, Any]] = []
-        interval_seconds = max(int(self.update_interval.total_seconds()), 1)
+        """Normalize network interfaces and calculate transfer rates.
 
-        for record in self._records_from_response(response):
+        Deduplicates by UUID so that OMV installations which return the same
+        interface more than once (e.g. bonded interfaces or mis-configured
+        enumerateDevices responses) do not produce duplicate HA entities.
+        """
+        network: list[dict[str, Any]] = []
+        seen_uuids: set[str] = set()
+        interval_seconds = max(int(self.update_interval.total_seconds()), 1)
+        raw_records = self._records_from_response(response)
+        _LOGGER.debug("_normalize_network: received %d raw records", len(raw_records))
+
+        for record in raw_records:
             if str(record.get("type") or "") == "loopback":
+                _LOGGER.debug(
+                    "_normalize_network: skipping loopback interface %s",
+                    record.get("devicename"),
+                )
                 continue
 
             uuid = str(record.get("uuid") or record.get("devicename") or "")
             if not uuid:
+                _LOGGER.debug(
+                    "_normalize_network: skipping record without uuid/devicename: %s",
+                    record,
+                )
                 continue
+
+            if uuid in seen_uuids:
+                _LOGGER.debug(
+                    "_normalize_network: skipping duplicate interface uuid=%s devicename=%s",
+                    uuid,
+                    record.get("devicename"),
+                )
+                continue
+            seen_uuids.add(uuid)
 
             stats = record.get("stats") if isinstance(record.get("stats"), dict) else {}
             current_rx = self._coerce_float(stats.get("rx_bytes", stats.get("rx_packets", 0)))
@@ -968,32 +993,51 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
 
             self._network_counters[uuid] = {"rx": current_rx, "tx": current_tx}
-            network.append(
-                {
-                    "uuid": uuid,
-                    "devicename": str(record.get("devicename") or uuid),
-                    "type": str(record.get("type") or "unknown"),
-                    "method": str(record.get("method") or "unknown"),
-                    "address": str(record.get("address") or ""),
-                    "netmask": str(record.get("netmask") or ""),
-                    "gateway": str(record.get("gateway") or ""),
-                    "mtu": int(self._coerce_float(record.get("mtu"))),
-                    "link": self._coerce_bool(record.get("link")),
-                    "wol": self._coerce_bool(record.get("wol")),
-                    "rx": rx_rate,
-                    "tx": tx_rate,
-                }
+            entry = {
+                "uuid": uuid,
+                "devicename": str(record.get("devicename") or uuid),
+                "type": str(record.get("type") or "unknown"),
+                "method": str(record.get("method") or "unknown"),
+                "address": str(record.get("address") or ""),
+                "netmask": str(record.get("netmask") or ""),
+                "gateway": str(record.get("gateway") or ""),
+                "mtu": int(self._coerce_float(record.get("mtu"))),
+                "link": self._coerce_bool(record.get("link")),
+                "wol": self._coerce_bool(record.get("wol")),
+                "rx": rx_rate,
+                "tx": tx_rate,
+            }
+            _LOGGER.debug(
+                "_normalize_network: added interface uuid=%s devicename=%s",
+                uuid,
+                entry["devicename"],
             )
+            network.append(entry)
 
+        _LOGGER.debug("_normalize_network: produced %d deduplicated interfaces", len(network))
         return network
 
     def _normalize_disks(self, response: Any) -> list[dict[str, Any]]:
-        """Normalize disk inventory data."""
+        """Normalize disk inventory data.
+
+        Deduplicates by devicename so that OMV installations which return the
+        same physical device more than once do not produce duplicate HA entities.
+        """
         disks: list[dict[str, Any]] = []
-        for record in self._records_from_response(response):
+        seen_devicenames: set[str] = set()
+        raw_records = self._records_from_response(response)
+        _LOGGER.debug("_normalize_disks: received %d raw records", len(raw_records))
+        for record in raw_records:
             devicename = str(record.get("devicename") or "")
             if not devicename:
                 continue
+            if devicename in seen_devicenames:
+                _LOGGER.debug(
+                    "_normalize_disks: skipping duplicate disk devicename=%s",
+                    devicename,
+                )
+                continue
+            seen_devicenames.add(devicename)
             total_size_gb = self._coerce_storage_gb(record.get("size"))
             disk = {
                 "disk_key": devicename,
@@ -1100,6 +1144,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         all member disks under a single RAID device record.
         """
         raids_by_device: dict[str, dict[str, Any]] = {}
+        _LOGGER.debug("_normalize_raids: processing %d disk records", len(disks))
 
         for disk in disks:
             if not isinstance(disk, dict) or not disk.get("israid"):
@@ -1108,10 +1153,21 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Extract the RAID device name (md0, md1, etc.) - not the member disk
             raid_device = self._extract_raid_device(disk)
             if not raid_device:
+                _LOGGER.debug(
+                    "_normalize_raids: could not extract RAID device for disk=%s description=%s canonicaldevicefile=%s",
+                    disk.get("disk_key"),
+                    disk.get("description"),
+                    disk.get("canonicaldevicefile"),
+                )
                 continue
 
             # Only create one record per RAID device (not per member disk)
             if raid_device not in raids_by_device:
+                _LOGGER.debug(
+                    "_normalize_raids: new RAID device=%s from member disk=%s",
+                    raid_device,
+                    disk.get("disk_key"),
+                )
                 raids_by_device[raid_device] = {
                     "device": raid_device,
                     "devicefile": str(
@@ -1129,8 +1185,18 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Track which physical disk is a member of this RAID
             member_key = str(disk.get("disk_key") or disk.get("devicename") or "")
             if member_key and member_key not in raids_by_device[raid_device]["member_disks"]:
+                _LOGGER.debug(
+                    "_normalize_raids: adding member disk=%s to RAID device=%s",
+                    member_key,
+                    raid_device,
+                )
                 raids_by_device[raid_device]["member_disks"].append(member_key)
 
+        _LOGGER.debug(
+            "_normalize_raids: produced %d deduplicated RAID records: %s",
+            len(raids_by_device),
+            list(raids_by_device.keys()),
+        )
         return list(raids_by_device.values())
 
     def _extract_raid_device(self, disk: dict[str, Any]) -> str | None:

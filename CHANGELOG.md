@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **Duplicate network sensors** (Issue #27 follow-up) (`coordinator.py`): Fixed "Platform omv does not generate unique IDs" errors for network TX/RX sensors caused by `Network.enumerateDevices` returning the same interface UUID more than once (observed on OMV 8 with bond/VLAN setups). `_normalize_network()` now deduplicates by UUID and logs skipped duplicates at DEBUG level.
+
+- **Duplicate disk sensors** (`coordinator.py`): `_normalize_disks()` now deduplicates by `devicename` to guard against OMV installations that return the same physical device multiple times from `DiskMgmt.enumerateDevices`.
+
+- **Debug diagnostics** (`coordinator.py`): Added `_LOGGER.debug()` log entries in `_normalize_network`, `_normalize_disks`, and `_normalize_raids` to help diagnose future duplicate-entity issues. Enable `custom_components.omv: debug` in `configuration.yaml` to see full deduplication traces.
+
 - **SMART `getAttributes` log spam** (`coordinator.py`, `omv_api.py`): Disks that do not support ATA SMART attributes (e.g. NVMe drives, certain SATA controllers) caused OMV to return HTTP 500, which triggered the full 3-retry/7-second backoff loop and four log messages on every coordinator poll (every 60 s). Fixed in two layers: (1) `async_call()` now accepts a `max_retries` keyword argument, allowing callers to opt out of retries; (2) the coordinator passes `max_retries=0` for `Smart.getAttributes` and records failing device paths in `_smart_no_attributes` — those devices are silently skipped on all subsequent polls.
 
 - **CI test hang** (`tests/test_config_flow.py`, `pyproject.toml`): `test_flow_user_success` hung indefinitely because creating a config entry via the flow caused HA to invoke `async_setup_entry`, which created a real `OMVAPI` session. The mocked `async_connect` returned without setting `_session_id`, so subsequent coordinator refresh calls triggered the retry/backoff loop and eventually scheduled a ~24-hour HA config entry retry—blocking the event loop indefinitely. Fixed by adding `patch("custom_components.omv.async_setup_entry", return_value=True)` to the test and adding `timeout = 60` to `[tool.pytest.ini_options]` in `pyproject.toml` as a safety net.
