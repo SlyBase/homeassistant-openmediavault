@@ -13,8 +13,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .coordinator import OMVDataUpdateCoordinator
 from .entity import OMVEntity, build_host_object_id
 
-_INSTALL_POLL_INTERVAL = 10  # seconds between coordinator refreshes during upgrade
-_INSTALL_TIMEOUT = 600  # maximum seconds to poll before giving up (10 minutes)
+_INSTALL_POLL_INTERVAL = 10  # seconds between Exec.isRunning polls
+_INSTALL_TIMEOUT = 600  # maximum seconds per background process step (10 minutes)
 _MAX_POLLS = _INSTALL_TIMEOUT // _INSTALL_POLL_INTERVAL
 
 
@@ -109,21 +109,44 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
     async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
         """Trigger installation of all available OMV package updates.
 
-        Calls OMV's Apt.upgrade RPC (which starts a background task on the
-        NAS), then blocks by polling the coordinator every _INSTALL_POLL_INTERVAL
-        seconds until availablePkgUpdates reaches 0 or _INSTALL_TIMEOUT is
-        exceeded. HA manages the in_progress indicator automatically for the
-        lifetime of this coroutine.
+        Mirrors the OMV web UI workflow:
+          1. Apt.update  — refreshes the apt package cache (apt-get update).
+          2. Apt.upgrade — runs the full dist-upgrade (apt-get dist-upgrade).
+        Each step starts an OMV background process that is polled via
+        Exec.isRunning until it completes or the 10-minute timeout is reached.
+        HA manages the in_progress indicator automatically for the lifetime of
+        this coroutine; if either step fails, the exception propagates to HA.
 
         Args:
             version: Target version string (unused; OMV upgrades all packages).
             backup: Whether to create a backup before installing (not supported).
             **kwargs: Additional keyword arguments (unused).
         """
-        await self.coordinator.api.async_call("Apt", "upgrade")
+        # Step 1: refresh apt cache so dist-upgrade sees current package state
+        update_file = await self.coordinator.api.async_call("Apt", "update")
+        await self._wait_for_bgproc(update_file)
+        # Step 2: run the actual dist-upgrade
+        upgrade_file = await self.coordinator.api.async_call("Apt", "upgrade")
+        await self._wait_for_bgproc(upgrade_file)
+        # Step 3: pull fresh data so the entity reflects the new package state
+        await self.coordinator.async_request_refresh()
+
+    async def _wait_for_bgproc(self, filename: Any) -> None:
+        """Poll Exec.isRunning until the OMV background process finishes.
+
+        If the background process reports an error, OMV raises a TraceException
+        which is propagated to the caller as OMVApiError so HA can mark the
+        install as failed.  If *filename* is not a string the call is silently
+        skipped (defensive guard for unexpected RPC responses).
+
+        Args:
+            filename: The bgproc status filename returned by an OMV execBgProc
+                RPC call (e.g. Apt.update / Apt.upgrade).
+        """
+        if not isinstance(filename, str) or not filename:
+            return
         for _ in range(_MAX_POLLS):
             await asyncio.sleep(_INSTALL_POLL_INTERVAL)
-            await self.coordinator.async_request_refresh()
-            hwinfo = self.coordinator.data.get("hwinfo", {})
-            if int(hwinfo.get("availablePkgUpdates", 0)) == 0:
+            result = await self.coordinator.api.async_call("Exec", "isRunning", {"filename": filename})
+            if isinstance(result, dict) and not result.get("running", True):
                 break

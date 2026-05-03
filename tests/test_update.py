@@ -76,55 +76,99 @@ def test_supported_features_includes_install(coordinator) -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_install_calls_apt_upgrade_and_polls(coordinator, sample_data) -> None:
-    """Test async_install calls Apt.upgrade then polls until updates reach 0."""
-    coordinator.api.async_call = AsyncMock(return_value=None)
-    call_count = 0
+async def test_async_install_runs_update_then_upgrade(coordinator) -> None:
+    """Test async_install calls Apt.update, Apt.upgrade, then async_request_refresh."""
+    # Apt.update returns bgproc file; Exec.isRunning returns not-running; same for upgrade
+    apt_update_file = "/tmp/bgstatus_update"
+    apt_upgrade_file = "/tmp/bgstatus_upgrade"
+    not_running = {"filename": apt_update_file, "running": False}
 
-    async def _refresh() -> None:
-        nonlocal call_count
-        call_count += 1
-        if call_count >= 2:
-            coordinator.data["hwinfo"]["availablePkgUpdates"] = 0
+    call_log: list[tuple] = []
 
-    coordinator.async_request_refresh = _refresh
+    async def _mock_call(service: str, method: str, params: dict | None = None) -> object:
+        call_log.append((service, method))
+        if service == "Apt" and method == "update":
+            return apt_update_file
+        if service == "Apt" and method == "upgrade":
+            return apt_upgrade_file
+        if service == "Exec" and method == "isRunning":
+            return not_running
+        return None
+
+    coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
 
     entity = OMVUpdateEntity(coordinator)
 
     with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
         await entity.async_install(version=None, backup=False)
 
-    coordinator.api.async_call.assert_awaited_once_with("Apt", "upgrade")
-    assert call_count == 2
+    assert ("Apt", "update") in call_log
+    assert ("Apt", "upgrade") in call_log
+    assert ("Exec", "isRunning") in call_log
+    coordinator.async_request_refresh.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_async_install_raises_on_rpc_error(coordinator) -> None:
-    """Test async_install propagates Apt.upgrade errors to the caller."""
-    coordinator.api.async_call = AsyncMock(side_effect=Exception("boom"))
+async def test_async_install_raises_on_apt_update_error(coordinator) -> None:
+    """Test async_install propagates Apt.update errors to the caller."""
+    coordinator.api.async_call = AsyncMock(side_effect=Exception("update failed"))
 
     entity = OMVUpdateEntity(coordinator)
 
-    with pytest.raises(Exception, match="boom"):
+    with pytest.raises(Exception, match="update failed"):
         await entity.async_install(version=None, backup=False)
 
 
 @pytest.mark.asyncio
-async def test_async_install_stops_polling_after_timeout(coordinator, sample_data) -> None:
-    """Test async_install stops after _MAX_POLLS iterations when updates never clear."""
-    coordinator.api.async_call = AsyncMock(return_value=None)
-    coordinator.async_request_refresh = AsyncMock()
-    # availablePkgUpdates stays at 3 — never goes to 0
+async def test_async_install_raises_on_exec_isrunning_error(coordinator) -> None:
+    """Test async_install propagates Exec.isRunning errors (e.g. upgrade failed on OMV)."""
+
+    async def _mock_call(service: str, method: str, params: dict | None = None) -> object:
+        if service == "Apt":
+            return "/tmp/bgstatus"
+        raise Exception("apt-get dist-upgrade failed with exit code 1")
+
+    coordinator.api.async_call = _mock_call
 
     entity = OMVUpdateEntity(coordinator)
 
     with (
-        patch("custom_components.omv.update._MAX_POLLS", 2),
         patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(Exception, match="apt-get dist-upgrade failed"),
     ):
         await entity.async_install(version=None, backup=False)
 
-    assert coordinator.async_request_refresh.await_count == 2
+
+@pytest.mark.asyncio
+async def test_async_install_stops_polling_after_timeout(coordinator) -> None:
+    """Test _wait_for_bgproc stops after _MAX_POLLS when process never finishes."""
+    still_running = {"filename": "/tmp/bgstatus", "running": True}
+
+    async def _mock_call(service: str, method: str, params: dict | None = None) -> object:
+        if service == "Apt":
+            return "/tmp/bgstatus"
+        return still_running
+
+    coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
+
+    entity = OMVUpdateEntity(coordinator)
+
+    poll_count = 0
+
+    async def _counting_sleep(delay: float) -> None:
+        nonlocal poll_count
+        poll_count += 1
+
+    with (
+        patch("custom_components.omv.update._MAX_POLLS", 2),
+        patch("custom_components.omv.update.asyncio.sleep", side_effect=_counting_sleep),
+    ):
+        await entity.async_install(version=None, backup=False)
+
+    # 2 polls per bgproc step x 2 steps = 4 total sleeps at most
+    assert poll_count <= 4
 
 
 def test_get_expected_update_unique_ids(config_entry) -> None:
