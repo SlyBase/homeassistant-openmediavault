@@ -1,8 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [2.1.3] - 2026-05-01
 
 ### Fixed
+
+- **Duplicate RAID sensors** (Issue #27) (`coordinator.py`, `sensor_types.py`): Fixed a critical bug where md RAID arrays with multiple member disks (e.g., md0 composed of sda + sdb) would create duplicate sensor records. The `_normalize_raids()` function now deduplicates by RAID device name and groups all member disks under a single RAID record. New helper method `_extract_raid_device()` reliably extracts RAID device names from disk records by checking direct OMV fields, parsing descriptions, and extracting from device paths. Member disk tracking is now exposed in sensor attributes via `member_disks` field.
+
+- **Connection instability and unavailable entities** (Issue #26) (`omv_api.py`, `coordinator.py`): Implemented comprehensive connection recovery with exponential backoff retry logic to handle transient connection failures introduced by OMV 8.2.10-1. The `async_call()` method now automatically retries failed requests up to 3 times with 1s, 2s, and 4s delays, and attempts session re-establishment between retries. Additionally, `_async_update_data()` now caches the last valid dataset and uses it as a fallback when API errors occur, preventing sensors from going unavailable during temporary connection glitches. This ensures entities remain available across OMV service restarts and network hiccups without requiring a manual reload of the integration.
 
 - **Duplicate network sensors** (Issue #27 follow-up) (`coordinator.py`): Fixed "Platform omv does not generate unique IDs" errors for network TX/RX sensors caused by `Network.enumerateDevices` returning the same interface UUID more than once (observed on OMV 8 with bond/VLAN setups). `_normalize_network()` now deduplicates by UUID and logs skipped duplicates at DEBUG level.
 
@@ -11,16 +15,6 @@
 - **Debug diagnostics** (`coordinator.py`): Added `_LOGGER.debug()` log entries in `_normalize_network`, `_normalize_disks`, and `_normalize_raids` to help diagnose future duplicate-entity issues. Enable `custom_components.omv: debug` in `configuration.yaml` to see full deduplication traces.
 
 - **SMART `getAttributes` log spam** (`coordinator.py`, `omv_api.py`): Disks that do not support ATA SMART attributes (e.g. NVMe drives, certain SATA controllers) caused OMV to return HTTP 500, which triggered the full 3-retry/7-second backoff loop and four log messages on every coordinator poll (every 60 s). Fixed in two layers: (1) `async_call()` now accepts a `max_retries` keyword argument, allowing callers to opt out of retries; (2) the coordinator passes `max_retries=0` for `Smart.getAttributes` and records failing device paths in `_smart_no_attributes` — those devices are silently skipped on all subsequent polls.
-
-- **CI test hang** (`tests/test_config_flow.py`, `pyproject.toml`): `test_flow_user_success` hung indefinitely because creating a config entry via the flow caused HA to invoke `async_setup_entry`, which created a real `OMVAPI` session. The mocked `async_connect` returned without setting `_session_id`, so subsequent coordinator refresh calls triggered the retry/backoff loop and eventually scheduled a ~24-hour HA config entry retry—blocking the event loop indefinitely. Fixed by adding `patch("custom_components.omv.async_setup_entry", return_value=True)` to the test and adding `timeout = 60` to `[tool.pytest.ini_options]` in `pyproject.toml` as a safety net.
-
-## [2.1.3] - 2026-05-01
-
-### Fixed
-
-- **Duplicate RAID sensors** (Issue #27) (`coordinator.py`, `sensor_types.py`): Fixed a critical bug where md RAID arrays with multiple member disks (e.g., md0 composed of sda + sdb) would create duplicate sensor records. The `_normalize_raids()` function now deduplicates by RAID device name and groups all member disks under a single RAID record. New helper method `_extract_raid_device()` reliably extracts RAID device names from disk records by checking direct OMV fields, parsing descriptions, and extracting from device paths. Member disk tracking is now exposed in sensor attributes via `member_disks` field.
-
-- **Connection instability and unavailable entities** (Issue #26) (`omv_api.py`, `coordinator.py`): Implemented comprehensive connection recovery with exponential backoff retry logic to handle transient connection failures introduced by OMV 8.2.10-1. The `async_call()` method now automatically retries failed requests up to 3 times with 1s, 2s, and 4s delays, and attempts session re-establishment between retries. Additionally, `_async_update_data()` now caches the last valid dataset and uses it as a fallback when API errors occur, preventing sensors from going unavailable during temporary connection glitches. This ensures entities remain available across OMV service restarts and network hiccups without requiring a manual reload of the integration.
 
 ## [2.1.2] - 2026-04-17
 
