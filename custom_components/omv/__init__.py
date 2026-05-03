@@ -61,10 +61,12 @@ async def _async_cleanup_stale_registry_entries(
     from .binary_sensor import get_expected_binary_sensor_unique_ids
     from .button import get_expected_button_unique_ids
     from .sensor import get_expected_sensor_registry_state
+    from .update import get_expected_update_unique_ids
 
     expected_entity_unique_ids, expected_device_identifiers = get_expected_sensor_registry_state(coordinator)
     expected_entity_unique_ids.update(get_expected_binary_sensor_unique_ids(coordinator))
     expected_entity_unique_ids.update(get_expected_button_unique_ids(entry, coordinator))
+    expected_entity_unique_ids.update(get_expected_update_unique_ids(entry))
 
     entity_registry = er.async_get(hass)
     for registry_entry in er.async_entries_for_config_entry(entity_registry, entry.entry_id):

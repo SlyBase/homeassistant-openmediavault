@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
+from homeassistant.components.update import UpdateEntityFeature
 
 from custom_components.omv.const import DOMAIN
-from custom_components.omv.update import OMVUpdateEntity, async_setup_entry
+from custom_components.omv.update import OMVUpdateEntity, async_setup_entry, get_expected_update_unique_ids
 
 
 @pytest.mark.asyncio
@@ -57,9 +60,34 @@ def test_installed_version_unknown(coordinator, sample_data) -> None:
 
 
 def test_release_url(coordinator) -> None:
-    """Test release_url points to the OMV web interface."""
+    """Test release_url points to the OMV update management page."""
     entity = OMVUpdateEntity(coordinator)
-    assert entity.release_url == "http://192.168.1.10:80"
+    assert entity.release_url == "http://192.168.1.10:80/#/system/updatemgmt/updates"
+
+
+def test_supported_features_includes_install(coordinator) -> None:
+    """Test that UpdateEntityFeature.INSTALL is declared."""
+    entity = OMVUpdateEntity(coordinator)
+    assert entity._attr_supported_features & UpdateEntityFeature.INSTALL
+
+
+@pytest.mark.asyncio
+async def test_async_install_calls_apt_upgrade(coordinator) -> None:
+    """Test async_install triggers Apt.upgrade and schedules a refresh."""
+    coordinator.api.async_call = AsyncMock(return_value=None)
+    coordinator.async_request_refresh = AsyncMock()
+
+    entity = OMVUpdateEntity(coordinator)
+    await entity.async_install(version=None, backup=False)
+
+    coordinator.api.async_call.assert_awaited_once_with("Apt", "upgrade")
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+def test_get_expected_update_unique_ids(config_entry) -> None:
+    """Test get_expected_update_unique_ids returns the correct unique ID set."""
+    result = get_expected_update_unique_ids(config_entry)
+    assert result == {f"{config_entry.entry_id}-omv_system_update"}
 
 
 def test_unique_id(coordinator, config_entry) -> None:
