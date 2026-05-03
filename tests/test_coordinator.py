@@ -22,6 +22,7 @@ from custom_components.omv.const import (
     DOMAIN,
 )
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+from custom_components.omv.exceptions import OMVConnectionError
 
 
 @pytest.mark.asyncio
@@ -31,7 +32,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if (service, method) == ("Compose", "getVolumesBg"):
             return {"filename": "compose-volumes.json"}
         if (service, method) == ("Compose", "doContainerCommand"):
@@ -333,7 +334,7 @@ async def test_fetch_optional_background_json_with_shell_boilerplate(hass, confi
         "docker inspect 89aee99dfc2b 2>&1\n"
     )
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if (service, method) == ("Compose", "doContainerCommand"):
             return "/tmp/bgstatusSOhiV3"
         if (service, method) == ("Exec", "getOutput"):
@@ -378,7 +379,7 @@ async def test_fetch_optional_background_json_handles_inline_output(hass, config
         }
     ]
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if (service, method) == ("Compose", "doContainerCommand"):
             # Inline response instead of background-task filename
             return {"output": json.dumps(inspect_inline), "running": False}
@@ -416,7 +417,7 @@ async def test_fetch_optional_background_json_handles_raw_json_string(hass, conf
 
     inspect_data = [{"Config": {"Labels": {"org.opencontainers.image.version": "1.35.4"}}}]
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if (service, method) == ("Compose", "doContainerCommand"):
             # Raw JSON string - not a filename
             return json.dumps(inspect_data)
@@ -659,7 +660,7 @@ async def test_fetch_optional_background_json_parses_exec_output(hass, config_en
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if (service, method) == ("Compose", "getVolumesBg"):
             return {"filename": "bg-volumes.json"}
         if (service, method) == ("Exec", "getOutput"):
@@ -694,7 +695,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "6.9.0"},
             ("CpuTemp", "get"): {},
@@ -733,7 +734,7 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
             ("CpuTemp", "get"): {},
@@ -979,7 +980,7 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
             ("CpuTemp", "get"): {},
@@ -1065,7 +1066,7 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
     config_entry.add_to_hass(hass)
     api = Mock()
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
             ("CpuTemp", "get"): {},
@@ -1362,7 +1363,7 @@ async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(hass, confi
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
             ("FileSystemMgmt", "enumerateFilesystems"): [],
@@ -1493,7 +1494,7 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(hass,
         }
     ]
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if method == "getListBg":
             return {"data": [{"devicename": "sda", "temperature": 35, "overallstatus": "PASSED"}]}
         if method == "getAttributes":
@@ -1509,6 +1510,53 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(hass,
         len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"
         for call in api.async_call.await_args_list
     ), "getAttributes was not called for a regular disk"
+
+
+@pytest.mark.asyncio
+async def test_smart_skips_getattributes_after_failure(hass, config_entry) -> None:
+    """SMART getAttributes must be skipped on subsequent polls after an HTTP 500 failure."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+    )
+    disks = [
+        {
+            "disk_key": "sda",
+            "devicename": "sda",
+            "canonicaldevicefile": "/dev/sda",
+            "devicefile": "/dev/sda",
+            "hotpluggable": False,
+            "overallstatus": "unknown",
+        }
+    ]
+
+    async def async_call_fail(service, method, params=None, **kwargs):
+        if method in ("getListBg", "getList"):
+            return {"data": [{"devicename": "sda", "temperature": 35, "overallstatus": "PASSED"}]}
+        if method == "getAttributes":
+            raise OMVConnectionError("OMV returned HTTP 500")
+        return []
+
+    api.async_call = AsyncMock(side_effect=async_call_fail)
+    coordinator.omv_version = 8
+
+    # First poll: getAttributes fails, device added to _smart_no_attributes
+    await coordinator._async_get_smart(disks)
+    assert "/dev/sda" in coordinator._smart_no_attributes
+
+    api.async_call.reset_mock()
+
+    # Second poll: getAttributes must NOT be called again
+    await coordinator._async_get_smart(disks)
+    for call in api.async_call.await_args_list:
+        assert not (len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"), (
+            "getAttributes was called again after a permanent failure"
+        )
 
 
 @pytest.mark.asyncio

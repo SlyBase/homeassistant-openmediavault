@@ -95,6 +95,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_stable_gpu: dict[str, Any] = {}
         self._gpu_load_counter: int = 0
         self._last_valid_data: dict[str, Any] = {}
+        # Canonical device paths for which getAttributes permanently fails
+        # (e.g. NVMe or other non-ATA disks that return HTTP 500). Populated on
+        # first failure; skipped on all subsequent polls to avoid log spam.
+        self._smart_no_attributes: set[str] = set()
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""
@@ -546,11 +550,28 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 continue
 
-            attributes = await self._fetch_optional(
-                "Smart",
-                "getAttributes",
-                {"devicefile": canonical},
-            )
+            if canonical in self._smart_no_attributes:
+                _LOGGER.debug(
+                    "Skipping SMART attributes for %s (previously failed, device not supported)",
+                    canonical,
+                )
+                continue
+
+            try:
+                attributes = await self.api.async_call(
+                    "Smart",
+                    "getAttributes",
+                    {"devicefile": canonical},
+                    max_retries=0,
+                )
+            except (OMVApiError, OMVConnectionError) as err:
+                _LOGGER.debug(
+                    "SMART attributes unavailable for %s, skipping on future polls: %s",
+                    canonical,
+                    err,
+                )
+                self._smart_no_attributes.add(canonical)
+                continue
             smart_attributes: dict[str, Any] = {}
             for attribute in self._records_from_response(attributes):
                 attrname = attribute.get("attrname")

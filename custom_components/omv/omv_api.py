@@ -138,16 +138,26 @@ class OMVAPI:
         service: str,
         method: str,
         params: dict[str, Any] | None = None,
+        *,
+        max_retries: int = 3,
     ) -> Any:
         """Execute a JSON-RPC call with automatic reconnection on transient failures.
 
         Issue #26: Implements exponential backoff and automatic session recovery
         for connection errors that can occur with OMV 8.2.10-1+. All retry
         attempts run inside a single lock acquisition to prevent self-deadlock.
+
+        Args:
+            service: OMV RPC service name.
+            method: OMV RPC method name.
+            params: Optional parameters to pass to the RPC call.
+            max_retries: Maximum number of retry attempts on connection errors.
+                Set to 0 to disable retries (e.g. for calls that are known to
+                fail permanently on certain devices).
         """
         async with self._lock:
             last_err: Exception | None = None
-            for attempt in range(4):  # 1 initial attempt + 3 retries
+            for attempt in range(max_retries + 1):
                 try:
                     return await self._async_raw_call(service, method, params)
                 except OMVAuthError:
@@ -162,17 +172,18 @@ class OMVAPI:
                     return await self._async_raw_call(service, method, params)
                 except (OMVConnectionError, aiohttp.ClientError) as err:
                     last_err = err
-                    if attempt >= 3:
+                    if attempt >= max_retries:
                         break
                     # Exponential backoff: 1s, 2s, 4s between retries
                     wait_seconds = 2**attempt
                     _LOGGER.warning(
-                        "Connection error for %s.%s on %s, retrying in %ds (attempt %d/3): %s",
+                        "Connection error for %s.%s on %s, retrying in %ds (attempt %d/%d): %s",
                         service,
                         method,
                         self._host,
                         wait_seconds,
                         attempt + 1,
+                        max_retries,
                         err,
                     )
                     await asyncio.sleep(wait_seconds)
@@ -192,7 +203,7 @@ class OMVAPI:
                 self._host,
                 last_err,
             )
-            raise OMVConnectionError(f"Failed to reach OMV after 3 retries: {last_err}") from last_err
+            raise OMVConnectionError(f"Failed to reach OMV after {max_retries} retries: {last_err}") from last_err
 
     async def _async_raw_call(
         self,
