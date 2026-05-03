@@ -109,42 +109,21 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
     async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
         """Trigger installation of all available OMV package updates.
 
-        Sets in_progress=True immediately so HA shows a spinner, then calls
-        OMV's Apt.upgrade RPC (which starts a background task on the NAS).
-        A background polling task then refreshes the coordinator every
-        _INSTALL_POLL_INTERVAL seconds until availablePkgUpdates reaches 0
-        or the _INSTALL_TIMEOUT is exceeded. in_progress is cleared at the end.
+        Calls OMV's Apt.upgrade RPC (which starts a background task on the
+        NAS), then blocks by polling the coordinator every _INSTALL_POLL_INTERVAL
+        seconds until availablePkgUpdates reaches 0 or _INSTALL_TIMEOUT is
+        exceeded. HA manages the in_progress indicator automatically for the
+        lifetime of this coroutine.
 
         Args:
             version: Target version string (unused; OMV upgrades all packages).
             backup: Whether to create a backup before installing (not supported).
             **kwargs: Additional keyword arguments (unused).
         """
-        self._attr_in_progress = True
-        self.async_write_ha_state()
-        try:
-            await self.coordinator.api.async_call("Apt", "upgrade")
-        except Exception:
-            self._attr_in_progress = False
-            self.async_write_ha_state()
-            raise
-        self.hass.async_create_task(self._async_poll_install_completion())
-
-    async def _async_poll_install_completion(self) -> None:
-        """Poll the coordinator until the upgrade finishes or the timeout expires.
-
-        Refreshes the coordinator every _INSTALL_POLL_INTERVAL seconds.
-        Stops early when availablePkgUpdates drops to 0. Clears in_progress
-        unconditionally at the end so the entity returns to a normal state
-        even if the timeout is reached.
-        """
-        try:
-            for _ in range(_MAX_POLLS):
-                await asyncio.sleep(_INSTALL_POLL_INTERVAL)
-                await self.coordinator.async_request_refresh()
-                hwinfo = self.coordinator.data.get("hwinfo", {})
-                if int(hwinfo.get("availablePkgUpdates", 0)) == 0:
-                    break
-        finally:
-            self._attr_in_progress = False
-            self.async_write_ha_state()
+        await self.coordinator.api.async_call("Apt", "upgrade")
+        for _ in range(_MAX_POLLS):
+            await asyncio.sleep(_INSTALL_POLL_INTERVAL)
+            await self.coordinator.async_request_refresh()
+            hwinfo = self.coordinator.data.get("hwinfo", {})
+            if int(hwinfo.get("availablePkgUpdates", 0)) == 0:
+                break
