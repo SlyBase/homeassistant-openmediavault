@@ -157,6 +157,11 @@
                 "name": "{resource} tjanst"
             }
         },
+        "update": {
+            "omv_system_update": {
+                "name": "Systemuppdatering"
+            }
+        },
         "button": {
             "reboot": {
                 "name": "Starta om"

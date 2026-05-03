@@ -1,11 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [2.2.0] - 2026-05-12
 
-### Fixed
+### Added
 
-- OMV 7 md RAID discovery now supplements `DiskMgmt.enumerateDevices` with `MdMgmt.enumerateDevices`, and empty RAID selections no longer hide newly discovered md arrays behind existing resource filters in Home Assistant.
-- Mounted md RAID filesystems no longer create a second duplicate-looking set of disk capacity sensors on the same RAID device; unmounted md arrays still keep their disk metrics.
+- **OMV System Update entity** (`update.py`, `const.py`, translations): New `update` platform entity (`update.<host>_system_update`) that exposes the OMV package update status as a native Home Assistant update card. The entity reports the installed OMV version as `installed_version`; when package updates are pending, `latest_version` is set to a synthetic string (e.g. `7.7.24-7 (+3 packages)`) so HA transitions the entity state to `on`. The `release_url` points directly to the OMV update management page (`/#/system/updatemgmt/updates`) so users can open the relevant screen with a single click from the HA update card. The **Install** button mirrors the OMV web UI upgrade workflow: `Apt.update` refreshes the apt cache, then `Apt.upgrade` runs `apt-get dist-upgrade`. Both steps are tracked via `Exec.isRunning` so `async_install()` blocks until each background process finishes (or a 10-minute timeout expires per step), keeping HA's `in_progress` spinner visible for the full duration. Errors reported by OMV (e.g. non-zero exit code from apt-get) propagate as exceptions so HA can display a failure notification.
+- **`release_summary` in update entity** (`update.py`, `coordinator.py`): The update entity's **More Info** card now lists every pending package with its name, new version, description, maintainer, homepage, source repository and installed size. Details are fetched from OMV via `Apt.getUpgradedList` (reads the local apt cache — no network access). Each package is rendered as a compact block and the blocks are joined by a blank line, matching the information shown in the OMV web UI update list.
+- **`reboot_required` on update entity** (`update.py`): The update entity now surfaces the OMV host's pending-reboot state. The `extra_state_attributes` dict includes `reboot_required: true/false` (readable in automations and dashboards). When a reboot is pending but no further package updates are available, `latest_version` is set to `<version> (reboot required)` so the update card stays active (state `on`) until the host is rebooted. Pressing the **Install** button in this state calls `System.reboot` on OMV instead of the apt workflow — the button acts as a reboot trigger. Use the existing `button.<host>_reboot` entity as an alternative.
+
+### Removed
+
+- **`binary_sensor.update_available`** (`binary_sensor_types.py`): The `update_available` binary sensor (`BinarySensorDeviceClass.UPDATE`) is superseded by the new `update` platform entity. Existing instances are automatically removed from the HA entity registry on the next integration reload via `_async_cleanup_stale_registry_entries`.
+
 
 ## [2.1.3] - 2026-05-01
 

@@ -163,6 +163,11 @@
                 "name": "{resource} service"
             }
         },
+        "update": {
+            "omv_system_update": {
+                "name": "System update"
+            }
+        },
         "button": {
             "reboot": {
                 "name": "Reboot"

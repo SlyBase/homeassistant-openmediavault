@@ -157,6 +157,11 @@
                 "name": "servico {resource}"
             }
         },
+        "update": {
+            "omv_system_update": {
+                "name": "Atualização do sistema"
+            }
+        },
         "button": {
             "reboot": {
                 "name": "Reiniciar"

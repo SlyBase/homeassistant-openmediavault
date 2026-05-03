@@ -163,6 +163,11 @@
                 "name": "{resource} Dienst"
             }
         },
+        "update": {
+            "omv_system_update": {
+                "name": "System-Update"
+            }
+        },
         "button": {
             "reboot": {
                 "name": "Neustart"
