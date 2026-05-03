@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
@@ -11,6 +12,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
 from .entity import OMVEntity, build_host_object_id
+
+_INSTALL_POLL_INTERVAL = 10  # seconds between coordinator refreshes during upgrade
+_INSTALL_TIMEOUT = 600  # maximum seconds to poll before giving up (10 minutes)
+_MAX_POLLS = _INSTALL_TIMEOUT // _INSTALL_POLL_INTERVAL
 
 
 def get_expected_update_unique_ids(entry: ConfigEntry) -> set[str]:
@@ -104,15 +109,42 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
     async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
         """Trigger installation of all available OMV package updates.
 
-        Calls OMV's Apt.upgrade RPC to start the background upgrade task,
-        then schedules a coordinator refresh so the installed_version and
-        latest_version attributes reflect the new state. A reboot may be
-        required after the upgrade; use the dedicated Reboot button entity.
+        Sets in_progress=True immediately so HA shows a spinner, then calls
+        OMV's Apt.upgrade RPC (which starts a background task on the NAS).
+        A background polling task then refreshes the coordinator every
+        _INSTALL_POLL_INTERVAL seconds until availablePkgUpdates reaches 0
+        or the _INSTALL_TIMEOUT is exceeded. in_progress is cleared at the end.
 
         Args:
             version: Target version string (unused; OMV upgrades all packages).
             backup: Whether to create a backup before installing (not supported).
             **kwargs: Additional keyword arguments (unused).
         """
-        await self.coordinator.api.async_call("Apt", "upgrade")
-        await self.coordinator.async_request_refresh()
+        self._attr_in_progress = True
+        self.async_write_ha_state()
+        try:
+            await self.coordinator.api.async_call("Apt", "upgrade")
+        except Exception:
+            self._attr_in_progress = False
+            self.async_write_ha_state()
+            raise
+        self.hass.async_create_task(self._async_poll_install_completion())
+
+    async def _async_poll_install_completion(self) -> None:
+        """Poll the coordinator until the upgrade finishes or the timeout expires.
+
+        Refreshes the coordinator every _INSTALL_POLL_INTERVAL seconds.
+        Stops early when availablePkgUpdates drops to 0. Clears in_progress
+        unconditionally at the end so the entity returns to a normal state
+        even if the timeout is reached.
+        """
+        try:
+            for _ in range(_MAX_POLLS):
+                await asyncio.sleep(_INSTALL_POLL_INTERVAL)
+                await self.coordinator.async_request_refresh()
+                hwinfo = self.coordinator.data.get("hwinfo", {})
+                if int(hwinfo.get("availablePkgUpdates", 0)) == 0:
+                    break
+        finally:
+            self._attr_in_progress = False
+            self.async_write_ha_state()

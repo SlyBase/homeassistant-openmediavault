@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.update import UpdateEntityFeature
 
 from custom_components.omv.const import DOMAIN
-from custom_components.omv.update import OMVUpdateEntity, async_setup_entry, get_expected_update_unique_ids
+from custom_components.omv.update import (
+    OMVUpdateEntity,
+    async_setup_entry,
+    get_expected_update_unique_ids,
+)
 
 
 @pytest.mark.asyncio
@@ -73,15 +77,84 @@ def test_supported_features_includes_install(coordinator) -> None:
 
 @pytest.mark.asyncio
 async def test_async_install_calls_apt_upgrade(coordinator) -> None:
-    """Test async_install triggers Apt.upgrade and schedules a refresh."""
+    """Test async_install sets in_progress, triggers Apt.upgrade, and spawns poll task."""
     coordinator.api.async_call = AsyncMock(return_value=None)
     coordinator.async_request_refresh = AsyncMock()
 
     entity = OMVUpdateEntity(coordinator)
+    entity.async_write_ha_state = MagicMock()
+    spawned: list = []
+    entity.hass = MagicMock()
+    entity.hass.async_create_task = lambda coro: spawned.append(coro)
+
     await entity.async_install(version=None, backup=False)
 
+    # Apt.upgrade must be called
     coordinator.api.async_call.assert_awaited_once_with("Apt", "upgrade")
-    coordinator.async_request_refresh.assert_awaited_once()
+    # in_progress must be True before the RPC returns
+    assert entity._attr_in_progress is True
+    # A background poll task must be scheduled
+    assert len(spawned) == 1
+    # Clean up the unawaited coroutine to avoid ResourceWarning
+    spawned[0].close()
+
+
+@pytest.mark.asyncio
+async def test_async_install_clears_in_progress_on_rpc_error(coordinator) -> None:
+    """Test async_install clears in_progress when Apt.upgrade raises."""
+    coordinator.api.async_call = AsyncMock(side_effect=Exception("boom"))
+
+    entity = OMVUpdateEntity(coordinator)
+    entity.async_write_ha_state = MagicMock()
+
+    with pytest.raises(Exception, match="boom"):
+        await entity.async_install(version=None, backup=False)
+
+    assert entity._attr_in_progress is False
+
+
+@pytest.mark.asyncio
+async def test_poll_install_completion_stops_when_updates_gone(coordinator, sample_data) -> None:
+    """Test _async_poll_install_completion clears in_progress once updates reach 0."""
+    call_count = 0
+
+    async def _refresh() -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count >= 2:
+            coordinator.data["hwinfo"]["availablePkgUpdates"] = 0
+
+    coordinator.async_request_refresh = _refresh
+
+    entity = OMVUpdateEntity(coordinator)
+    entity._attr_in_progress = True
+    entity.async_write_ha_state = MagicMock()
+
+    with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
+        await entity._async_poll_install_completion()
+
+    assert entity._attr_in_progress is False
+    assert call_count == 2
+    entity.async_write_ha_state.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_poll_install_completion_clears_after_timeout(coordinator, sample_data) -> None:
+    """Test _async_poll_install_completion clears in_progress after max polls."""
+    coordinator.async_request_refresh = AsyncMock()
+    # availablePkgUpdates stays at 3 — never goes to 0
+
+    entity = OMVUpdateEntity(coordinator)
+    entity._attr_in_progress = True
+    entity.async_write_ha_state = MagicMock()
+
+    with (
+        patch("custom_components.omv.update._MAX_POLLS", 2),
+        patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        await entity._async_poll_install_completion()
+
+    assert entity._attr_in_progress is False
 
 
 def test_get_expected_update_unique_ids(config_entry) -> None:

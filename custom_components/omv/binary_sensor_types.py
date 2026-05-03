@@ -26,14 +26,6 @@ class OMVBinarySensorDescription(BinarySensorEntityDescription):
 
 SYSTEM_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
     OMVBinarySensorDescription(
-        key="update_available",
-        translation_key="update_available",
-        device_class=BinarySensorDeviceClass.UPDATE,
-        icon="mdi:package-up",
-        data_path="hwinfo",
-        value_fn=lambda data: bool(data.get("pkgUpdatesAvailable", False)),
-    ),
-    OMVBinarySensorDescription(
         key="reboot_required",
         translation_key="reboot_required",
         icon="mdi:restart-alert",

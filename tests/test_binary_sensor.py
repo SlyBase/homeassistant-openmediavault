@@ -22,7 +22,6 @@ async def test_async_setup_entry_adds_binary_sensors(coordinator, config_entry) 
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert any(entity.unique_id.endswith("update_available") for entity in added)
     assert any(entity.unique_id.endswith("service-ssh") for entity in added)
     assert any(entity.unique_id.endswith("service-compose") for entity in added)
 
@@ -32,8 +31,8 @@ async def test_system_binary_sensor_state(coordinator) -> None:
     """Test singleton binary sensors use hwinfo flags."""
     sensor = OMVBinarySensor(coordinator, SYSTEM_BINARY_SENSORS[0])
 
-    assert sensor.is_on is True
-    assert sensor._attr_suggested_object_id == "nas_update_available"
+    assert sensor.is_on is False  # rebootRequired defaults to False in sample_data
+    assert sensor._attr_suggested_object_id == "nas_reboot_required"
 
 
 @pytest.mark.asyncio
