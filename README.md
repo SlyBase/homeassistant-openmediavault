@@ -21,7 +21,8 @@ The original integration relied on a synchronous, poll-based controller that no 
 - CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
 - Per-resource device modeling — disks, RAIDs, filesystems, ZFS pools, and Docker containers each appear as separate HA devices
 - Docker Compose support with per-container state, version, and lifecycle button entities
-- Binary sensors for package updates, reboot requirement, and OMV services
+- Update entity with one-click package installation and reboot support (reboot-only mode when no further packages are pending)
+- Binary sensor for reboot requirement and OMV service health
 - Reboot and shutdown buttons
 - Localized dynamic entity names that follow the active HA language
 
@@ -82,7 +83,8 @@ After setup, the options flow lets you adjust:
 - CPU utilization, memory usage, CPU temperature, uptime, available package updates
 - Intel iGPU load and current frequency (when available via sysfs)
 - Docker container summary: total, running, and not-running counts
-- Binary sensors: update available, reboot required
+- **Update entity**: shows pending package count and installed OMV version; the **Install** button runs `apt update` + `apt upgrade` on OMV and waits for completion — when only a reboot is pending (no further packages), pressing **Install** triggers a system reboot instead
+- Binary sensor: reboot required
 - Buttons: Reboot, Shutdown
 
 ### Disk devices (one device per physical disk and logical RAID/md device)

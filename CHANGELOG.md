@@ -1,6 +1,10 @@
 # Changelog
 
+<<<<<<< HEAD
 ## [2.2.0] - 2026-05-12
+=======
+## [2.2.0]
+>>>>>>> c52ebd8 (feat(docs): update changelog and README for 2.2.0 release)
 
 ### Added
 
@@ -13,6 +17,7 @@
 - **`binary_sensor.update_available`** (`binary_sensor_types.py`): The `update_available` binary sensor (`BinarySensorDeviceClass.UPDATE`) is superseded by the new `update` platform entity. Existing instances are automatically removed from the HA entity registry on the next integration reload via `_async_cleanup_stale_registry_entries`.
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 ### Fixed
 
@@ -22,6 +27,8 @@
 - **Update entity disappears after coordinator refresh** (`__init__.py`, `update.py`): `_async_cleanup_stale_registry_entries()` did not include the update platform's unique IDs in its expected-entity set, causing the entity to be removed from the HA entity registry on every 60-second coordinator poll. Added `get_expected_update_unique_ids()` to `update.py` and registered it in the cleanup function so the update entity is preserved across refreshes.
 >>>>>>> 6c34eb6 (fix(update): treat Exec.isRunning HTTP 500 as bgproc completion)
 
+=======
+>>>>>>> c52ebd8 (feat(docs): update changelog and README for 2.2.0 release)
 ## [2.1.3] - 2026-05-01
 
 ### Fixed
