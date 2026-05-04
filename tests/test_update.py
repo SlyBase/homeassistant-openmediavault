@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.update import UpdateEntityFeature
@@ -367,6 +367,7 @@ async def test_async_install_reboots_when_no_pkg_updates_but_reboot_required(coo
         return None
 
     coordinator.api.async_call = _mock_call
+    coordinator.async_update_listeners = MagicMock()
 
     entity = OMVUpdateEntity(coordinator)
     await entity.async_install(version=None, backup=False)
@@ -375,3 +376,6 @@ async def test_async_install_reboots_when_no_pkg_updates_but_reboot_required(coo
     # apt workflow must NOT be triggered in this case
     assert ("Apt", "update") not in call_log
     assert ("Apt", "upgrade") not in call_log
+    # rebootRequired must be cleared optimistically so the card goes to 'off' immediately
+    assert coordinator.data["hwinfo"]["rebootRequired"] is False
+    coordinator.async_update_listeners.assert_called_once()

@@ -190,6 +190,13 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         if n_updates == 0 and reboot_required:
             _LOGGER.info("No package updates pending; triggering system reboot via OMV")
             await self.coordinator.api.async_call("System", "reboot")
+            # Optimistically clear the reboot flag so the update card transitions
+            # to 'off' immediately instead of waiting for the next coordinator poll
+            # (up to 60 s later).  The coordinator will confirm the real state on
+            # the next successful refresh once the host is back online.
+            if isinstance(self.coordinator.data.get("hwinfo"), dict):
+                self.coordinator.data["hwinfo"]["rebootRequired"] = False
+            self.coordinator.async_update_listeners()
             return
 
         # Step 1: refresh apt cache so dist-upgrade sees current package state
