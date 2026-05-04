@@ -123,9 +123,8 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             # Wrap version in backticks so that ~ in Debian version strings
             # (e.g. ~debian.12~bookworm) is not rendered as Markdown strikethrough.
             blocks.append(f"**{name}**" + (f" `{version}`" if version else ""))
-        # Packages are separated by a hard line-break.
-        # (Single \n is a hard-break in HA's Markdown renderer for update entities.)
-        return "\n".join(blocks)
+        # Packages are separated by a blank line (paragraph break in Markdown).
+        return "\n\n".join(blocks)
 
     @property
     def release_url(self) -> str | None:
