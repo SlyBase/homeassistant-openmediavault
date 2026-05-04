@@ -311,3 +311,43 @@ def test_release_summary_skips_blank_optional_fields(coordinator, sample_data) -
 
     entity = OMVUpdateEntity(coordinator)
     assert entity.release_summary == "**minimal-pkg** `1.0`"
+
+
+def test_extra_state_attributes_no_reboot(coordinator, sample_data) -> None:
+    """Test extra_state_attributes returns reboot_required=False when no reboot needed."""
+    sample_data["hwinfo"]["rebootRequired"] = False
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.extra_state_attributes == {"reboot_required": False}
+
+
+def test_extra_state_attributes_reboot_required(coordinator, sample_data) -> None:
+    """Test extra_state_attributes returns reboot_required=True after an upgrade."""
+    sample_data["hwinfo"]["rebootRequired"] = True
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.extra_state_attributes == {"reboot_required": True}
+
+
+def test_latest_version_reboot_required_no_updates(coordinator, sample_data) -> None:
+    """Test latest_version differs from installed when reboot is required but no pkg updates."""
+    sample_data["hwinfo"]["availablePkgUpdates"] = 0
+    sample_data["hwinfo"]["rebootRequired"] = True
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.latest_version != entity.installed_version
+    assert entity.latest_version is not None
+    assert "reboot required" in (entity.latest_version or "")
+
+
+def test_latest_version_no_reboot_no_updates(coordinator, sample_data) -> None:
+    """Test latest_version equals installed_version when no reboot and no updates pending."""
+    sample_data["hwinfo"]["availablePkgUpdates"] = 0
+    sample_data["hwinfo"]["rebootRequired"] = False
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.latest_version == entity.installed_version

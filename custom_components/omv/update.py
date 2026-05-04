@@ -99,6 +99,12 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         n = int(hwinfo.get("availablePkgUpdates", 0))
         if n > 0:
             return f"{installed} (+{n} packages)"
+        # No pending package updates — but if a reboot is still required
+        # (e.g. after a kernel update) keep the entity in state 'on' so the
+        # user sees the pending action.  A synthetic suffix keeps latest_version
+        # different from installed_version while conveying the reason.
+        if hwinfo.get("rebootRequired"):
+            return f"{installed} (reboot required)"
         return installed
 
     @property
@@ -125,6 +131,17 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             blocks.append(f"**{name}**" + (f" `{version}`" if version else ""))
         # Packages are separated by a blank line (paragraph break in Markdown).
         return "\n\n".join(blocks)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, bool]:
+        """Return additional state attributes for the update entity.
+
+        Returns:
+            A dict with ``reboot_required`` indicating whether the OMV host
+            needs a reboot to fully apply installed or upgraded packages.
+        """
+        hwinfo = self.coordinator.data.get("hwinfo", {})
+        return {"reboot_required": bool(hwinfo.get("rebootRequired", False))}
 
     @property
     def release_url(self) -> str | None:
