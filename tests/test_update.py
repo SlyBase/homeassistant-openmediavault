@@ -78,8 +78,11 @@ def test_supported_features_includes_install(coordinator) -> None:
 
 @pytest.mark.asyncio
 async def test_async_install_runs_update_then_upgrade(coordinator) -> None:
-    """Test async_install calls Apt.update, Apt.upgrade, then async_request_refresh."""
-    # Apt.update returns bgproc file; Exec.isRunning returns not-running; same for upgrade
+    """Test async_install calls Apt.update, Apt.upgrade, Apt.update, then refresh.
+
+    The post-upgrade Apt.update is required so OMV recalculates
+    availablePkgUpdates (via omv-aptlist) before the coordinator refreshes.
+    """
     apt_update_file = "/tmp/bgstatus_update"
     apt_upgrade_file = "/tmp/bgstatus_upgrade"
     not_running = {"filename": apt_update_file, "running": False}
@@ -104,9 +107,13 @@ async def test_async_install_runs_update_then_upgrade(coordinator) -> None:
     with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
         await entity.async_install(version=None, backup=False)
 
-    assert ("Apt", "update") in call_log
+    # Apt.update must be called twice: once before upgrade, once after
+    assert call_log.count(("Apt", "update")) == 2
     assert ("Apt", "upgrade") in call_log
     assert ("Exec", "isRunning") in call_log
+    # upgrade sequence: update → upgrade → update
+    apt_calls = [c for c in call_log if c[0] == "Apt"]
+    assert apt_calls == [("Apt", "update"), ("Apt", "upgrade"), ("Apt", "update")]
     coordinator.async_request_refresh.assert_awaited_once()
 
 
@@ -193,8 +200,41 @@ async def test_async_install_stops_polling_after_timeout(coordinator) -> None:
     ):
         await entity.async_install(version=None, backup=False)
 
-    # 2 polls per bgproc step x 2 steps = 4 total sleeps at most
-    assert poll_count <= 4
+    # 2 polls per bgproc step x 3 steps (update/upgrade/update) = 6 total sleeps at most
+    assert poll_count <= 6
+
+
+@pytest.mark.asyncio
+async def test_async_install_post_update_error_is_swallowed(coordinator) -> None:
+    """Test that a failure in the post-upgrade Apt.update does not propagate.
+
+    The packages are installed at this point; only the displayed count may be
+    temporarily stale. The install must still be reported as successful.
+    """
+    apt_calls: list[str] = []
+
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
+        if service == "Apt" and method == "upgrade":
+            return "/tmp/bgstatus_upgrade"
+        if service == "Apt" and method == "update":
+            apt_calls.append("update")
+            if len(apt_calls) >= 2:
+                # Second Apt.update (post-upgrade) fails
+                raise Exception("network temporarily unavailable")
+            return "/tmp/bgstatus_update"
+        # Exec.isRunning → not running
+        return {"running": False}
+
+    coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
+
+    entity = OMVUpdateEntity(coordinator)
+
+    # Must NOT raise even though post-upgrade Apt.update fails
+    with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
+        await entity.async_install(version=None, backup=False)
+
+    coordinator.async_request_refresh.assert_awaited_once()
 
 
 def test_get_expected_update_unique_ids(config_entry) -> None:

@@ -116,10 +116,18 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         Mirrors the OMV web UI workflow:
           1. Apt.update  — refreshes the apt package cache (apt-get update).
           2. Apt.upgrade — runs the full dist-upgrade (apt-get dist-upgrade).
+          3. Apt.update  — re-runs apt-get update so OMV recalculates
+                           availablePkgUpdates (stored in OMV's config DB and
+                           updated only by omv-aptlist, which Apt.update
+                           triggers). Without this step the coordinator would
+                           refresh with a stale count and the entity would
+                           continue to show updates as available.
         Each step starts an OMV background process that is polled via
         Exec.isRunning until it completes or the 10-minute timeout is reached.
         HA manages the in_progress indicator automatically for the lifetime of
-        this coroutine; if either step fails, the exception propagates to HA.
+        this coroutine; if the upgrade step fails, the exception propagates to
+        HA. A failure in the post-upgrade Apt.update is logged and swallowed
+        (the packages are installed; only the displayed count may be stale).
 
         Args:
             version: Target version string (unused; OMV upgrades all packages).
@@ -132,7 +140,14 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         # Step 2: run the actual dist-upgrade
         upgrade_file = await self.coordinator.api.async_call("Apt", "upgrade")
         await self._wait_for_bgproc(upgrade_file)
-        # Step 3: pull fresh data so the entity reflects the new package state
+        # Step 3: refresh apt cache again so OMV recalculates availablePkgUpdates
+        # (omv-aptlist is only triggered by Apt.update, not by Apt.upgrade).
+        try:
+            post_update_file = await self.coordinator.api.async_call("Apt", "update")
+            await self._wait_for_bgproc(post_update_file)
+        except Exception:
+            _LOGGER.warning("Post-upgrade Apt.update failed; availablePkgUpdates may be stale")
+        # Step 4: pull fresh data so the entity reflects the new package state
         await self.coordinator.async_request_refresh()
 
     async def _wait_for_bgproc(self, filename: Any) -> None:
