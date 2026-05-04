@@ -297,12 +297,15 @@ def test_release_summary_with_packages(coordinator, sample_data) -> None:
     summary = entity.release_summary
 
     assert summary is not None
-    assert "docker-ce 5:29.4.2-2~debian.12~bookworm" in summary
+    # Version is wrapped in backticks to prevent ~ from being parsed as Markdown strikethrough.
+    assert "**docker-ce** `5:29.4.2-2~debian.12~bookworm`" in summary
     assert "Docker: the open-source application container engine" in summary
     assert "Betreuer: Docker <support@docker.com>" in summary
     assert "Homepage: https://www.docker.com" in summary
     assert "Quelle: Docker CE/bookworm" in summary
     assert "21.68 MiB" in summary
+    # Lines are separated by hard Markdown line-breaks (two trailing spaces).
+    assert "  \n" in summary
 
 
 def test_release_summary_skips_blank_optional_fields(coordinator, sample_data) -> None:
@@ -311,4 +314,4 @@ def test_release_summary_skips_blank_optional_fields(coordinator, sample_data) -
     coordinator.data = sample_data
 
     entity = OMVUpdateEntity(coordinator)
-    assert entity.release_summary == "minimal-pkg 1.0"
+    assert entity.release_summary == "**minimal-pkg** `1.0`"

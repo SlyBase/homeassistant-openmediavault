@@ -125,7 +125,11 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             homepage = str(pkg.get("homepage") or "")
             repository = str(pkg.get("repository") or "")
             size_bytes = pkg.get("installedsize") or 0
-            block: list[str] = [f"{name} {version}".strip()]
+            # Wrap version in backticks so that ~ in Debian version strings
+            # (e.g. ~debian.12~bookworm) is not interpreted as Markdown
+            # strikethrough / subscript by the HA frontend.
+            header = f"**{name}**" + (f" `{version}`" if version else "")
+            block: list[str] = [header]
             if summary:
                 block.append(summary)
             if maintainer:
@@ -136,7 +140,8 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
                 block.append(f"Quelle: {repository}")
             if size_bytes:
                 block.append(f"Größe: {int(size_bytes) / (1024 * 1024):.2f} MiB")
-            blocks.append("\n".join(block))
+            # Two trailing spaces produce a hard line-break in Markdown.
+            blocks.append("  \n".join(block))
         return "\n\n".join(blocks)
 
     @property
