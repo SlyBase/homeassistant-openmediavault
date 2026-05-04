@@ -299,12 +299,9 @@ def test_release_summary_with_packages(coordinator, sample_data) -> None:
     assert summary is not None
     # Version is wrapped in backticks to prevent ~ from being parsed as Markdown strikethrough.
     assert "**docker-ce** `5:29.4.2-2~debian.12~bookworm`" in summary
-    assert "Docker: the open-source application container engine" in summary
-    # Metadata fields (maintainer, homepage, etc.) are omitted to stay within
+    # Description and metadata fields are omitted to stay within
     # Home Assistant's 255-character state-attribute limit.
-    assert "Betreuer:" not in summary
-    # Lines are separated by hard Markdown line-breaks (two trailing spaces).
-    assert "  \n" in summary
+    assert "Docker: the open-source application container engine" not in summary
 
 
 def test_release_summary_skips_blank_optional_fields(coordinator, sample_data) -> None:

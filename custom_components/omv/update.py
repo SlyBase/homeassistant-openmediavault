@@ -120,15 +120,12 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         for pkg in packages:
             name = str(pkg.get("name") or pkg.get("package") or "?")
             version = str(pkg.get("version") or "")
-            summary = str(pkg.get("summary") or pkg.get("abstract") or "")
             # Wrap version in backticks so that ~ in Debian version strings
             # (e.g. ~debian.12~bookworm) is not rendered as Markdown strikethrough.
-            line = f"**{name}**" + (f" `{version}`" if version else "")
-            if summary:
-                line += f"  \n{summary}"
-            blocks.append(line)
-        # Packages are separated by a blank line.
-        return "\n\n".join(blocks)
+            blocks.append(f"**{name}**" + (f" `{version}`" if version else ""))
+        # Packages are separated by a hard line-break.
+        # (Single \n is a hard-break in HA's Markdown renderer for update entities.)
+        return "\n".join(blocks)
 
     @property
     def release_url(self) -> str | None:
