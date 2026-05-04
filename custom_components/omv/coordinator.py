@@ -1028,15 +1028,29 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         raw_records = self._records_from_response(response)
         _LOGGER.debug("_normalize_disks: received %d raw records", len(raw_records))
         for record in raw_records:
-            devicename = str(record.get("devicename") or "")
+            raw_devicename = str(record.get("devicename") or "")
+            if not raw_devicename:
+                continue
+            # Normalize away /dev/ prefix so that OMV installations which return
+            # "/dev/md0" instead of "md0" don't create duplicate disk entries when
+            # _augment_disks_with_logical_storage later also finds "md0" via
+            # filesystem records (Issue #27).
+            devicename = self._normalize_device_reference(raw_devicename)
             if not devicename:
                 continue
             if devicename in seen_devicenames:
                 _LOGGER.debug(
-                    "_normalize_disks: skipping duplicate disk devicename=%s",
+                    "_normalize_disks: skipping duplicate disk devicename=%s (raw=%s)",
                     devicename,
+                    raw_devicename,
                 )
                 continue
+            if raw_devicename != devicename:
+                _LOGGER.debug(
+                    "_normalize_disks: normalized devicename %s -> %s",
+                    raw_devicename,
+                    devicename,
+                )
             seen_devicenames.add(devicename)
             total_size_gb = self._coerce_storage_gb(record.get("size"))
             disk = {
@@ -1077,8 +1091,13 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         filesystem_response: Any,
     ) -> list[dict[str, Any]]:
         """Add synthetic logical devices like md arrays when OMV omits them."""
+        # Normalize keys so that "/dev/md0" and "md0" both map to "md0",
+        # preventing _normalize_disks from adding a duplicate synthetic entry
+        # when the OMV API already returned the md device (Issue #27).
         known_disk_keys = {
-            str(disk.get("disk_key") or disk.get("devicename") or "") for disk in disks if isinstance(disk, dict)
+            self._normalize_device_reference(disk.get("disk_key") or disk.get("devicename") or "")
+            for disk in disks
+            if isinstance(disk, dict)
         }
 
         for record in self._records_from_response(filesystem_response):

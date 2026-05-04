@@ -1707,3 +1707,83 @@ async def test_virtual_filesystems_skip_size_based_disk_mapping(hass, config_ent
 
     assert filesystems[0]["disk_key"] is None, "mergerfs must not map to a disk via size"
     assert filesystems[1]["disk_key"] is None, "nfs must not map to a disk via size"
+
+
+@pytest.mark.asyncio
+async def test_normalize_disks_strips_dev_prefix_from_devicename(hass, config_entry) -> None:
+    """_normalize_disks must normalize devicename by stripping /dev/ prefix.
+
+    OMV 8 may return devicename as '/dev/md0' instead of 'md0'. Without
+    normalization, _augment_disks_with_logical_storage would later add a
+    second synthetic 'md0' entry (since 'md0' != '/dev/md0'), producing
+    duplicate sensors for every md RAID array (Issue #27).
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+
+    disks = coordinator._normalize_disks(
+        [
+            {
+                "devicename": "/dev/md0",
+                "canonicaldevicefile": "/dev/md0",
+                "devicefile": "/dev/md0",
+                "israid": True,
+                "description": "RAID 1 (md0)",
+            },
+        ]
+    )
+
+    assert len(disks) == 1
+    assert disks[0]["disk_key"] == "md0", "disk_key must not contain /dev/ prefix"
+    assert disks[0]["devicename"] == "md0", "devicename must not contain /dev/ prefix"
+
+
+@pytest.mark.asyncio
+async def test_augment_disks_does_not_add_duplicate_when_dev_prefix_present(hass, config_entry) -> None:
+    """_augment_disks_with_logical_storage must not add a synthetic entry when
+    the disk list already contains the md device (even if its disk_key has
+    the /dev/ prefix from an older normalization path).
+
+    Regression test for Issue #27: duplicate disk sensors for md RAID arrays.
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+
+    # Simulate a disk list that has the md device with /dev/ prefix still present
+    # (guards against regressions if a future code path re-introduces unnormalized keys)
+    existing_disks = [
+        {
+            "disk_key": "/dev/md0",
+            "devicename": "/dev/md0",
+            "canonicaldevicefile": "/dev/md0",
+            "devicefile": "/dev/md0",
+            "israid": True,
+            "is_logical": False,
+        }
+    ]
+
+    # Filesystem record that points to md0 via canonicaldevicefile
+    filesystem_response = [
+        {
+            "uuid": "fs-uuid-1",
+            "devicename": "md0",
+            "devicefile": "/dev/md0",
+            "canonicaldevicefile": "/dev/md0",
+            "parentdevicefile": "/dev/md0",
+            "type": "ext4",
+            "size": "2000000000",
+        }
+    ]
+
+    result = coordinator._augment_disks_with_logical_storage(existing_disks, filesystem_response)
+
+    md_entries = [d for d in result if "md0" in str(d.get("disk_key", ""))]
+    assert len(md_entries) == 1, (
+        f"Expected 1 md0 disk entry, got {len(md_entries)}: {[d['disk_key'] for d in md_entries]}"
+    )

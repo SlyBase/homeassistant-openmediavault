@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Duplicate disk sensors for md RAID arrays** (Issue #27, follow-up) (`coordinator.py`): Fixed a second cause of duplicate sensor entries where OMV 8 returns the md device `devicename` with a `/dev/` prefix (e.g. `/dev/md0` instead of `md0`). `_normalize_disks()` now normalizes the device name by stripping the `/dev/` prefix before using it as `disk_key`. `_augment_disks_with_logical_storage()` also normalizes existing `disk_key` values before deduplication, so the synthetic fallback entry is no longer created when the real md device is already in the list.
+
 ## [2.1.3] - 2026-05-01
 
 ### Fixed
