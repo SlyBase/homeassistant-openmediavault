@@ -351,3 +351,27 @@ def test_latest_version_no_reboot_no_updates(coordinator, sample_data) -> None:
 
     entity = OMVUpdateEntity(coordinator)
     assert entity.latest_version == entity.installed_version
+
+
+@pytest.mark.asyncio
+async def test_async_install_reboots_when_no_pkg_updates_but_reboot_required(coordinator, sample_data) -> None:
+    """Test async_install calls System.reboot when only a reboot is pending."""
+    sample_data["hwinfo"]["availablePkgUpdates"] = 0
+    sample_data["hwinfo"]["rebootRequired"] = True
+    coordinator.data = sample_data
+
+    call_log: list[tuple] = []
+
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
+        call_log.append((service, method))
+        return None
+
+    coordinator.api.async_call = _mock_call
+
+    entity = OMVUpdateEntity(coordinator)
+    await entity.async_install(version=None, backup=False)
+
+    assert ("System", "reboot") in call_log
+    # apt workflow must NOT be triggered in this case
+    assert ("Apt", "update") not in call_log
+    assert ("Apt", "upgrade") not in call_log

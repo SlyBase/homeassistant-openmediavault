@@ -153,9 +153,9 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         return f"{self.coordinator.api.base_url}/#/system/updatemgmt/updates"
 
     async def async_install(self, version: str | None, backup: bool, **kwargs: Any) -> None:
-        """Trigger installation of all available OMV package updates.
+        """Trigger installation of all available OMV package updates, or reboot.
 
-        Mirrors the OMV web UI workflow:
+        When package updates are pending, mirrors the OMV web UI workflow:
           1. Apt.update  — refreshes the apt package cache (apt-get update).
           2. Apt.upgrade — runs the full dist-upgrade (apt-get dist-upgrade).
           3. Apt.update  — re-runs apt-get update so OMV recalculates
@@ -164,7 +164,13 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
                            triggers). Without this step the coordinator would
                            refresh with a stale count and the entity would
                            continue to show updates as available.
-        Each step starts an OMV background process that is polled via
+
+        When no package updates are pending but a reboot is required (e.g. after
+        a kernel upgrade), the action calls System.reboot instead.  This makes
+        the Install button behave as a "Reboot" button in that scenario, which
+        is the only remaining action needed to fully apply the changes.
+
+        Each apt step starts an OMV background process that is polled via
         Exec.isRunning until it completes or the 10-minute timeout is reached.
         HA manages the in_progress indicator automatically for the lifetime of
         this coroutine; if the upgrade step fails, the exception propagates to
@@ -176,6 +182,16 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             backup: Whether to create a backup before installing (not supported).
             **kwargs: Additional keyword arguments (unused).
         """
+        hwinfo = self.coordinator.data.get("hwinfo", {})
+        n_updates = int(hwinfo.get("availablePkgUpdates", 0))
+        reboot_required = bool(hwinfo.get("rebootRequired", False))
+
+        # Reboot-only case: no packages to install, just a pending reboot.
+        if n_updates == 0 and reboot_required:
+            _LOGGER.info("No package updates pending; triggering system reboot via OMV")
+            await self.coordinator.api.async_call("System", "reboot")
+            return
+
         # Step 1: refresh apt cache so dist-upgrade sees current package state
         update_file = await self.coordinator.api.async_call("Apt", "update")
         await self._wait_for_bgproc(update_file)
