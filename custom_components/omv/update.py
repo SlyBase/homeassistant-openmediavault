@@ -121,27 +121,13 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             name = str(pkg.get("name") or pkg.get("package") or "?")
             version = str(pkg.get("version") or "")
             summary = str(pkg.get("summary") or pkg.get("abstract") or "")
-            maintainer = str(pkg.get("maintainer") or "")
-            homepage = str(pkg.get("homepage") or "")
-            repository = str(pkg.get("repository") or "")
-            size_bytes = pkg.get("installedsize") or 0
             # Wrap version in backticks so that ~ in Debian version strings
-            # (e.g. ~debian.12~bookworm) is not interpreted as Markdown
-            # strikethrough / subscript by the HA frontend.
-            header = f"**{name}**" + (f" `{version}`" if version else "")
-            block: list[str] = [header]
+            # (e.g. ~debian.12~bookworm) is not rendered as Markdown strikethrough.
+            line = f"**{name}**" + (f" `{version}`" if version else "")
             if summary:
-                block.append(summary)
-            if maintainer:
-                block.append(f"Betreuer: {maintainer}")
-            if homepage:
-                block.append(f"Homepage: {homepage}")
-            if repository:
-                block.append(f"Quelle: {repository}")
-            if size_bytes:
-                block.append(f"Größe: {int(size_bytes) / (1024 * 1024):.2f} MiB")
-            # Two trailing spaces produce a hard line-break in Markdown.
-            blocks.append("  \n".join(block))
+                line += f"  \n{summary}"
+            blocks.append(line)
+        # Packages are separated by a blank line.
         return "\n\n".join(blocks)
 
     @property
