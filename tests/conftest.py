@@ -405,6 +405,7 @@ def sample_data() -> dict[str, Any]:
             },
         ],
         "kvm": [],
+        "upgradedList": [],
         "zfs": [
             {
                 "name": "tank",

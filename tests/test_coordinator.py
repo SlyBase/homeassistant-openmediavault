@@ -156,6 +156,20 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
             },
             ("Kvm", "getVmList"): {"data": []},
             ("zfs", "listPools"): [{"name": "tank", "state": "ONLINE"}],
+            ("Apt", "getUpgradedList"): {
+                "total": 1,
+                "data": [
+                    {
+                        "name": "docker-ce",
+                        "version": "5:29.4.2-1~debian.12~bookworm",
+                        "summary": "Docker: the open-source application container engine",
+                        "maintainer": "Docker <support@docker.com>",
+                        "homepage": "https://www.docker.com",
+                        "repository": "Docker CE/bookworm",
+                        "installedsize": 22735244,
+                    }
+                ],
+            },
         }
         return responses[(service, method)]
 

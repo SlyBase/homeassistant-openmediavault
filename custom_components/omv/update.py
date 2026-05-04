@@ -102,6 +102,44 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         return installed
 
     @property
+    def release_summary(self) -> str | None:
+        """Return a formatted list of pending package updates.
+
+        Each package is rendered as a short block with name, version, description,
+        maintainer, homepage, source repository and installed size — matching the
+        information shown in the OMV web UI update list.
+
+        Returns:
+            A multi-line string with one block per package, or None when no
+            package details are available.
+        """
+        packages: list[dict[str, Any]] = self.coordinator.data.get("upgradedList", [])
+        if not packages:
+            return None
+        blocks: list[str] = []
+        for pkg in packages:
+            name = str(pkg.get("name") or pkg.get("package") or "?")
+            version = str(pkg.get("version") or "")
+            summary = str(pkg.get("summary") or pkg.get("abstract") or "")
+            maintainer = str(pkg.get("maintainer") or "")
+            homepage = str(pkg.get("homepage") or "")
+            repository = str(pkg.get("repository") or "")
+            size_bytes = pkg.get("installedsize") or 0
+            block: list[str] = [f"{name} {version}".strip()]
+            if summary:
+                block.append(summary)
+            if maintainer:
+                block.append(f"Betreuer: {maintainer}")
+            if homepage:
+                block.append(f"Homepage: {homepage}")
+            if repository:
+                block.append(f"Quelle: {repository}")
+            if size_bytes:
+                block.append(f"Größe: {int(size_bytes) / (1024 * 1024):.2f} MiB")
+            blocks.append("\n".join(block))
+        return "\n\n".join(blocks)
+
+    @property
     def release_url(self) -> str | None:
         """Return the URL to the OMV update management page.
 

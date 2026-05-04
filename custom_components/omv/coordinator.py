@@ -222,6 +222,13 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             gpu = await self._async_get_gpu_info()
 
+            # Fetch per-package upgrade details when updates are available.
+            # Apt.getUpgradedList reads from the local apt cache (fast, no network).
+            upgraded_pkgs: list[dict[str, Any]] = []
+            if int(self._hwinfo.get("availablePkgUpdates", 0)) > 0:
+                raw_upgraded = await self._fetch_optional("Apt", "getUpgradedList", {"start": 0, "limit": 100})
+                upgraded_pkgs = self._records_from_response(raw_upgraded)
+
             unfiltered_data: dict[str, Any] = {
                 "hwinfo": self._hwinfo,
                 "disk": disks,
@@ -239,6 +246,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "zfs": zfs_pools,
                 "raid": raids,
                 "gpu": gpu,
+                "upgradedList": upgraded_pkgs,
             }
 
             self._inventory_source = unfiltered_data
@@ -498,6 +506,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         filtered["kvm"] = list(data.get("kvm", []))
         filtered["gpu"] = data.get("gpu", {})
+        filtered["upgradedList"] = list(data.get("upgradedList", []))
         return filtered
 
     async def _async_get_hwinfo(self) -> dict[str, Any]:

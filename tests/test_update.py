@@ -267,3 +267,48 @@ def test_suggested_object_id(coordinator) -> None:
     entity = OMVUpdateEntity(coordinator)
     assert "nas" in entity._attr_suggested_object_id
     assert "system_update" in entity._attr_suggested_object_id
+
+
+def test_release_summary_no_packages(coordinator, sample_data) -> None:
+    """Test release_summary returns None when no package details are available."""
+    sample_data["upgradedList"] = []
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.release_summary is None
+
+
+def test_release_summary_with_packages(coordinator, sample_data) -> None:
+    """Test release_summary returns a formatted text block for each package."""
+    sample_data["upgradedList"] = [
+        {
+            "name": "docker-ce",
+            "version": "5:29.4.2-2~debian.12~bookworm",
+            "summary": "Docker: the open-source application container engine",
+            "maintainer": "Docker <support@docker.com>",
+            "homepage": "https://www.docker.com",
+            "repository": "Docker CE/bookworm",
+            "installedsize": 22735244,
+        }
+    ]
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    summary = entity.release_summary
+
+    assert summary is not None
+    assert "docker-ce 5:29.4.2-2~debian.12~bookworm" in summary
+    assert "Docker: the open-source application container engine" in summary
+    assert "Betreuer: Docker <support@docker.com>" in summary
+    assert "Homepage: https://www.docker.com" in summary
+    assert "Quelle: Docker CE/bookworm" in summary
+    assert "21.68 MiB" in summary
+
+
+def test_release_summary_skips_blank_optional_fields(coordinator, sample_data) -> None:
+    """Test release_summary omits lines for blank optional fields."""
+    sample_data["upgradedList"] = [{"name": "minimal-pkg", "version": "1.0", "installedsize": 0}]
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.release_summary == "minimal-pkg 1.0"
