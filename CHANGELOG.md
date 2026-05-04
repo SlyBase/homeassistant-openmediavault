@@ -12,6 +12,14 @@
 
 - **`binary_sensor.update_available`** (`binary_sensor_types.py`): The `update_available` binary sensor (`BinarySensorDeviceClass.UPDATE`) is superseded by the new `update` platform entity. Existing instances are automatically removed from the HA entity registry on the next integration reload via `_async_cleanup_stale_registry_entries`.
 
+<<<<<<< HEAD
+=======
+### Fixed
+
+- **`update.py` — `_wait_for_bgproc` HTTP 500 handling**: `Exec.isRunning` returns HTTP 500 when the OMV background-process status file has already been deleted (which happens immediately after the process completes). Previously this was treated as a connection error and retried 3 times, causing the `update/install` action to fail entirely with "Failed to reach OMV after 3 retries: OMV returned HTTP 500". `_wait_for_bgproc` now catches `OMVConnectionError` containing "HTTP 500" and treats it as "bgproc finished successfully". The call also passes `max_retries=0` to avoid the 7-second retry delay.
+- **`omv_api.py` — log level for `max_retries=0`**: The "Max retries exceeded" message is now logged at `DEBUG` instead of `ERROR` when the caller passes `max_retries=0`, avoiding ERROR spam for expected one-shot failures (e.g. `Exec.isRunning` after bgproc completion, `Smart.getAttributes` on NVMe).
+- **Update entity disappears after coordinator refresh** (`__init__.py`, `update.py`): `_async_cleanup_stale_registry_entries()` did not include the update platform's unique IDs in its expected-entity set, causing the entity to be removed from the HA entity registry on every 60-second coordinator poll. Added `get_expected_update_unique_ids()` to `update.py` and registered it in the cleanup function so the update entity is preserved across refreshes.
+>>>>>>> 6c34eb6 (fix(update): treat Exec.isRunning HTTP 500 as bgproc completion)
 
 ## [2.1.3] - 2026-05-01
 

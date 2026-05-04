@@ -196,14 +196,15 @@ class OMVAPI:
                             "Failed to reconnect during retry: %s",
                             reconnect_err,
                         )
-            _LOGGER.error(
+            log_fn = _LOGGER.debug if max_retries == 0 else _LOGGER.error
+            log_fn(
                 "Max retries exceeded for %s.%s on %s: %s",
                 service,
                 method,
                 self._host,
                 last_err,
             )
-            raise OMVConnectionError(f"Failed to reach OMV after {max_retries} retries: {last_err}") from last_err
+        raise OMVConnectionError(f"Failed to reach OMV after {max_retries} retries: {last_err}") from last_err
 
     async def _async_raw_call(
         self,

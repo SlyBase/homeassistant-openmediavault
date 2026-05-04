@@ -8,6 +8,7 @@ import pytest
 from homeassistant.components.update import UpdateEntityFeature
 
 from custom_components.omv.const import DOMAIN
+from custom_components.omv.exceptions import OMVConnectionError
 from custom_components.omv.update import (
     OMVUpdateEntity,
     async_setup_entry,
@@ -85,7 +86,7 @@ async def test_async_install_runs_update_then_upgrade(coordinator) -> None:
 
     call_log: list[tuple] = []
 
-    async def _mock_call(service: str, method: str, params: dict | None = None) -> object:
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
         call_log.append((service, method))
         if service == "Apt" and method == "update":
             return apt_update_file
@@ -122,9 +123,9 @@ async def test_async_install_raises_on_apt_update_error(coordinator) -> None:
 
 @pytest.mark.asyncio
 async def test_async_install_raises_on_exec_isrunning_error(coordinator) -> None:
-    """Test async_install propagates Exec.isRunning errors (e.g. upgrade failed on OMV)."""
+    """Test async_install propagates non-HTTP-500 Exec.isRunning errors to the caller."""
 
-    async def _mock_call(service: str, method: str, params: dict | None = None) -> object:
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
         if service == "Apt":
             return "/tmp/bgstatus"
         raise Exception("apt-get dist-upgrade failed with exit code 1")
@@ -141,11 +142,36 @@ async def test_async_install_raises_on_exec_isrunning_error(coordinator) -> None
 
 
 @pytest.mark.asyncio
+async def test_async_install_treats_http500_from_bgproc_as_done(coordinator) -> None:
+    """Test that HTTP 500 from Exec.isRunning is treated as bgproc completion, not an error.
+
+    OMV deletes the bgproc status file once the process completes.
+    A subsequent Exec.isRunning call returns HTTP 500 (file not found).
+    This must NOT propagate as an error — it means the upgrade succeeded.
+    """
+
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
+        if service == "Apt":
+            return "/tmp/bgstatus"
+        raise OMVConnectionError("Failed to reach OMV after 0 retries: OMV returned HTTP 500")
+
+    coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
+
+    entity = OMVUpdateEntity(coordinator)
+
+    with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
+        await entity.async_install(version=None, backup=False)
+
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_async_install_stops_polling_after_timeout(coordinator) -> None:
     """Test _wait_for_bgproc stops after _MAX_POLLS when process never finishes."""
     still_running = {"filename": "/tmp/bgstatus", "running": True}
 
-    async def _mock_call(service: str, method: str, params: dict | None = None) -> object:
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
         if service == "Apt":
             return "/tmp/bgstatus"
         return still_running

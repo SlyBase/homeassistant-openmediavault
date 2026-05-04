@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
@@ -12,6 +13,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
 from .entity import OMVEntity, build_host_object_id
+from .exceptions import OMVConnectionError
+
+_LOGGER = logging.getLogger(__name__)
 
 _INSTALL_POLL_INTERVAL = 10  # seconds between Exec.isRunning polls
 _INSTALL_TIMEOUT = 600  # maximum seconds per background process step (10 minutes)
@@ -139,6 +143,11 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         install as failed.  If *filename* is not a string the call is silently
         skipped (defensive guard for unexpected RPC responses).
 
+        OMV deletes the bgproc status file as soon as the process completes.
+        Any subsequent Exec.isRunning call then returns HTTP 500 because the
+        file no longer exists.  HTTP 500 is therefore treated as "process
+        finished successfully" rather than a real connection error.
+
         Args:
             filename: The bgproc status filename returned by an OMV execBgProc
                 RPC call (e.g. Apt.update / Apt.upgrade).
@@ -147,6 +156,20 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             return
         for _ in range(_MAX_POLLS):
             await asyncio.sleep(_INSTALL_POLL_INTERVAL)
-            result = await self.coordinator.api.async_call("Exec", "isRunning", {"filename": filename})
+            try:
+                result = await self.coordinator.api.async_call(
+                    "Exec", "isRunning", {"filename": filename}, max_retries=0
+                )
+            except OMVConnectionError as err:
+                if "HTTP 500" in str(err):
+                    # OMV deletes the bgproc status file once the process
+                    # completes; the next Exec.isRunning call then returns
+                    # HTTP 500 because the file is gone — treat as done.
+                    _LOGGER.debug(
+                        "Exec.isRunning returned HTTP 500 for %s — bgproc completed",
+                        filename,
+                    )
+                    break
+                raise
             if isinstance(result, dict) and not result.get("running", True):
                 break
