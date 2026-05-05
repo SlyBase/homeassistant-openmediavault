@@ -1,16 +1,12 @@
 # Changelog
 
-## [Unreleased]
-
-### Fixed
-
-- **Duplicate disk sensors for md RAID arrays** (Issue #27, follow-up) (`coordinator.py`): Fixed a second cause of duplicate sensor entries where OMV 8 returns the md device `devicename` with a `/dev/` prefix (e.g. `/dev/md0` instead of `md0`). `_normalize_disks()` now normalizes the device name by stripping the `/dev/` prefix before using it as `disk_key`. `_augment_disks_with_logical_storage()` also normalizes existing `disk_key` values before deduplication, so the synthetic fallback entry is no longer created when the real md device is already in the list.
-
 ## [2.1.3] - 2026-05-01
 
 ### Fixed
 
 - **Duplicate RAID sensors** (Issue #27) (`coordinator.py`, `sensor_types.py`): Fixed a critical bug where md RAID arrays with multiple member disks (e.g., md0 composed of sda + sdb) would create duplicate sensor records. The `_normalize_raids()` function now deduplicates by RAID device name and groups all member disks under a single RAID record. New helper method `_extract_raid_device()` reliably extracts RAID device names from disk records by checking direct OMV fields, parsing descriptions, and extracting from device paths. Member disk tracking is now exposed in sensor attributes via `member_disks` field.
+
+- **Duplicate disk sensors for md RAID arrays** (Issue #27, follow-up) (`coordinator.py`): Fixed a second cause of duplicate sensor entries where OMV 8 returns the md device `devicename` with a `/dev/` prefix (e.g. `/dev/md0` instead of `md0`). `_normalize_disks()` now normalizes the device name by stripping the `/dev/` prefix before using it as `disk_key`. `_augment_disks_with_logical_storage()` also normalizes existing `disk_key` values before deduplication, so the synthetic fallback entry is no longer created when the real md device is already in the list.
 
 - **Connection instability and unavailable entities** (Issue #26) (`omv_api.py`, `coordinator.py`): Implemented comprehensive connection recovery with exponential backoff retry logic to handle transient connection failures introduced by OMV 8.2.10-1. The `async_call()` method now automatically retries failed requests up to 3 times with 1s, 2s, and 4s delays, and attempts session re-establishment between retries. Additionally, `_async_update_data()` now caches the last valid dataset and uses it as a fallback when API errors occur, preventing sensors from going unavailable during temporary connection glitches. This ensures entities remain available across OMV service restarts and network hiccups without requiring a manual reload of the integration.
 
