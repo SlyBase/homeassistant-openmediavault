@@ -211,6 +211,8 @@ def get_expected_sensor_registry_state(
     for disk in coordinator.data.get("disk", []):
         if not isinstance(disk, dict):
             continue
+        if disk.get("israid") or disk.get("is_logical"):
+            continue
         item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
         if not item_key:
             continue
@@ -377,6 +379,8 @@ async def async_setup_entry(
 
     for disk in coordinator.data.get("disk", []):
         if not isinstance(disk, dict):
+            continue
+        if disk.get("israid") or disk.get("is_logical"):
             continue
         item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
         if not item_key:

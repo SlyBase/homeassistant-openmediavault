@@ -398,6 +398,39 @@ async def test_raid_sensor_reports_health_value(coordinator) -> None:
 
 
 @pytest.mark.asyncio
+async def test_raid_disk_entries_do_not_generate_disk_sensors(coordinator, config_entry) -> None:
+    """Test that synthetic RAID entries in coordinator.data['disk'] produce no disk-style sensors.
+
+    When OMV does not list md* devices in DiskMgmt.enumerateDevices, the coordinator
+    synthesises logical disk records (israid=True, is_logical=True) so that filesystem
+    metrics can be projected onto the RAID device.  These synthetic records must NOT
+    produce disk-capacity sensors (used_percent, total_size, …) — only the dedicated
+    RAID health sensor (from coordinator.data["raid"]) must appear.
+    """
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    # RAID health sensor must still be created
+    assert any(entity.unique_id.endswith("raid-md0") for entity in added)
+    # No disk-capacity / temperature sensors for the synthetic RAID disk entry
+    for suffix in (
+        "disk-md0",
+        "disk_used_percent-md0",
+        "disk_free_percent-md0",
+        "disk_used_size-md0",
+        "disk_free_size-md0",
+        "disk_total_size-md0",
+    ):
+        assert not any(entity.unique_id.endswith(suffix) for entity in added), (
+            f"Unexpected disk sensor with suffix '{suffix}' found for RAID device md0"
+        )
+
+
+@pytest.mark.asyncio
 async def test_virtual_passthrough_hides_temperature_entities(coordinator, config_entry) -> None:
     """Test virtual passthrough removes CPU and disk temperature entities."""
     coordinator.virtual_passthrough = True

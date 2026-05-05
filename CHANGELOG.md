@@ -1,8 +1,17 @@
 # Changelog
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## [2.2.0] - 2026-05-12
 =======
+=======
+## [Unreleased]
+
+### Fixed
+
+- **Duplicate disk sensors for md RAID arrays** (Issue #27) (`sensor.py`, `tests/conftest.py`): Synthetic RAID disk records (flagged `israid=True` / `is_logical=True`) that the coordinator adds to `coordinator.data["disk"]` so filesystem metrics can be projected onto the RAID device were also being iterated by the disk-sensor loop in `async_setup_entry` and `get_expected_sensor_registry_state`. This caused five additional disk-capacity sensors (used %, free %, sizes) to be created per RAID array alongside the correct RAID health sensor. Both disk loops now skip entries with `israid=True` or `is_logical=True`; RAID devices are exclusively covered by the dedicated RAID sensor from `coordinator.data["raid"]`.
+
+>>>>>>> f239268 (fix(sensor): skip israid/is_logical disk entries in disk-sensor loops)
 ## [2.2.0]
 >>>>>>> c52ebd8 (feat(docs): update changelog and README for 2.2.0 release)
 
