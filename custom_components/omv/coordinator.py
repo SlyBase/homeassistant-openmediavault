@@ -165,8 +165,16 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raw_services = await self._fetch_or_empty("Services", "getStatus")
             raw_network = await self._fetch_or_empty("Network", "enumerateDevices")
             raw_disks = await self._fetch_or_empty("DiskMgmt", "enumerateDevices")
+            raw_md_raids: Any = []
+            if 7 <= self.omv_version < 8:
+                _LOGGER.debug(
+                    "OMV %d: supplementing disk inventory via MdMgmt.enumerateDevices",
+                    self.omv_version,
+                )
+                raw_md_raids = await self._fetch_optional("MdMgmt", "enumerateDevices")
 
             disks = self._normalize_disks(raw_disks)
+            disks = self._augment_disks_with_md_devices(disks, raw_md_raids)
             disks = self._augment_disks_with_logical_storage(disks, raw_filesystems)
             filesystems = self._normalize_filesystems(raw_filesystems, disks)
             services = self._normalize_services(raw_services)
@@ -382,15 +390,20 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         filtered["hwinfo"] = data.get("hwinfo", {})
 
         selected_disks = self._selected_values(options, CONF_SELECTED_DISKS)
-        if selected_disks is not None:
-            filtered["disk"] = [
-                disk
-                for disk in data.get("disk", [])
-                if isinstance(disk, dict)
-                and str(disk.get("disk_key") or disk.get("devicename") or "") in selected_disks
-            ]
-        else:
-            filtered["disk"] = list(data.get("disk", []))
+        selected_raids = self._selected_values(options, CONF_SELECTED_RAIDS, empty_means_all=True)
+        filtered["disk"] = []
+        for disk in data.get("disk", []):
+            if not isinstance(disk, dict):
+                continue
+
+            disk_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+            if disk.get("israid") or disk.get("is_logical"):
+                if selected_raids is None or disk_key in selected_raids:
+                    filtered["disk"].append(disk)
+                continue
+
+            if selected_disks is None or disk_key in selected_disks:
+                filtered["disk"].append(disk)
 
         selected_filesystems = self._selected_values(options, CONF_SELECTED_FILESYSTEMS)
         filesystems = list(data.get("fs", []))
@@ -416,7 +429,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lambda item: str(item.get("uuid") or item.get("devicename") or ""),
         )
 
-        selected_raids = self._selected_values(options, CONF_SELECTED_RAIDS)
         filtered["raid"] = self._filter_collection(
             data.get("raid", []),
             selected_raids,
@@ -1138,6 +1150,71 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return disks
 
+    def _augment_disks_with_md_devices(
+        self,
+        disks: list[dict[str, Any]],
+        response: Any,
+    ) -> list[dict[str, Any]]:
+        """Add md RAID devices that OMV 7 exposes only via MdMgmt."""
+        known_disk_keys = {
+            self._normalize_device_reference(disk.get("disk_key") or disk.get("devicename") or "")
+            for disk in disks
+            if isinstance(disk, dict)
+        }
+
+        for record in self._records_from_response(response):
+            devicefile = str(record.get("devicefile") or record.get("canonicaldevicefile") or "")
+            raid_device = self._normalize_device_reference(devicefile)
+            if not raid_device or not raid_device.startswith("md") or raid_device in known_disk_keys:
+                continue
+
+            member_disks: list[str] = []
+            for member in record.get("devices", []):
+                normalized_member = self._normalize_device_reference(member)
+                if normalized_member and normalized_member not in member_disks:
+                    member_disks.append(normalized_member)
+
+            total_size_gb = self._coerce_storage_gb(record.get("size"))
+            description = str(record.get("description") or "Software RAID device")
+            disk = {
+                "disk_key": raid_device,
+                "devicename": raid_device,
+                "canonicaldevicefile": devicefile or f"/dev/{raid_device}",
+                "devicefile": devicefile or f"/dev/{raid_device}",
+                "size": record.get("size", "unknown"),
+                "total_size_gb": total_size_gb or None,
+                "vendor": "OpenMediaVault",
+                "model": "Linux MD RAID",
+                "description": description,
+                "raid_level": str(record.get("level") or "") or self._extract_raid_level(description),
+                "serialnumber": str(record.get("uuid") or raid_device),
+                "israid": True,
+                "isroot": False,
+                "isreadonly": False,
+                "hotpluggable": False,
+                "temperature": None,
+                "overallstatus": str(record.get("state") or "unknown"),
+                "used_size_gb": None,
+                "free_size_gb": None,
+                "used_percentage": None,
+                "free_percentage": None,
+                "storage_source": None,
+                "storage_label": None,
+                "is_logical": True,
+                "raid_member_disks": member_disks,
+            }
+            for attribute in _SMART_ATTRIBUTE_NAMES:
+                disk[attribute] = "unknown"
+            disks.append(disk)
+            known_disk_keys.add(raid_device)
+            _LOGGER.debug(
+                "_augment_disks_with_md_devices: added md device=%s members=%s",
+                raid_device,
+                member_disks,
+            )
+
+        return disks
+
     def _find_logical_storage_reference(self, record: dict[str, Any]) -> str | None:
         """Return a logical storage reference derived from filesystem payloads."""
         for value in (
@@ -1187,6 +1264,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     raid_device,
                     disk.get("disk_key"),
                 )
+                explicit_members = disk.get("raid_member_disks")
+                if not isinstance(explicit_members, list):
+                    explicit_members = []
                 raids_by_device[raid_device] = {
                     "device": raid_device,
                     "devicefile": str(
@@ -1198,8 +1278,17 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "health": self._raid_health_from_disk(disk),
                     "health_indicator": "",
                     "action_percent": None,
-                    "member_disks": [],  # Track all physical member disks
+                    "member_disks": [str(member) for member in explicit_members if isinstance(member, str) and member],
                 }
+
+            explicit_members = disk.get("raid_member_disks")
+            if isinstance(explicit_members, list) and explicit_members:
+                for member in explicit_members:
+                    if not isinstance(member, str) or not member:
+                        continue
+                    if member not in raids_by_device[raid_device]["member_disks"]:
+                        raids_by_device[raid_device]["member_disks"].append(member)
+                continue
 
             # Track which physical disk is a member of this RAID
             member_key = str(disk.get("disk_key") or disk.get("devicename") or "")
@@ -2327,11 +2416,22 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         options: dict[str, Any],
         key: str,
+        *,
+        empty_means_all: bool = False,
     ) -> set[str] | None:
-        """Return the selected values or None when the option was never set."""
+        """Return selected values, or None when the option should not filter.
+
+        Args:
+            options: Persisted config-entry options.
+            key: Selection field to read.
+            empty_means_all: Treat an explicit empty list as no filter.
+        """
         if key not in options:
             return None
-        return {str(value) for value in options.get(key, [])}
+        values = {str(value) for value in options.get(key, [])}
+        if empty_means_all and not values:
+            return None
+        return values
 
     def _filter_collection(
         self,

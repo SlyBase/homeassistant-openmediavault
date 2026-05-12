@@ -153,6 +153,33 @@ def _should_add_description(description: OMVSensorDescription, data: dict[str, A
     return description.value_fn(data) is not None
 
 
+def _disk_has_backing_filesystem(
+    coordinator: OMVDataUpdateCoordinator,
+    item_key: str,
+) -> bool:
+    """Return whether a disk already exposes filesystem-backed capacity metrics."""
+    return any(
+        isinstance(filesystem, dict) and str(filesystem.get("disk_key") or "") == item_key
+        for filesystem in coordinator.data.get("fs", [])
+    )
+
+
+def _should_add_disk_metric(
+    coordinator: OMVDataUpdateCoordinator,
+    description: OMVSensorDescription,
+    disk: dict[str, Any],
+    item_key: str,
+) -> bool:
+    """Return whether a disk metric should be exposed for a disk item."""
+    if not _should_add_description(description, disk):
+        return False
+
+    if not (disk.get("israid") or disk.get("is_logical")):
+        return True
+
+    return not _disk_has_backing_filesystem(coordinator, item_key)
+
+
 def get_expected_sensor_registry_state(
     coordinator: OMVDataUpdateCoordinator,
 ) -> tuple[set[str], set[tuple[str, str]]]:
@@ -194,7 +221,7 @@ def get_expected_sensor_registry_state(
                 device_identifiers,
             )
         for description in _DISK_SENSORS:
-            if _should_add_description(description, disk):
+            if _should_add_disk_metric(coordinator, description, disk, item_key):
                 unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
                 _collect_device_identifiers(
                     get_disk_device_info(coordinator, disk),
@@ -365,7 +392,7 @@ async def async_setup_entry(
                 )
             )
         for description in _DISK_SENSORS:
-            if not _should_add_description(description, disk):
+            if not _should_add_disk_metric(coordinator, description, disk, item_key):
                 continue
             entities.append(
                 OMVSensor(

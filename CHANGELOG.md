@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- OMV 7 md RAID discovery now supplements `DiskMgmt.enumerateDevices` with `MdMgmt.enumerateDevices`, and empty RAID selections no longer hide newly discovered md arrays behind existing resource filters in Home Assistant.
+- Mounted md RAID filesystems no longer create a second duplicate-looking set of disk capacity sensors on the same RAID device; unmounted md arrays still keep their disk metrics.
+
 ## [2.1.3] - 2026-05-01
 
 ### Fixed

@@ -53,6 +53,131 @@ async def test_async_setup_entry_adds_expected_sensors(coordinator, config_entry
 
 
 @pytest.mark.asyncio
+async def test_raid_backed_filesystem_omits_duplicate_disk_metrics(coordinator, config_entry) -> None:
+    """Mounted md devices should expose filesystem metrics without duplicate disk sizes."""
+    coordinator.data["disk"].append(
+        {
+            "disk_key": "md127",
+            "devicename": "md127",
+            "devicefile": "/dev/md127",
+            "canonicaldevicefile": "/dev/md127",
+            "temperature": None,
+            "model": "Linux MD RAID",
+            "serialnumber": "md127",
+            "size": "2000 GB",
+            "total_size_gb": 2000.0,
+            "used_size_gb": 1000.0,
+            "free_size_gb": 1000.0,
+            "used_percentage": 50.0,
+            "free_percentage": 50.0,
+            "storage_source": "filesystem",
+            "storage_label": "SaveData",
+            "vendor": "unknown",
+            "overallstatus": "PASSED",
+            "israid": True,
+            "is_logical": True,
+            "raid_level": "raid1",
+        }
+    )
+    coordinator.data["fs"].append(
+        {
+            "uuid": "fs-md127",
+            "label": "SaveData",
+            "type": "ext4",
+            "devicename": "md127",
+            "devicefile": "/dev/md127",
+            "canonicaldevicefile": "/dev/md127",
+            "parentdevicefile": "/dev/md127",
+            "disk_key": "md127",
+            "size": 2000.0,
+            "used": 1000.0,
+            "available": 1000.0,
+            "percentage": 50.0,
+            "free_percentage": 50.0,
+            "mountdir": "/srv/dev-disk-by-uuid-fs-md127",
+        }
+    )
+    coordinator.data["raid"].append(
+        {
+            "device": "md127",
+            "state": "active",
+            "level": "raid1",
+            "health": "clean",
+            "health_indicator": "UU",
+            "action_percent": None,
+        }
+    )
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    unique_ids = {entity.unique_id for entity in added}
+    entry_id = coordinator.config_entry.entry_id
+
+    assert f"{entry_id}-raid-md127" in unique_ids
+    assert f"{entry_id}-filesystem-fs-md127" in unique_ids
+    assert f"{entry_id}-filesystem_total_size-fs-md127" in unique_ids
+    assert f"{entry_id}-disk_total_size-md127" not in unique_ids
+    assert f"{entry_id}-disk_used_size-md127" not in unique_ids
+    assert f"{entry_id}-disk_free_size-md127" not in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_unmounted_md_raid_keeps_disk_metrics(coordinator, config_entry) -> None:
+    """Unmounted md devices should keep disk capacity sensors for visibility."""
+    coordinator.data["disk"].append(
+        {
+            "disk_key": "md1",
+            "devicename": "md1",
+            "devicefile": "/dev/md1",
+            "canonicaldevicefile": "/dev/md1",
+            "temperature": None,
+            "model": "Linux MD RAID",
+            "serialnumber": "md1",
+            "size": "1000 GB",
+            "total_size_gb": 1000.0,
+            "used_size_gb": 250.0,
+            "free_size_gb": 750.0,
+            "used_percentage": 25.0,
+            "free_percentage": 75.0,
+            "storage_source": None,
+            "storage_label": None,
+            "vendor": "unknown",
+            "overallstatus": "PASSED",
+            "israid": True,
+            "is_logical": True,
+            "raid_level": "raid1",
+        }
+    )
+    coordinator.data["raid"].append(
+        {
+            "device": "md1",
+            "state": "active",
+            "level": "raid1",
+            "health": "clean",
+            "health_indicator": "UU",
+            "action_percent": None,
+        }
+    )
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    unique_ids = {entity.unique_id for entity in added}
+    entry_id = coordinator.config_entry.entry_id
+
+    assert f"{entry_id}-raid-md1" in unique_ids
+    assert f"{entry_id}-disk_total_size-md1" in unique_ids
+    assert f"{entry_id}-disk_used_size-md1" in unique_ids
+
+
+@pytest.mark.asyncio
 async def test_system_sensor_reads_native_value(coordinator) -> None:
     """Test a singleton system sensor exposes the coordinator value."""
     sensor = OMVSensor(coordinator, SYSTEM_SENSORS[0])

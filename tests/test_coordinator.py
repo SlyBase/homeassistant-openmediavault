@@ -211,6 +211,72 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
 
 
 @pytest.mark.asyncio
+async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, config_entry) -> None:
+    """Test OMV 7 MdMgmt data creates md RAID devices even without filesystem entries."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        responses = {
+            ("System", "getInformation"): {
+                "hostname": "omv7",
+                "version": "7.7.24-7",
+                "cpuModelName": "Intel(R) Core(TM)",
+                "kernel": "Linux 6.1.0-omv",
+                "cpuUtilization": 12.5,
+                "memTotal": 100,
+                "memUsed": 25,
+                "uptime": 3600,
+                "loadAverage": {"1min": 0.1, "5min": 0.2, "15min": 0.3},
+                "rebootRequired": False,
+                "availablePkgUpdates": 0,
+            },
+            ("CpuTemp", "get"): {},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("MdMgmt", "enumerateDevices"): [
+                {
+                    "name": "omv7:0",
+                    "devicefile": "/dev/md0",
+                    "uuid": "74ab321f:98567b3e:db248598:80f5dd6a",
+                    "level": "raid0",
+                    "numdevices": 2,
+                    "devices": ["/dev/loop10", "/dev/loop11"],
+                    "size": "2143289344",
+                    "state": "clean",
+                    "description": "Software RAID omv7:0 [/dev/md0, raid0, 1.99 GiB]",
+                }
+            ],
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): [],
+            ("zfs", "listPools"): [],
+            ("Kvm", "getVmList"): {"data": []},
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+
+    await coordinator.async_init(await async_call("System", "getInformation"))
+    data = await coordinator._async_update_data()
+
+    md_disk = next(disk for disk in data["disk"] if disk["disk_key"] == "md0")
+    raid = next(raid for raid in data["raid"] if raid["device"] == "md0")
+
+    assert md_disk["israid"] is True
+    assert md_disk["is_logical"] is True
+    assert md_disk["raid_level"] == "raid0"
+    assert md_disk["devicefile"] == "/dev/md0"
+    assert md_disk["raid_member_disks"] == ["loop10", "loop11"]
+    assert raid["health"] == "clean"
+    assert raid["member_disks"] == ["loop10", "loop11"]
+
+
+@pytest.mark.asyncio
 async def test_container_version_prefers_metadata_over_image_tag(hass, config_entry) -> None:
     """Test labels, annotations and config labels beat the image tag fallback."""
     config_entry.add_to_hass(hass)
@@ -806,6 +872,7 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
             "disk": [
                 {"disk_key": "sda", "devicename": "sda"},
                 {"disk_key": "sdb", "devicename": "sdb"},
+                {"disk_key": "md0", "devicename": "md0", "israid": True, "is_logical": True},
             ],
             "fs": [
                 {"uuid": "fs-1", "disk_key": "sda"},
@@ -844,6 +911,7 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
         "disk": [
             {"disk_key": "sda", "devicename": "sda", "model": "Disk A"},
             {"disk_key": "sdb", "devicename": "sdb", "model": "Disk B"},
+            {"disk_key": "md0", "devicename": "md0", "model": "Linux MD RAID", "israid": True},
         ],
         "fs": [
             {"uuid": "fs-1", "label": "data"},
@@ -881,8 +949,8 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
 
     inventory = coordinator.get_live_inventory()
 
-    assert [item["value"] for item in inventory[CONF_SELECTED_DISKS]] == ["sda", "sdb"]
-    assert [disk["disk_key"] for disk in coordinator.data["disk"]] == ["sda"]
+    assert [item["value"] for item in inventory[CONF_SELECTED_DISKS]] == ["md0", "sda", "sdb"]
+    assert [disk["disk_key"] for disk in coordinator.data["disk"]] == ["sda", "md0"]
     assert [filesystem["uuid"] for filesystem in coordinator.data["fs"]] == ["fs-1"]
     assert [item["value"] for item in inventory[CONF_SELECTED_CONTAINERS]] == [
         "ctr-paperless-app",
@@ -891,6 +959,57 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
     assert [container["container_key"] for container in coordinator.data["compose"]] == ["ctr-paperless-app"]
     assert [project["project_key"] for project in coordinator.data["compose_projects"]] == ["paperless"]
     assert [volume["volume_key"] for volume in coordinator.data["compose_volumes"]] == ["ctr-paperless-app:data"]
+
+
+@pytest.mark.asyncio
+async def test_coordinator_treats_empty_raid_selection_as_unfiltered_for_md_devices(hass, config_entry) -> None:
+    """Test new md RAID resources are not hidden by an explicit empty selected_raids list."""
+    config_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={
+            CONF_SELECTED_DISKS: ["sda"],
+            CONF_SELECTED_RAIDS: [],
+        },
+    )
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.168.1.10:80"
+    api.async_call = AsyncMock()
+
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+        smart_disabled=True,
+    )
+
+    filtered = coordinator.filter_data_by_selection(
+        {
+            "hwinfo": {},
+            "disk": [
+                {"disk_key": "sda", "devicename": "sda"},
+                {"disk_key": "md0", "devicename": "md0", "israid": True, "is_logical": True},
+            ],
+            "fs": [],
+            "service": [],
+            "network": [],
+            "raid": [{"device": "md0", "disk_key": "md0", "health": "clean"}],
+            "zfs": [],
+            "smart": [],
+            "compose": [],
+            "compose_projects": [],
+            "compose_volumes": [],
+            "kvm": [],
+            "gpu": {},
+        },
+        config_entry.options,
+    )
+
+    assert [disk["disk_key"] for disk in filtered["disk"]] == ["sda", "md0"]
+    assert [raid["device"] for raid in filtered["raid"]] == ["md0"]
 
 
 @pytest.mark.asyncio
