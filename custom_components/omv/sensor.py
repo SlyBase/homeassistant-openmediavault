@@ -155,13 +155,26 @@ def _should_add_description(description: OMVSensorDescription, data: dict[str, A
 
 def _disk_has_backing_filesystem(
     coordinator: OMVDataUpdateCoordinator,
+    disk: dict[str, Any],
     item_key: str,
 ) -> bool:
-    """Return whether a disk already exposes filesystem-backed capacity metrics."""
-    return any(
-        isinstance(filesystem, dict) and str(filesystem.get("disk_key") or "") == item_key
-        for filesystem in coordinator.data.get("fs", [])
-    )
+    """Return whether a disk already exposes filesystem-backed capacity metrics.
+
+    Synthetic md devices may only be linked to a filesystem via the storage label,
+    not via ``fs.disk_key``. In that case, suppress disk metrics as long as a
+    matching filesystem record exists.
+    """
+    storage_source = str(disk.get("storage_source") or "")
+    storage_label = str(disk.get("storage_label") or "")
+
+    for filesystem in coordinator.data.get("fs", []):
+        if not isinstance(filesystem, dict):
+            continue
+        if str(filesystem.get("disk_key") or "") == item_key:
+            return True
+        if storage_source == "filesystem" and storage_label and str(filesystem.get("label") or "") == storage_label:
+            return True
+    return False
 
 
 def _should_add_disk_metric(
@@ -177,7 +190,7 @@ def _should_add_disk_metric(
     if not (disk.get("israid") or disk.get("is_logical")):
         return True
 
-    return not _disk_has_backing_filesystem(coordinator, item_key)
+    return not _disk_has_backing_filesystem(coordinator, disk, item_key)
 
 
 def get_expected_sensor_registry_state(
@@ -211,12 +224,14 @@ def get_expected_sensor_registry_state(
     for disk in coordinator.data.get("disk", []):
         if not isinstance(disk, dict):
             continue
-        if disk.get("israid") or disk.get("is_logical"):
-            continue
         item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
         if not item_key:
             continue
-        if not coordinator.virtual_passthrough and disk.get("temperature") is not None:
+        if (
+            not coordinator.virtual_passthrough
+            and not (disk.get("israid") or disk.get("is_logical"))
+            and disk.get("temperature") is not None
+        ):
             unique_ids.add(f"{entry_id}-{DISK_SENSOR.key}-{item_key}")
             _collect_device_identifiers(
                 get_disk_device_info(coordinator, disk),
@@ -380,13 +395,15 @@ async def async_setup_entry(
     for disk in coordinator.data.get("disk", []):
         if not isinstance(disk, dict):
             continue
-        if disk.get("israid") or disk.get("is_logical"):
-            continue
         item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
         if not item_key:
             continue
         device_info = get_disk_device_info(coordinator, disk)
-        if not coordinator.virtual_passthrough and disk.get("temperature") is not None:
+        if (
+            not coordinator.virtual_passthrough
+            and not (disk.get("israid") or disk.get("is_logical"))
+            and disk.get("temperature") is not None
+        ):
             entities.append(
                 OMVSensor(
                     coordinator,

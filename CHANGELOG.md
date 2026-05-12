@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Unmounted md RAID disk metrics** (`sensor.py`): Restored disk size/usage sensors for md RAID and other logical disk records when OMV has no backing filesystem entry for them. Mounted logical storage still prefers filesystem-backed metrics, so the duplicate-capacity regression stays fixed.
+
 ### [2.2.0]
 
 ### Added
