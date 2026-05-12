@@ -1,22 +1,6 @@
 # Changelog
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-## [2.2.0] - 2026-05-12
-=======
-=======
-## [Unreleased]
-
-### Fixed
-
-- **Duplicate disk sensors for md RAID arrays** (Issue #27) (`sensor.py`, `tests/conftest.py`): Synthetic RAID disk records (flagged `israid=True` / `is_logical=True`) that the coordinator adds to `coordinator.data["disk"]` so filesystem metrics can be projected onto the RAID device were also being iterated by the disk-sensor loop in `async_setup_entry` and `get_expected_sensor_registry_state`. This caused five additional disk-capacity sensors (used %, free %, sizes) to be created per RAID array alongside the correct RAID health sensor. Both disk loops now skip entries with `israid=True` or `is_logical=True`; RAID devices are exclusively covered by the dedicated RAID sensor from `coordinator.data["raid"]`.
-
->>>>>>> f239268 (fix(sensor): skip israid/is_logical disk entries in disk-sensor loops)
-=======
->>>>>>> 3c33d2f (docs(changelog): remove unreleased section and fix formatting)
-## [2.2.0]
->>>>>>> c52ebd8 (feat(docs): update changelog and README for 2.2.0 release)
+### [2.2.0]
 
 ### Added
 
@@ -28,19 +12,6 @@
 
 - **`binary_sensor.update_available`** (`binary_sensor_types.py`): The `update_available` binary sensor (`BinarySensorDeviceClass.UPDATE`) is superseded by the new `update` platform entity. Existing instances are automatically removed from the HA entity registry on the next integration reload via `_async_cleanup_stale_registry_entries`.
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-### Fixed
-
-- **`update.py` — `_wait_for_bgproc` HTTP 500 handling**: `Exec.isRunning` returns HTTP 500 when the OMV background-process status file has already been deleted (which happens immediately after the process completes). Previously this was treated as a connection error and retried 3 times, causing the `update/install` action to fail entirely with "Failed to reach OMV after 3 retries: OMV returned HTTP 500". `_wait_for_bgproc` now catches `OMVConnectionError` containing "HTTP 500" and treats it as "bgproc finished successfully". The call also passes `max_retries=0` to avoid the 7-second retry delay.
-- **`omv_api.py` — log level for `max_retries=0`**: The "Max retries exceeded" message is now logged at `DEBUG` instead of `ERROR` when the caller passes `max_retries=0`, avoiding ERROR spam for expected one-shot failures (e.g. `Exec.isRunning` after bgproc completion, `Smart.getAttributes` on NVMe).
-- **`update.py` — package count stale after upgrade**: After a successful `Apt.upgrade`, OMV's `availablePkgUpdates` counter (stored in OMV's config DB) was not updated because only `Apt.update` triggers `omv-aptlist`, which recalculates the count. The coordinator refreshed immediately after the upgrade and read the stale value, so the update entity continued to show the old number of available packages. `async_install` now runs a second `Apt.update` after the upgrade to force OMV to recompute the counter before the coordinator refresh. A failure in this post-upgrade step is logged at WARNING and swallowed (packages are already installed).
-- **Update entity disappears after coordinator refresh** (`__init__.py`, `update.py`): `_async_cleanup_stale_registry_entries()` did not include the update platform's unique IDs in its expected-entity set, causing the entity to be removed from the HA entity registry on every 60-second coordinator poll. Added `get_expected_update_unique_ids()` to `update.py` and registered it in the cleanup function so the update entity is preserved across refreshes.
->>>>>>> 6c34eb6 (fix(update): treat Exec.isRunning HTTP 500 as bgproc completion)
-
-=======
->>>>>>> c52ebd8 (feat(docs): update changelog and README for 2.2.0 release)
 ## [2.1.3] - 2026-05-01
 
 ### Fixed
