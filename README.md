@@ -21,7 +21,7 @@ The original integration relied on a synchronous, poll-based controller that no 
 - CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
 - Per-resource device modeling — disks, RAIDs, filesystems, ZFS pools, and Docker containers each appear as separate HA devices
 - Docker Compose support with per-container state, version, and lifecycle button entities
-- Update entity with one-click package installation and reboot support (reboot-only mode when no further packages are pending)
+- Native Home Assistant update entity with pending package count, per-package release details in the More Info dialog, a direct link to the OMV updates page, one-click package installation, and reboot-only mode when no further packages are pending
 - Binary sensor for reboot requirement and OMV service health
 - Reboot and shutdown buttons
 - Localized dynamic entity names that follow the active HA language
@@ -83,7 +83,7 @@ After setup, the options flow lets you adjust:
 - CPU utilization, memory usage, CPU temperature, uptime, available package updates
 - Intel iGPU load and current frequency (when available via sysfs)
 - Docker container summary: total, running, and not-running counts
-- **Update entity**: shows pending package count and installed OMV version; the **Install** button runs `apt update` + `apt upgrade` on OMV and waits for completion — when only a reboot is pending (no further packages), pressing **Install** triggers a system reboot instead
+- **Update entity**: exposes OMV updates as a native Home Assistant update card with the installed OMV version, a synthetic latest version while packages or a reboot are pending, per-package release details in the **More Info** dialog, and a direct link to the OMV updates page; the **Install** button runs `apt update` + `apt upgrade` on OMV and waits for completion, and when only a reboot is pending (no further packages), pressing **Install** triggers a system reboot instead
 - Binary sensor: reboot required
 - Buttons: Reboot, Shutdown
 
