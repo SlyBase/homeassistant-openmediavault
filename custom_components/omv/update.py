@@ -133,7 +133,7 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         result = ", ".join(previews)
         remaining = len(packages) - len(previews)
         if remaining > 0:
-            result += f" … +{remaining} weitere"
+            result += f" … +{remaining} more"
         return result[:200]
 
     async def async_release_notes(self) -> str | None:
@@ -217,6 +217,10 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             backup: Whether to create a backup before installing (not supported).
             **kwargs: Additional keyword arguments (unused).
         """
+        # Fetch fresh data from OMV before making decisions — the cached
+        # coordinator data can be up to 60 s old, so configDirty / package
+        # counts may already have changed since the last poll.
+        await self.coordinator.async_request_refresh()
         hwinfo = self.coordinator.data.get("hwinfo", {})
         n_updates = int(hwinfo.get("availablePkgUpdates", 0))
         reboot_required = bool(hwinfo.get("rebootRequired", False))
@@ -224,9 +228,8 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         # B2: Block install when OMV has unapplied configuration changes.
         if hwinfo.get("configDirty"):
             raise HomeAssistantError(
-                "OMV hat ausstehende Konfigurationsänderungen. "
-                "Bitte erst in der OMV-WebUI anwenden (Apply-Button), "
-                "danach erneut versuchen."
+                translation_domain="omv",
+                translation_key="config_dirty",
             )
 
         # Reboot-only case: no packages to install, just a pending reboot.

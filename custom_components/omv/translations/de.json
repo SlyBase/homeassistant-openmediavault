@@ -197,5 +197,10 @@
                 "name": "Docker Container prune"
             }
         }
+    },
+    "exceptions": {
+        "config_dirty": {
+            "message": "OMV hat ausstehende Konfigurationsänderungen. Bitte erst in der OMV-WebUI anwenden (Apply-Button), danach erneut versuchen."
+        }
     }
 }

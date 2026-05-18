@@ -5,12 +5,13 @@
 ### Added
 
 - **`async_release_notes()` on update entity** (`update.py`): Pressing "What's new" on the HA update card now displays the full Markdown list of all pending packages. Each block shows the package name (bold), new version (in backticks to prevent Markdown strikethrough), and — when available — the summary description. Blocks are separated by blank lines.
-- **`configDirty` preflight check in `async_install()`** (`update.py`): When OMV has unapplied configuration changes (`configDirty=True` in `hwinfo`), pressing Install now immediately raises a `HomeAssistantError` with a clear German-language message asking the user to apply changes in the OMV WebUI first, instead of failing silently with an opaque HTTP 500 error.
+- **`configDirty` preflight check in `async_install()`** (`update.py`): When OMV has unapplied configuration changes (`configDirty=True` in `hwinfo`), pressing Install now immediately raises a translated `HomeAssistantError` (`translation_key="config_dirty"`) asking the user to apply changes in the OMV WebUI first. The check is preceded by a fresh coordinator refresh so the flag reflects the current OMV state, not a potentially stale cached value.
+- **Exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added `exceptions.config_dirty` translation key so the `configDirty` error message is properly localised via HA's translation system.
 
 ### Changed
 
-- **`release_summary` preview format** (`update.py`): `release_summary` is now a compact plain-text preview (≤200 characters) showing the first one or two package names/versions and a `… +N weitere` suffix. The full Markdown detail has moved to `async_release_notes()`.
-- **HTTP-500 body included in error message** (`omv_api.py`): When OMV returns HTTP 5xx, the first 500 characters of the response body are now read and embedded in the `OMVConnectionError` message and the debug log entry, making the root cause (e.g. `configDirty` blocking `Apt.update`) visible in the HA log without needing SSH access.
+- **`release_summary` preview format** (`update.py`): `release_summary` is now a compact plain-text preview (≤200 characters) showing the first one or two package names/versions and a `… +N more` suffix. The full Markdown detail has moved to `async_release_notes()`.
+- **HTTP-500 body included in error message** (`omv_api.py`): When OMV returns HTTP 5xx, the first 500 characters of the response body are now read and embedded in the `OMVConnectionError` message and the debug log entry, making the root cause visible in the HA log.
 
 ## [2.2.1] - 2026-05-18
 

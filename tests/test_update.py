@@ -115,13 +115,15 @@ async def test_async_install_runs_update_then_upgrade(coordinator) -> None:
     # upgrade sequence: update → upgrade → update
     apt_calls = [c for c in call_log if c[0] == "Apt"]
     assert apt_calls == [("Apt", "update"), ("Apt", "upgrade"), ("Apt", "update")]
-    coordinator.async_request_refresh.assert_awaited_once()
+    # refreshed twice: once as preflight, once after install to pull fresh state
+    assert coordinator.async_request_refresh.await_count == 2
 
 
 @pytest.mark.asyncio
 async def test_async_install_raises_on_apt_update_error(coordinator) -> None:
     """Test async_install propagates Apt.update errors to the caller."""
     coordinator.api.async_call = AsyncMock(side_effect=Exception("update failed"))
+    coordinator.async_request_refresh = AsyncMock()
 
     entity = OMVUpdateEntity(coordinator)
 
@@ -139,6 +141,7 @@ async def test_async_install_raises_on_exec_isrunning_error(coordinator) -> None
         raise Exception("apt-get dist-upgrade failed with exit code 1")
 
     coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
 
     entity = OMVUpdateEntity(coordinator)
 
@@ -171,7 +174,8 @@ async def test_async_install_treats_http500_from_bgproc_as_done(coordinator) -> 
     with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
         await entity.async_install(version=None, backup=False)
 
-    coordinator.async_request_refresh.assert_awaited_once()
+    # refreshed twice: once as preflight, once after install to pull fresh state
+    assert coordinator.async_request_refresh.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -235,7 +239,8 @@ async def test_async_install_post_update_error_is_swallowed(coordinator) -> None
     with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
         await entity.async_install(version=None, backup=False)
 
-    coordinator.async_request_refresh.assert_awaited_once()
+    # refreshed twice: once as preflight, once after install to pull fresh state
+    assert coordinator.async_request_refresh.await_count == 2
 
 
 def test_get_expected_update_unique_ids(config_entry) -> None:
@@ -399,11 +404,14 @@ async def test_async_install_raises_when_config_dirty(coordinator, sample_data) 
     sample_data["hwinfo"]["configDirty"] = True
     coordinator.data = sample_data
     coordinator.api.async_call = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
 
     entity = OMVUpdateEntity(coordinator)
 
-    with pytest.raises(HomeAssistantError, match="ausstehende"):
+    with pytest.raises(HomeAssistantError) as exc_info:
         await entity.async_install(version=None, backup=False)
+    assert exc_info.value.translation_key == "config_dirty"
+    assert exc_info.value.translation_domain == "omv"
     """Test extra_state_attributes returns reboot_required=False when no reboot needed."""
     sample_data["hwinfo"]["rebootRequired"] = False
     coordinator.data = sample_data
@@ -458,6 +466,7 @@ async def test_async_install_reboots_when_no_pkg_updates_but_reboot_required(coo
 
     coordinator.api.async_call = _mock_call
     coordinator.async_update_listeners = MagicMock()
+    coordinator.async_request_refresh = AsyncMock()
 
     entity = OMVUpdateEntity(coordinator)
     await entity.async_install(version=None, backup=False)

@@ -191,5 +191,10 @@
                 "name": "docker container prune"
             }
         }
+    },
+    "exceptions": {
+        "config_dirty": {
+            "message": "OMV has pending configuration changes. Please apply them in the OMV Web UI (Apply button) and try again."
+        }
     }
 }
