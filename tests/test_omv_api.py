@@ -205,3 +205,35 @@ async def test_async_close_yields_for_aiohttp_cleanup() -> None:
     sleep_mock.assert_awaited_once_with(0)
     assert api._session is None
     assert api._session_id is None
+
+
+@pytest.mark.asyncio
+async def test_async_apply_config_sends_required_params(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """Test async_apply_config passes modules+force params required by OMV 8."""
+    seen_bodies: list[dict] = []
+
+    def apply_callback(url, **kwargs):
+        seen_bodies.append(kwargs.get("json") or {})
+        return CallbackResult(
+            status=200,
+            payload={"response": ["nginx"], "error": None},
+        )
+
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        callback=apply_callback,
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    await api.async_apply_config()
+
+    assert len(seen_bodies) == 1
+    body = seen_bodies[0]
+    assert body["service"] == "Config"
+    assert body["method"] == "applyChanges"
+    assert body["params"] == {"modules": [], "force": False}
+    await api.async_close()

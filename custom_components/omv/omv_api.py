@@ -328,8 +328,12 @@ class OMVAPI:
 
         Calls Config.applyChanges which runs omv-mkconf for all dirty modules,
         persisting the current in-memory configuration to disk.
+
+        The RPC requires ``modules`` (array, empty = all dirty) and ``force``
+        (bool). Passing an empty modules list lets OMV resolve the dirty set
+        automatically.
         """
-        await self.async_call("Config", "applyChanges")
+        await self.async_call("Config", "applyChanges", {"modules": [], "force": False})
 
     async def async_close(self) -> None:
         """Close the underlying aiohttp session."""

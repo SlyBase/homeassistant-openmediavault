@@ -13,6 +13,8 @@
 
 ### Fixed
 
+- **`async_apply_config()` now passes required parameters** (`omv_api.py`): `Config.applyChanges` on OMV 8 requires `{"modules": [], "force": false}`; omitting them caused a JSON schema validation error (`The value "null" is not an object`) and the button always showed "Konfigurationsänderungen konnten nicht angewendet werden".
+
 - **`configDirty` no longer blocks package installation** (`update.py`): Removed the overly aggressive preflight block that prevented `async_install()` when OMV had pending configuration changes. Package installation via apt is independent of OMV's config state; the correct guard is only at reboot (already handled by the reboot preflight check). Removes the `config_dirty` exception key.
 
 - **`async_release_notes()` on update entity** (`update.py`): Pressing "What's new" on the HA update card now displays the full Markdown list of all pending packages. Each block shows the package name (bold), new version (in backticks to prevent Markdown strikethrough), and — when available — the summary description. Blocks are separated by blank lines.
