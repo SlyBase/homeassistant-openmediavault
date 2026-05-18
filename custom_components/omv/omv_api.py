@@ -266,9 +266,10 @@ class OMVAPI:
                     )
                     raise OMVAuthError(f"OMV returned HTTP {response.status}")
                 if response.status >= 500:
+                    body = (await response.text())[:500]
                     _LOGGER.debug(
                         "OMV RPC HTTP server failure [%s] %s.%s host=%r status=%s "
-                        "has_session_header=%s cookie_names=%s",
+                        "has_session_header=%s cookie_names=%s body=%r",
                         self._source,
                         service,
                         method,
@@ -276,8 +277,9 @@ class OMVAPI:
                         response.status,
                         headers is not None,
                         self._cookie_names(),
+                        body,
                     )
-                    raise OMVConnectionError(f"OMV returned HTTP {response.status}")
+                    raise OMVConnectionError(f"OMV returned HTTP {response.status}: {body}")
                 data = await response.json(content_type=None)
         except (aiohttp.ClientError, TimeoutError) as err:
             raise OMVConnectionError(f"Connection to {self._host} failed: {err}") from err

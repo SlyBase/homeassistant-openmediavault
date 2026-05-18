@@ -70,10 +70,11 @@ def test_release_url(coordinator) -> None:
     assert entity.release_url == "http://192.168.1.10:80/#/system/updatemgmt/updates"
 
 
-def test_supported_features_includes_install(coordinator) -> None:
-    """Test that UpdateEntityFeature.INSTALL is declared."""
+def test_supported_features_includes_install_and_release_notes(coordinator) -> None:
+    """Test that INSTALL and RELEASE_NOTES features are declared."""
     entity = OMVUpdateEntity(coordinator)
     assert entity._attr_supported_features & UpdateEntityFeature.INSTALL
+    assert entity._attr_supported_features & UpdateEntityFeature.RELEASE_NOTES
 
 
 @pytest.mark.asyncio
@@ -279,7 +280,7 @@ def test_release_summary_no_packages(coordinator, sample_data) -> None:
 
 
 def test_release_summary_with_packages(coordinator, sample_data) -> None:
-    """Test release_summary returns a formatted text block for each package."""
+    """Test release_summary returns a plain-text preview with name and version."""
     sample_data["upgradedList"] = [
         {
             "name": "docker-ce",
@@ -297,23 +298,110 @@ def test_release_summary_with_packages(coordinator, sample_data) -> None:
     summary = entity.release_summary
 
     assert summary is not None
-    # Version is wrapped in backticks to prevent ~ from being parsed as Markdown strikethrough.
-    assert "**docker-ce** `5:29.4.2-2~debian.12~bookworm`" in summary
-    # Description and metadata fields are omitted to stay within
-    # Home Assistant's 255-character state-attribute limit.
-    assert "Docker: the open-source application container engine" not in summary
+    assert "docker-ce" in summary
+    assert "5:29.4.2-2~debian.12~bookworm" in summary
+    # release_summary is a compact preview — no Markdown formatting
+    assert "**" not in summary
+    assert len(summary) <= 200
 
 
-def test_release_summary_skips_blank_optional_fields(coordinator, sample_data) -> None:
-    """Test release_summary omits lines for blank optional fields."""
-    sample_data["upgradedList"] = [{"name": "minimal-pkg", "version": "1.0", "installedsize": 0}]
+def test_release_summary_multiple_packages_shows_remaining(coordinator, sample_data) -> None:
+    """Test release_summary shows first two packages and a count of remaining ones."""
+    sample_data["upgradedList"] = [
+        {"name": "pkg-a", "version": "1.0"},
+        {"name": "pkg-b", "version": "2.0"},
+        {"name": "pkg-c", "version": "3.0"},
+    ]
     coordinator.data = sample_data
 
     entity = OMVUpdateEntity(coordinator)
-    assert entity.release_summary == "**minimal-pkg** `1.0`"
+    summary = entity.release_summary
+
+    assert summary is not None
+    assert "pkg-a" in summary
+    assert "pkg-b" in summary
+    assert "+1" in summary
+    assert "pkg-c" not in summary
 
 
-def test_extra_state_attributes_no_reboot(coordinator, sample_data) -> None:
+def test_release_summary_no_version(coordinator, sample_data) -> None:
+    """Test release_summary uses only the name when version is absent."""
+    sample_data["upgradedList"] = [{"name": "minimal-pkg", "installedsize": 0}]
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    assert entity.release_summary == "minimal-pkg"
+
+
+@pytest.mark.asyncio
+async def test_async_release_notes_returns_none_when_no_packages(coordinator, sample_data) -> None:
+    """Test async_release_notes returns None when upgradedList is empty."""
+    sample_data["upgradedList"] = []
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    result = await entity.async_release_notes()
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_async_release_notes_returns_markdown(coordinator, sample_data) -> None:
+    """Test async_release_notes returns Markdown with name, version, and description."""
+    sample_data["upgradedList"] = [
+        {
+            "name": "docker-ce",
+            "version": "5:29.4.2-2~debian.12~bookworm",
+            "summary": "Docker: the open-source application container engine",
+        },
+        {
+            "name": "curl",
+            "version": "8.0.1",
+            "summary": "Command line tool for transferring data with URLs",
+        },
+    ]
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    notes = await entity.async_release_notes()
+
+    assert notes is not None
+    assert "**docker-ce**" in notes
+    assert "`5:29.4.2-2~debian.12~bookworm`" in notes
+    assert "Docker: the open-source application container engine" in notes
+    assert "**curl**" in notes
+    assert "`8.0.1`" in notes
+    # Two packages separated by blank line
+    assert "\n\n" in notes
+
+
+@pytest.mark.asyncio
+async def test_async_release_notes_omits_empty_summary(coordinator, sample_data) -> None:
+    """Test async_release_notes skips the summary line when it is absent."""
+    sample_data["upgradedList"] = [{"name": "libssl", "version": "3.0.1"}]
+    coordinator.data = sample_data
+
+    entity = OMVUpdateEntity(coordinator)
+    notes = await entity.async_release_notes()
+
+    assert notes is not None
+    assert "**libssl** `3.0.1`" in notes
+    # No trailing newline from missing summary
+    assert notes.strip() == "**libssl** `3.0.1`"
+
+
+@pytest.mark.asyncio
+async def test_async_install_raises_when_config_dirty(coordinator, sample_data) -> None:
+    """Test async_install raises HomeAssistantError when configDirty is True."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    sample_data["hwinfo"]["configDirty"] = True
+    coordinator.data = sample_data
+    coordinator.api.async_call = AsyncMock()
+
+    entity = OMVUpdateEntity(coordinator)
+
+    with pytest.raises(HomeAssistantError, match="ausstehende"):
+        await entity.async_install(version=None, backup=False)
     """Test extra_state_attributes returns reboot_required=False when no reboot needed."""
     sample_data["hwinfo"]["rebootRequired"] = False
     coordinator.data = sample_data

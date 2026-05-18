@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
@@ -56,7 +57,7 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
 
     _attr_translation_key = "omv_system_update"
     _attr_title = "OpenMediaVault"
-    _attr_supported_features = UpdateEntityFeature.INSTALL
+    _attr_supported_features = UpdateEntityFeature.INSTALL | UpdateEntityFeature.RELEASE_NOTES
 
     def __init__(self, coordinator: OMVDataUpdateCoordinator) -> None:
         """Initialize the OMV update entity.
@@ -109,27 +110,59 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
 
     @property
     def release_summary(self) -> str | None:
-        """Return a formatted list of pending package updates.
+        """Return a short ≤200-character preview of pending package updates.
 
-        Each package is rendered as a short block with name, version, description,
-        maintainer, homepage, source repository and installed size — matching the
-        information shown in the OMV web UI update list.
+        Shows the first one or two packages followed by a count of remaining
+        packages. Stays well within Home Assistant's 255-character attribute
+        limit so the value is never silently truncated.
 
         Returns:
-            A multi-line string with one block per package, or None when no
+            A single-line preview string, or None when no package details are
+            available.
+        """
+        packages: list[dict[str, Any]] = self.coordinator.data.get("upgradedList", [])
+        if not packages:
+            return None
+
+        previews: list[str] = []
+        for pkg in packages[:2]:
+            name = str(pkg.get("name") or pkg.get("package") or "?")
+            version = str(pkg.get("version") or "")
+            previews.append(f"{name} {version}".strip() if version else name)
+
+        result = ", ".join(previews)
+        remaining = len(packages) - len(previews)
+        if remaining > 0:
+            result += f" … +{remaining} weitere"
+        return result[:200]
+
+    async def async_release_notes(self) -> str | None:
+        """Return the full Markdown release notes with all pending package updates.
+
+        Each package block contains the package name, new version, and —
+        when present — the summary description. Packages are separated by
+        a blank line so Home Assistant renders each as a distinct paragraph.
+
+        Returns:
+            A Markdown string with one block per package, or None when no
             package details are available.
         """
         packages: list[dict[str, Any]] = self.coordinator.data.get("upgradedList", [])
         if not packages:
             return None
+
         blocks: list[str] = []
         for pkg in packages:
             name = str(pkg.get("name") or pkg.get("package") or "?")
             version = str(pkg.get("version") or "")
             # Wrap version in backticks so that ~ in Debian version strings
             # (e.g. ~debian.12~bookworm) is not rendered as Markdown strikethrough.
-            blocks.append(f"**{name}**" + (f" `{version}`" if version else ""))
-        # Packages are separated by a blank line (paragraph break in Markdown).
+            line = f"**{name}**" + (f" `{version}`" if version else "")
+            summary = str(pkg.get("summary") or "").strip()
+            if summary:
+                line += f"\n{summary}"
+            blocks.append(line)
+
         return "\n\n".join(blocks)
 
     @property
@@ -185,6 +218,14 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         hwinfo = self.coordinator.data.get("hwinfo", {})
         n_updates = int(hwinfo.get("availablePkgUpdates", 0))
         reboot_required = bool(hwinfo.get("rebootRequired", False))
+
+        # B2: Block install when OMV has unapplied configuration changes.
+        if hwinfo.get("configDirty"):
+            raise HomeAssistantError(
+                "OMV hat ausstehende Konfigurationsänderungen. "
+                "Bitte erst in der OMV-WebUI anwenden (Apply-Button), "
+                "danach erneut versuchen."
+            )
 
         # Reboot-only case: no packages to install, just a pending reboot.
         if n_updates == 0 and reboot_required:
