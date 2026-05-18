@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Dark-mode brand images** (`brand/dark_icon.png`, `brand/dark_logo.png`): Added `dark_icon.png` and `dark_logo.png` to the `brand/` directory so HACS and the HA frontend can display the integration icon correctly in dark mode.
+
 ## [2.2.0] - 2026-05-12
 
 ### Added
