@@ -11,6 +11,10 @@
 - **Persistent notification after package install** (`update.py`): After a successful apt upgrade, if the coordinator reports `configDirty=True`, a persistent HA notification (`omv_config_dirty`) is created prompting the user to press Apply Configuration before rebooting.
 - **Button and exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added translation keys `entity.button.apply_config`, `exceptions.reboot_blocked_config_dirty`, and `exceptions.apply_config_failed`.
 
+### Fixed
+
+- **`configDirty` no longer blocks package installation** (`update.py`): Removed the overly aggressive preflight block that prevented `async_install()` when OMV had pending configuration changes. Package installation via apt is independent of OMV's config state; the correct guard is only at reboot (already handled by the reboot preflight check). Removes the `config_dirty` exception key.
+
 - **`async_release_notes()` on update entity** (`update.py`): Pressing "What's new" on the HA update card now displays the full Markdown list of all pending packages. Each block shows the package name (bold), new version (in backticks to prevent Markdown strikethrough), and — when available — the summary description. Blocks are separated by blank lines.
 - **`configDirty` preflight check in `async_install()`** (`update.py`): When OMV has unapplied configuration changes (`configDirty=True` in `hwinfo`), pressing Install now immediately raises a translated `HomeAssistantError` (`translation_key="config_dirty"`) asking the user to apply changes in the OMV WebUI first. The check is preceded by a fresh coordinator refresh so the flag reflects the current OMV state, not a potentially stale cached value.
 - **Exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added `exceptions.config_dirty` translation key so the `configDirty` error message is properly localised via HA's translation system.

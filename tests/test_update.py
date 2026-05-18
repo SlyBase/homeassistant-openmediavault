@@ -396,22 +396,7 @@ async def test_async_release_notes_omits_empty_summary(coordinator, sample_data)
     assert notes.strip() == "**libssl** `3.0.1`"
 
 
-@pytest.mark.asyncio
-async def test_async_install_raises_when_config_dirty(coordinator, sample_data) -> None:
-    """Test async_install raises HomeAssistantError when configDirty is True."""
-    from homeassistant.exceptions import HomeAssistantError
-
-    sample_data["hwinfo"]["configDirty"] = True
-    coordinator.data = sample_data
-    coordinator.api.async_call = AsyncMock()
-    coordinator.async_request_refresh = AsyncMock()
-
-    entity = OMVUpdateEntity(coordinator)
-
-    with pytest.raises(HomeAssistantError) as exc_info:
-        await entity.async_install(version=None, backup=False)
-    assert exc_info.value.translation_key == "config_dirty"
-    assert exc_info.value.translation_domain == "omv"
+def test_extra_state_attributes_no_reboot_required(coordinator, sample_data) -> None:
     """Test extra_state_attributes returns reboot_required=False when no reboot needed."""
     sample_data["hwinfo"]["rebootRequired"] = False
     coordinator.data = sample_data

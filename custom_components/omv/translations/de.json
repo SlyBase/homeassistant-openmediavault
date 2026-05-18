@@ -202,9 +202,6 @@
         }
     },
     "exceptions": {
-        "config_dirty": {
-            "message": "OMV hat ausstehende Konfigurationsänderungen. Bitte erst in der OMV-WebUI anwenden (Apply-Button), danach erneut versuchen."
-        },
         "reboot_blocked_config_dirty": {
             "message": "Neustart nicht möglich: OMV hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst 'Konfiguration anwenden' drücken."
         },

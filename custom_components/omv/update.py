@@ -9,7 +9,6 @@ from typing import Any
 from homeassistant.components.update import UpdateEntity, UpdateEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
@@ -224,13 +223,6 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         hwinfo = self.coordinator.data.get("hwinfo", {})
         n_updates = int(hwinfo.get("availablePkgUpdates", 0))
         reboot_required = bool(hwinfo.get("rebootRequired", False))
-
-        # B2: Block install when OMV has unapplied configuration changes.
-        if hwinfo.get("configDirty"):
-            raise HomeAssistantError(
-                translation_domain="omv",
-                translation_key="config_dirty",
-            )
 
         # Reboot-only case: no packages to install, just a pending reboot.
         if n_updates == 0 and reboot_required:

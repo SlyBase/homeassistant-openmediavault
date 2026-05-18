@@ -196,9 +196,6 @@
         }
     },
     "exceptions": {
-        "config_dirty": {
-            "message": "OMV has pending configuration changes. Please apply them in the OMV Web UI (Apply button) and try again."
-        },
         "reboot_blocked_config_dirty": {
             "message": "Cannot reboot: OMV has pending configuration changes ({modules}). Press 'Apply Configuration' first."
         },
