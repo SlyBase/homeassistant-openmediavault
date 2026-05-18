@@ -160,7 +160,9 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             line = f"**{name}**" + (f" `{version}`" if version else "")
             summary = str(pkg.get("summary") or "").strip()
             if summary:
-                line += f"\n{summary}"
+                # Two trailing spaces force a Markdown line break without
+                # inserting a blank paragraph between name/version and description.
+                line += f"  \n{summary}"
             blocks.append(line)
 
         return "\n\n".join(blocks)

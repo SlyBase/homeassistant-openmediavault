@@ -372,6 +372,8 @@ async def test_async_release_notes_returns_markdown(coordinator, sample_data) ->
     assert "`8.0.1`" in notes
     # Two packages separated by blank line
     assert "\n\n" in notes
+    # Summary is on a new line (two trailing spaces force a Markdown line break)
+    assert "  \nDocker: the open-source application container engine" in notes
 
 
 @pytest.mark.asyncio
