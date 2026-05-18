@@ -5,6 +5,7 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
@@ -66,7 +67,11 @@ def get_expected_button_unique_ids(
     coordinator: OMVDataUpdateCoordinator,
 ) -> set[str]:
     """Return the button unique IDs for a config entry."""
-    unique_ids = {f"{entry.entry_id}-reboot", f"{entry.entry_id}-shutdown"}
+    unique_ids = {
+        f"{entry.entry_id}-reboot",
+        f"{entry.entry_id}-shutdown",
+        f"{entry.entry_id}-apply_config",
+    }
     for project in coordinator.data.get("compose_projects", []):
         if not isinstance(project, dict) or not str(project.get("uuid") or ""):
             continue
@@ -91,6 +96,7 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = [
         OMVRebootButton(coordinator),
         OMVShutdownButton(coordinator),
+        OMVApplyConfigButton(coordinator),
     ]
 
     for project in coordinator.data.get("compose_projects", []):
@@ -122,8 +128,54 @@ class OMVRebootButton(OMVEntity, ButtonEntity):
         self._attr_suggested_object_id = build_host_object_id(coordinator, "reboot")
 
     async def async_press(self) -> None:
-        """Trigger a reboot on the OMV host."""
+        """Trigger a reboot on the OMV host.
+
+        Raises:
+            HomeAssistantError: When OMV has pending configuration changes that
+                must be applied before rebooting.
+        """
+        await self.coordinator.async_request_refresh()
+        hwinfo = self.coordinator.data.get("hwinfo", {})
+        if hwinfo.get("configDirty"):
+            modules = ", ".join(hwinfo.get("dirtyModules") or []) or "?"
+            raise HomeAssistantError(
+                translation_domain="omv",
+                translation_key="reboot_blocked_config_dirty",
+                translation_placeholders={"modules": modules},
+            )
         await self.coordinator.api.async_call("System", "reboot")
+
+
+class OMVApplyConfigButton(OMVEntity, ButtonEntity):
+    """Button to apply pending OMV configuration changes."""
+
+    _attr_translation_key = "apply_config"
+    _attr_icon = "mdi:check-network"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "apply_config")
+        self._attr_suggested_object_id = build_host_object_id(coordinator, "apply_config")
+
+    async def async_press(self) -> None:
+        """Apply pending OMV configuration changes.
+
+        Raises:
+            HomeAssistantError: When the Config.applyChanges RPC call fails.
+        """
+        await self.coordinator.async_request_refresh()
+        try:
+            await self.coordinator.api.async_apply_config()
+        except Exception as err:
+            raise HomeAssistantError(
+                translation_domain="omv",
+                translation_key="apply_config_failed",
+            ) from err
+        await self.coordinator.async_request_refresh()
+        self.coordinator.hass.services.async_call(
+            "persistent_notification",
+            "dismiss",
+            {"notification_id": "omv_config_dirty"},
+        )
 
 
 class OMVShutdownButton(OMVEntity, ButtonEntity):

@@ -878,6 +878,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "uptime": uptime_raw,
             "uptimeEpoch": datetime.now(UTC) - timedelta(seconds=uptime_seconds),
             "configDirty": self._coerce_bool(info.get("configDirty")),
+            "dirtyModules": list(info.get("dirtyModules") or []),
             "rebootRequired": self._coerce_bool(info.get("rebootRequired")),
             "availablePkgUpdates": available_updates,
             "pkgUpdatesAvailable": available_updates > 0,

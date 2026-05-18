@@ -323,6 +323,14 @@ class OMVAPI:
 
         return data.get("response")
 
+    async def async_apply_config(self) -> None:
+        """Apply pending OMV configuration changes.
+
+        Calls Config.applyChanges which runs omv-mkconf for all dirty modules,
+        persisting the current in-memory configuration to disk.
+        """
+        await self.async_call("Config", "applyChanges")
+
     async def async_close(self) -> None:
         """Close the underlying aiohttp session."""
         if self._session and not self._session.closed:

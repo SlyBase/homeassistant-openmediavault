@@ -4,6 +4,13 @@
 
 ### Added
 
+- **`dirtyModules` in coordinator `hwinfo` data** (`coordinator.py`): The list of OMV modules with pending configuration changes is now normalised from `hwinfo.dirtyModules` and exposed in `coordinator.data["hwinfo"]["dirtyModules"]` as a plain Python list.
+- **`async_apply_config()` on API client** (`omv_api.py`): New method that calls `Config.applyChanges` on the OMV JSON-RPC API, running `omv-mkconf` for all dirty modules and persisting the in-memory configuration to disk.
+- **Apply Configuration button** (`button.py`): New `OMVApplyConfigButton` entity that triggers `async_apply_config()`, refreshes coordinator data before and after the call, and dismisses the `omv_config_dirty` persistent notification on success.
+- **Reboot preflight check** (`button.py`): `OMVRebootButton.async_press()` now fetches fresh coordinator data and raises a translated `HomeAssistantError` (`reboot_blocked_config_dirty`) when `configDirty=True`, listing the affected modules.
+- **Persistent notification after package install** (`update.py`): After a successful apt upgrade, if the coordinator reports `configDirty=True`, a persistent HA notification (`omv_config_dirty`) is created prompting the user to press Apply Configuration before rebooting.
+- **Button and exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added translation keys `entity.button.apply_config`, `exceptions.reboot_blocked_config_dirty`, and `exceptions.apply_config_failed`.
+
 - **`async_release_notes()` on update entity** (`update.py`): Pressing "What's new" on the HA update card now displays the full Markdown list of all pending packages. Each block shows the package name (bold), new version (in backticks to prevent Markdown strikethrough), and — when available — the summary description. Blocks are separated by blank lines.
 - **`configDirty` preflight check in `async_install()`** (`update.py`): When OMV has unapplied configuration changes (`configDirty=True` in `hwinfo`), pressing Install now immediately raises a translated `HomeAssistantError` (`translation_key="config_dirty"`) asking the user to apply changes in the OMV WebUI first. The check is preceded by a fresh coordinator refresh so the flag reflects the current OMV state, not a potentially stale cached value.
 - **Exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added `exceptions.config_dirty` translation key so the `configDirty` error message is properly localised via HA's translation system.

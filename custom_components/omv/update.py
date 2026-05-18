@@ -260,6 +260,23 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
             _LOGGER.warning("Post-upgrade Apt.update failed; availablePkgUpdates may be stale")
         # Step 4: pull fresh data so the entity reflects the new package state
         await self.coordinator.async_request_refresh()
+        # Step 5: notify when the update triggered new pending config changes
+        hwinfo_post = self.coordinator.data.get("hwinfo", {})
+        if hwinfo_post.get("configDirty"):
+            modules = ", ".join(hwinfo_post.get("dirtyModules") or []) or "?"
+            self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "OMV: Configuration changes pending",
+                    "message": (
+                        f"The update triggered new configuration changes: **{modules}**.\n\n"
+                        "Press the **Apply Configuration** button in the OMV integration "
+                        "before rebooting."
+                    ),
+                    "notification_id": "omv_config_dirty",
+                },
+            )
 
     async def _wait_for_bgproc(self, filename: Any) -> None:
         """Poll Exec.isRunning until the OMV background process finishes.

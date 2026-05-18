@@ -175,6 +175,9 @@
             "shutdown": {
                 "name": "Herunterfahren"
             },
+            "apply_config": {
+                "name": "Konfiguration anwenden"
+            },
             "compose_up": {
                 "name": "Compose up"
             },
@@ -201,6 +204,12 @@
     "exceptions": {
         "config_dirty": {
             "message": "OMV hat ausstehende Konfigurationsänderungen. Bitte erst in der OMV-WebUI anwenden (Apply-Button), danach erneut versuchen."
+        },
+        "reboot_blocked_config_dirty": {
+            "message": "Neustart nicht möglich: OMV hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst 'Konfiguration anwenden' drücken."
+        },
+        "apply_config_failed": {
+            "message": "Konfigurationsänderungen konnten nicht angewendet werden. Bitte die OMV-Logs prüfen."
         }
     }
 }

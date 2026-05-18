@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from custom_components.omv.button import (
+    OMVApplyConfigButton,
     OMVComposeProjectButton,
     OMVComposeSystemButton,
     OMVRebootButton,
@@ -26,15 +27,15 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 19
-    assert added[2].unique_id.endswith("01-compose_up-paperless")
-    assert added[3].unique_id.endswith("02-compose_down-paperless")
-    assert added[4].unique_id.endswith("03-compose_start-paperless")
-    assert added[5].unique_id.endswith("04-compose_stop-paperless")
-    assert added[6].unique_id.endswith("05-compose_pull-paperless")
+    assert len(added) == 20
+    assert added[3].unique_id.endswith("01-compose_up-paperless")
+    assert added[4].unique_id.endswith("02-compose_down-paperless")
+    assert added[5].unique_id.endswith("03-compose_start-paperless")
+    assert added[6].unique_id.endswith("04-compose_stop-paperless")
+    assert added[7].unique_id.endswith("05-compose_pull-paperless")
     assert added[-2].unique_id.endswith("98-compose_image_prune")
     assert added[-1].unique_id.endswith("99-compose_container_prune")
-    assert added[2]._attr_suggested_object_id == "nas_01_compose_paperless_up"
+    assert added[3]._attr_suggested_object_id == "nas_01_compose_paperless_up"
 
 
 @pytest.mark.asyncio
@@ -48,7 +49,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 17
+    assert len(added) == 18
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -57,6 +58,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 async def test_reboot_button_calls_reboot(coordinator) -> None:
     """Test reboot button RPC call."""
     coordinator.api.async_call = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
     button = OMVRebootButton(coordinator)
 
     await button.async_press()
@@ -184,3 +186,100 @@ def test_get_expected_button_unique_ids_omits_prune_buttons_without_docker_servi
 
     assert f"{config_entry.entry_id}-98-compose_image_prune" not in unique_ids
     assert f"{config_entry.entry_id}-99-compose_container_prune" not in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_apply_config_button_calls_api(coordinator) -> None:
+    """Test apply_config button calls async_apply_config on the API."""
+    coordinator.api.async_apply_config = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
+    button = OMVApplyConfigButton(coordinator)
+
+    await button.async_press()
+
+    coordinator.api.async_apply_config.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_apply_config_button_triggers_refresh(coordinator) -> None:
+    """Test apply_config button triggers coordinator refresh before and after the call."""
+    coordinator.api.async_apply_config = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
+    button = OMVApplyConfigButton(coordinator)
+
+    await button.async_press()
+
+    assert coordinator.async_request_refresh.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_apply_config_button_raises_on_api_error(coordinator) -> None:
+    """Test apply_config button raises HomeAssistantError when API call fails."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    coordinator.api.async_apply_config = AsyncMock(side_effect=Exception("RPC failed"))
+    coordinator.async_request_refresh = AsyncMock()
+    button = OMVApplyConfigButton(coordinator)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "apply_config_failed"
+
+
+@pytest.mark.asyncio
+async def test_reboot_button_blocks_when_config_dirty(coordinator) -> None:
+    """Test reboot button raises HomeAssistantError when configDirty is True."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    coordinator.data["hwinfo"]["configDirty"] = True
+    coordinator.data["hwinfo"]["dirtyModules"] = ["nginx", "samba"]
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.api.async_call = AsyncMock()
+    button = OMVRebootButton(coordinator)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "reboot_blocked_config_dirty"
+    coordinator.api.async_call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reboot_button_modules_in_placeholder(coordinator) -> None:
+    """Test reboot button includes dirty module names in translation placeholders."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    coordinator.data["hwinfo"]["configDirty"] = True
+    coordinator.data["hwinfo"]["dirtyModules"] = ["nginx", "samba"]
+    coordinator.async_request_refresh = AsyncMock()
+    button = OMVRebootButton(coordinator)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_placeholders == {"modules": "nginx, samba"}
+
+
+@pytest.mark.asyncio
+async def test_reboot_button_proceeds_when_clean(coordinator) -> None:
+    """Test reboot button calls System.reboot when config is clean."""
+    coordinator.data["hwinfo"]["configDirty"] = False
+    coordinator.data["hwinfo"]["dirtyModules"] = []
+    coordinator.async_request_refresh = AsyncMock()
+    coordinator.api.async_call = AsyncMock()
+    button = OMVRebootButton(coordinator)
+
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with("System", "reboot")
+
+
+def test_get_expected_button_unique_ids_includes_apply_config(
+    coordinator,
+    config_entry,
+) -> None:
+    """Test get_expected_button_unique_ids includes the apply_config button."""
+    unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
+
+    assert f"{config_entry.entry_id}-apply_config" in unique_ids

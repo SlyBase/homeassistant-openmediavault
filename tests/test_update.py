@@ -478,3 +478,80 @@ async def test_async_install_reboots_when_no_pkg_updates_but_reboot_required(coo
     # rebootRequired must be cleared optimistically so the card goes to 'off' immediately
     assert coordinator.data["hwinfo"]["rebootRequired"] is False
     coordinator.async_update_listeners.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_async_install_fires_notification_when_config_dirty_post_install(
+    coordinator,
+    sample_data,
+) -> None:
+    """Test async_install fires persistent_notification.create when configDirty after install."""
+    sample_data["hwinfo"]["configDirty"] = False
+    sample_data["hwinfo"]["dirtyModules"] = []
+    coordinator.data = sample_data
+
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
+        if service == "Apt":
+            return "/tmp/bgstatus"
+        return {"running": False}
+
+    coordinator.api.async_call = _mock_call
+
+    refresh_count = 0
+
+    async def _mock_refresh() -> None:
+        nonlocal refresh_count
+        refresh_count += 1
+        if refresh_count >= 2:
+            coordinator.data["hwinfo"]["configDirty"] = True
+            coordinator.data["hwinfo"]["dirtyModules"] = ["nginx"]
+
+    coordinator.async_request_refresh = _mock_refresh
+
+    mock_hass = MagicMock()
+    entity = OMVUpdateEntity(coordinator)
+    entity.hass = mock_hass
+
+    with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
+        await entity.async_install(version=None, backup=False)
+
+    create_calls = [
+        call
+        for call in mock_hass.services.async_call.call_args_list
+        if call[0][1] == "create" and call[0][2].get("notification_id") == "omv_config_dirty"
+    ]
+    assert len(create_calls) == 1
+    assert "nginx" in create_calls[0][0][2]["message"]
+
+
+@pytest.mark.asyncio
+async def test_async_install_no_notification_when_clean_post_install(
+    coordinator,
+    sample_data,
+) -> None:
+    """Test async_install does not fire persistent_notification when config is clean after install."""
+    sample_data["hwinfo"]["configDirty"] = False
+    sample_data["hwinfo"]["dirtyModules"] = []
+    coordinator.data = sample_data
+
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
+        if service == "Apt":
+            return "/tmp/bgstatus"
+        return {"running": False}
+
+    coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
+
+    mock_hass = MagicMock()
+    entity = OMVUpdateEntity(coordinator)
+    entity.hass = mock_hass
+
+    with patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock):
+        await entity.async_install(version=None, backup=False)
+
+    create_calls = [
+        call
+        for call in mock_hass.services.async_call.call_args_list
+        if call[0][1] == "create" and call[0][2].get("notification_id") == "omv_config_dirty"
+    ]
+    assert len(create_calls) == 0
