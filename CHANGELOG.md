@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.2.3] - 2026-05-19
+
+### Added
+
+- **Repair for pending OMV reboot**: When OMV has finished installing package updates and only a reboot is still required, the integration now raises a fixable Home Assistant Repair. Submitting the repair triggers the OMV reboot, marks the OMV system update as completed immediately in Home Assistant, and removes the repair automatically again after a manual reboot detected by the next coordinator refresh.
+
 ## [2.2.2] - 2026-05-19
 
 ### Added

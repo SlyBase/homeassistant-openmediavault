@@ -30,6 +30,7 @@ from .const import (
 from .coordinator import OMVDataUpdateCoordinator
 from .exceptions import OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
+from .repairs import async_delete_reboot_repair_issue, async_sync_reboot_repair_issue
 
 type OMVConfigEntry = ConfigEntry[OMVDataUpdateCoordinator]
 
@@ -50,6 +51,21 @@ def _register_registry_cleanup_listener(
         cleanup_task = hass.async_create_task(_async_cleanup_stale_registry_entries(hass, entry, coordinator))
 
     entry.async_on_unload(coordinator.async_add_listener(_schedule_cleanup))
+
+
+def _register_reboot_repair_listener(
+    hass: HomeAssistant,
+    entry: OMVConfigEntry,
+    coordinator: OMVDataUpdateCoordinator,
+) -> None:
+    """Keep the reboot repair issue synchronized with coordinator data."""
+
+    @callback
+    def _sync_reboot_repair() -> None:
+        async_sync_reboot_repair_issue(hass, entry)
+
+    _sync_reboot_repair()
+    entry.async_on_unload(coordinator.async_add_listener(_sync_reboot_repair))
 
 
 async def _async_cleanup_stale_registry_entries(
@@ -115,11 +131,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     )
     await coordinator.async_init(system_info)
     await coordinator.async_config_entry_first_refresh()
-    await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
-
     entry.runtime_data = coordinator
+    await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _register_registry_cleanup_listener(hass, entry, coordinator)
+    _register_reboot_repair_listener(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
@@ -128,6 +144,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool
     """Unload the OMV config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
+        async_delete_reboot_repair_issue(hass, entry.entry_id)
         await entry.runtime_data.api.async_close()
     return unload_ok
 

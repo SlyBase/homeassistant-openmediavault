@@ -208,5 +208,22 @@
         "apply_config_failed": {
             "message": "Failed to apply OMV configuration changes. Check the OMV logs."
         }
+    },
+    "issues": {
+        "reboot_required": {
+            "title": "{title} requires a reboot to finish updates",
+            "description": "OpenMediaVault host {title} has finished installing package updates and now requires a reboot. Restart the host to mark the OMV system update as completed in Home Assistant.",
+            "fix_flow": {
+                "step": {
+                    "confirm": {
+                        "title": "{title} requires a reboot to finish updates",
+                        "description": "Select Submit to reboot {title}. If the host was already restarted outside Home Assistant, this repair disappears automatically after the next refresh."
+                    }
+                },
+                "abort": {
+                    "config_dirty": "OMV still has pending configuration changes ({modules}). Apply the configuration before rebooting."
+                }
+            }
+        }
     }
 }
