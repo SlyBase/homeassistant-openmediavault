@@ -212,7 +212,6 @@
     "issues": {
         "reboot_required": {
             "title": "Neustart erforderlich \u2013 {title}",
-            "description": "{title} erfordert einen Neustart, um die Installation der ausstehenden Updates abzuschlie\u00dfen.",
             "fix_flow": {
                 "step": {
                     "confirm": {

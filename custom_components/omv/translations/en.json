@@ -212,7 +212,6 @@
     "issues": {
         "reboot_required": {
             "title": "Reboot required \u2013 {title}",
-            "description": "{title} requires a reboot to complete the pending update installation.",
             "fix_flow": {
                 "step": {
                     "confirm": {
