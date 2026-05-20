@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.2.4] - 2026-05-20
+
+### Added
+
+- **Option to disable reboot required notification**: A new boolean option "Disable reboot required notification" is available in the integration's options flow (next to SMART monitoring and virtual passthrough). When enabled, the Home Assistant Repair for a pending OMV reboot is suppressed. Default is disabled (repair shows as before). Closes [#31](https://github.com/SlyBase/homeassistant-openmediavault/issues/31).
+
 ## [2.2.3] - 2026-05-20
 
 ### Added

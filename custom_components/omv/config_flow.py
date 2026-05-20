@@ -21,6 +21,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from .const import (
+    CONF_REBOOT_REPAIR_DISABLED,
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
@@ -216,6 +217,10 @@ class OMVOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_VIRTUAL_PASSTHROUGH,
                     default=self._entry.options.get(CONF_VIRTUAL_PASSTHROUGH, False),
+                ): bool,
+                vol.Optional(
+                    CONF_REBOOT_REPAIR_DISABLED,
+                    default=self._entry.options.get(CONF_REBOOT_REPAIR_DISABLED, False),
                 ): bool,
                 vol.Optional(
                     CONF_SELECTED_DISKS,

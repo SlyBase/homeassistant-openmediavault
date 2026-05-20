@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 
-from .const import DOMAIN
+from .const import CONF_REBOOT_REPAIR_DISABLED, DOMAIN
 from .coordinator import OMVDataUpdateCoordinator
 
 _REBOOT_REQUIRED_ISSUE = "reboot_required"
@@ -34,8 +34,13 @@ def async_sync_reboot_repair_issue(hass: HomeAssistant, entry: ConfigEntry) -> N
     if not isinstance(coordinator, OMVDataUpdateCoordinator):
         return
 
-    hwinfo = coordinator.data.get("hwinfo", {})
     issue_id = get_reboot_required_issue_id(entry.entry_id)
+
+    if entry.options.get(CONF_REBOOT_REPAIR_DISABLED, False):
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+        return
+
+    hwinfo = coordinator.data.get("hwinfo", {})
     pending_updates = int(hwinfo.get("availablePkgUpdates", 0))
     reboot_required = bool(hwinfo.get("rebootRequired", False))
     config_dirty = bool(hwinfo.get("configDirty", False))

@@ -26,6 +26,7 @@
                     "scan_interval": "Scan interval (seconds)",
                     "smart_disabled": "Disable SMART monitoring",
                     "virtual_passthrough": "Virtual passthrough (e.g. Proxmox)",
+                    "reboot_repair_disabled": "Disable reboot required notification",
                     "selected_disks": "Selected disks",
                     "selected_filesystems": "Selected filesystems",
                     "selected_services": "Selected services",
