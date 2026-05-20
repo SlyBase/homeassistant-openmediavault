@@ -26,6 +26,7 @@
                     "scan_interval": "Abfrageintervall (Sekunden)",
                     "smart_disabled": "SMART-Überwachung deaktivieren",
                     "virtual_passthrough": "Virtueller Passthrough (z. B. Proxmox)",
+                    "reboot_repair_disabled": "Neustart-Benachrichtigung deaktivieren",
                     "selected_disks": "Ausgewählte Festplatten",
                     "selected_filesystems": "Ausgewählte Dateisysteme",
                     "selected_services": "Ausgewählte Dienste",
@@ -34,6 +35,9 @@
                     "selected_zfs_pools": "Ausgewählte ZFS-Pools",
                     "selected_compose_projects": "Ausgewählte Compose-Projekte",
                     "selected_containers": "Ausgewählte Container"
+                },
+                "data_description": {
+                    "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen."
                 }
             }
         }

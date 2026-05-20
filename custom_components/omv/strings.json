@@ -35,6 +35,9 @@
                     "selected_zfs_pools": "Selected ZFS pools",
                     "selected_compose_projects": "Selected Compose projects",
                     "selected_containers": "Selected containers"
+                },
+                "data_description": {
+                    "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS."
                 }
             }
         }
