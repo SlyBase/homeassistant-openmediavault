@@ -211,17 +211,17 @@
     },
     "issues": {
         "reboot_required": {
-            "title": "{title} requires a reboot to finish updates",
-            "description": "OpenMediaVault host {title} has finished installing package updates and now requires a reboot. Restart the host to mark the OMV system update as completed in Home Assistant.",
+            "title": "Reboot required \u2013 {title}",
+            "description": "{title} requires a reboot to complete the pending update installation.",
             "fix_flow": {
                 "step": {
                     "confirm": {
-                        "title": "{title} requires a reboot to finish updates",
-                        "description": "Select Submit to reboot {title}. If the host was already restarted outside Home Assistant, this repair disappears automatically after the next refresh."
+                        "title": "Reboot {title}?",
+                        "description": "Click **Submit** to reboot {title} now. The system will be briefly unavailable."
                     }
                 },
                 "abort": {
-                    "config_dirty": "OMV still has pending configuration changes ({modules}). Apply the configuration before rebooting."
+                    "config_dirty": "Reboot aborted: {title} has pending configuration changes ({modules}). Apply the configuration first."
                 }
             }
         }

@@ -75,7 +75,10 @@ class OMVRebootRepairFlow(ConfirmRepairFlow):
     async def async_step_confirm(self, user_input: dict[str, str] | None = None) -> data_entry_flow.FlowResult:
         """Handle the confirmation step for the reboot repair."""
         if user_input is None:
-            return await super().async_step_confirm(user_input)
+            return self.async_show_form(
+                step_id="confirm",
+                description_placeholders={"title": self._entry.title},
+            )
 
         coordinator = self._coordinator
         await coordinator.async_request_refresh()

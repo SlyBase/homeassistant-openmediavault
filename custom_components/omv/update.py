@@ -99,12 +99,10 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         n = int(hwinfo.get("availablePkgUpdates", 0))
         if n > 0:
             return f"{installed} (+{n} packages)"
-        # No pending package updates — but if a reboot is still required
-        # (e.g. after a kernel update) keep the entity in state 'on' so the
-        # user sees the pending action.  A synthetic suffix keeps latest_version
-        # different from installed_version while conveying the reason.
-        if hwinfo.get("rebootRequired"):
-            return f"{installed} (reboot required)"
+        # No pending package updates — the system is up-to-date.
+        # A reboot-required state is handled exclusively by the repair issue,
+        # so we return installed_version unchanged to avoid a spurious
+        # "update available" indicator while the repair is already visible.
         return installed
 
     @property

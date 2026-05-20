@@ -1,30 +1,37 @@
 # Changelog
 
-## [2.2.3] - 2026-05-19
+## [Unreleased]
 
-### Added
+### Fixed
 
-- **Repair for pending OMV reboot**: When OMV has finished installing package updates and only a reboot is still required, the integration now raises a fixable Home Assistant Repair. Submitting the repair triggers the OMV reboot, marks the OMV system update as completed immediately in Home Assistant, and removes the repair automatically again after a manual reboot detected by the next coordinator refresh.
+- **Update entity no longer shows "update available" after reboot-only scenario** (`update.py`): When no package updates are pending (`availablePkgUpdates == 0`) but `rebootRequired` is true, the update entity now correctly reports the system as up-to-date. The reboot notification is handled exclusively by the repair issue, avoiding a duplicate/misleading update card.
+- **Repair dialog now shows correct description text** (`repairs.py`, `strings.json`, `translations/`): The `OMVRebootRepairFlow` confirm step now passes `description_placeholders` so `{title}` is filled correctly. Added an `issues.reboot_required` section to `strings.json`, `en.json`, and `de.json` with a proper confirm description (German: "Klicke auf **OK**, um {title} jetzt neu zu starten.") replacing HA's generic fallback text.
 
 ## [2.2.2] - 2026-05-19
 
 ### Added
 
-- **Apply Configuration button**: New button entity (`button.<host>_apply_config`) that applies all pending OMV configuration changes directly from Home Assistant. The integration refreshes automatically before and after the call, and any "configuration pending" notification is dismissed on success.
-- **Reboot safety check**: The Reboot button now verifies there are no unapplied configuration changes before rebooting. If pending changes exist, the reboot is blocked and the error message lists the affected OMV modules.
-- **Post-update notification**: After successfully installing package updates, if configuration changes are pending, a persistent Home Assistant notification prompts you to press Apply Configuration before rebooting.
+- **`dirtyModules` in coordinator `hwinfo` data** (`coordinator.py`): The list of OMV modules with pending configuration changes is now normalised from `hwinfo.dirtyModules` and exposed in `coordinator.data["hwinfo"]["dirtyModules"]` as a plain Python list.
+- **`async_apply_config()` on API client** (`omv_api.py`): New method that calls `Config.applyChanges` on the OMV JSON-RPC API, running `omv-mkconf` for all dirty modules and persisting the in-memory configuration to disk.
+- **Apply Configuration button** (`button.py`): New `OMVApplyConfigButton` entity that triggers `async_apply_config()`, refreshes coordinator data before and after the call, and dismisses the `omv_config_dirty` persistent notification on success.
+- **Reboot preflight check** (`button.py`): `OMVRebootButton.async_press()` now fetches fresh coordinator data and raises a translated `HomeAssistantError` (`reboot_blocked_config_dirty`) when `configDirty=True`, listing the affected modules.
+- **Persistent notification after package install** (`update.py`): After a successful apt upgrade, if the coordinator reports `configDirty=True`, a persistent HA notification (`omv_config_dirty`) is created prompting the user to press Apply Configuration before rebooting.
+- **Button and exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added translation keys `entity.button.apply_config`, `exceptions.reboot_blocked_config_dirty`, and `exceptions.apply_config_failed`.
 
 ### Fixed
 
-- **Apply Configuration button always failed on OMV 8**: A required parameter was missing in the API call, causing the button to always show an error. The button now works correctly on both OMV 7 and OMV 8.
-- **Package installation incorrectly blocked when configuration was dirty**: Installing packages was unnecessarily blocked when OMV had pending configuration changes. Package installation is independent of the configuration state — the reboot guard is the correct safeguard.
-- **"What's new" now shows full package details**: Pressing **What's new** on the Home Assistant update card now shows the complete list of pending packages with name, version, and — when available — a short description.
-- **Configuration-related error messages are now translated**: Error messages shown when installation or reboot is blocked by pending configuration changes are now fully localized.
+- **`async_apply_config()` now passes required parameters** (`omv_api.py`): `Config.applyChanges` on OMV 8 requires `{"modules": [], "force": false}`; omitting them caused a JSON schema validation error (`The value "null" is not an object`) and the button always showed "Konfigurationsänderungen konnten nicht angewendet werden".
+
+- **`configDirty` no longer blocks package installation** (`update.py`): Removed the overly aggressive preflight block that prevented `async_install()` when OMV had pending configuration changes. Package installation via apt is independent of OMV's config state; the correct guard is only at reboot (already handled by the reboot preflight check). Removes the `config_dirty` exception key.
+
+- **`async_release_notes()` on update entity** (`update.py`): Pressing "What's new" on the HA update card now displays the full Markdown list of all pending packages. Each block shows the package name (bold), new version (in backticks to prevent Markdown strikethrough), and — when available — the summary description. Blocks are separated by blank lines.
+- **`configDirty` preflight check in `async_install()`** (`update.py`): When OMV has unapplied configuration changes (`configDirty=True` in `hwinfo`), pressing Install now immediately raises a translated `HomeAssistantError` (`translation_key="config_dirty"`) asking the user to apply changes in the OMV WebUI first. The check is preceded by a fresh coordinator refresh so the flag reflects the current OMV state, not a potentially stale cached value.
+- **Exception translations** (`strings.json`, `translations/en.json`, `translations/de.json`): Added `exceptions.config_dirty` translation key so the `configDirty` error message is properly localised via HA's translation system.
 
 ### Changed
 
-- **Update card shows a compact summary**: The update card preview shows up to two package names/versions followed by a `… +N more` suffix (max 200 characters). Full details are available via **What's new**.
-- **OMV HTTP 500 errors include the response body in the HA log**: When OMV returns an HTTP 500 error, the first 500 characters of the response body are now appended to the log entry, making the root cause easier to diagnose.
+- **`release_summary` preview format** (`update.py`): `release_summary` is now a compact plain-text preview (≤200 characters) showing the first one or two package names/versions and a `… +N more` suffix. The full Markdown detail has moved to `async_release_notes()`.
+- **HTTP-500 body included in error message** (`omv_api.py`): When OMV returns HTTP 5xx, the first 500 characters of the response body are now read and embedded in the `OMVConnectionError` message and the debug log entry, making the root cause visible in the HA log.
 
 ## [2.2.1] - 2026-05-18
 

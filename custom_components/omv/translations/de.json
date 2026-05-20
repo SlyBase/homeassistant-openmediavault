@@ -211,17 +211,17 @@
     },
     "issues": {
         "reboot_required": {
-            "title": "{title} erfordert einen Neustart zum Abschluss der Updates",
-            "description": "Der OpenMediaVault-Host {title} hat die Paket-Updates abgeschlossen und benötigt jetzt einen Neustart. Starte den Host neu, damit das OMV-Systemupdate in Home Assistant als abgeschlossen angezeigt wird.",
+            "title": "Neustart erforderlich \u2013 {title}",
+            "description": "{title} erfordert einen Neustart, um die Installation der ausstehenden Updates abzuschlie\u00dfen.",
             "fix_flow": {
                 "step": {
                     "confirm": {
-                        "title": "{title} erfordert einen Neustart zum Abschluss der Updates",
-                        "description": "Wähle Absenden, um {title} neu zu starten. Falls der Host bereits außerhalb von Home Assistant neu gestartet wurde, verschwindet dieser Reparaturhinweis nach der nächsten Aktualisierung automatisch."
+                        "title": "{title} neu starten?",
+                        "description": "Klicke auf **OK**, um {title} jetzt neu zu starten. Das System ist kurzzeitig nicht erreichbar."
                     }
                 },
                 "abort": {
-                    "config_dirty": "OMV hat noch ausstehende Konfigurationsänderungen ({modules}). Bitte wende die Konfiguration vor dem Neustart an."
+                    "config_dirty": "Neustart abgebrochen: {title} hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst die Konfiguration anwenden."
                 }
             }
         }

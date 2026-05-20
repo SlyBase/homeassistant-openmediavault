@@ -415,15 +415,17 @@ def test_extra_state_attributes_reboot_required(coordinator, sample_data) -> Non
 
 
 def test_latest_version_reboot_required_no_updates(coordinator, sample_data) -> None:
-    """Test latest_version differs from installed when reboot is required but no pkg updates."""
+    """Test latest_version equals installed_version when only a reboot is pending.
+
+    The reboot-required case is handled by the repair issue, so the update
+    entity should report the system as up-to-date (no duplicate indicator).
+    """
     sample_data["hwinfo"]["availablePkgUpdates"] = 0
     sample_data["hwinfo"]["rebootRequired"] = True
     coordinator.data = sample_data
 
     entity = OMVUpdateEntity(coordinator)
-    assert entity.latest_version != entity.installed_version
-    assert entity.latest_version is not None
-    assert "reboot required" in (entity.latest_version or "")
+    assert entity.latest_version == entity.installed_version
 
 
 def test_latest_version_no_reboot_no_updates(coordinator, sample_data) -> None:
