@@ -1,11 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [2.2.3] - 2026-05-20
 
-### Fixed
+### Added
 
-- **Update entity no longer shows "update available" after reboot-only scenario** (`update.py`): When no package updates are pending (`availablePkgUpdates == 0`) but `rebootRequired` is true, the update entity now correctly reports the system as up-to-date. The reboot notification is handled exclusively by the repair issue, avoiding a duplicate/misleading update card.
-- **Repair dialog now shows correct description text** (`repairs.py`, `strings.json`, `translations/`): The `OMVRebootRepairFlow` confirm step now passes `description_placeholders` so `{title}` is filled correctly. Added an `issues.reboot_required` section to `strings.json`, `en.json`, and `de.json` with a proper confirm description (German: "Klicke auf **OK**, um {title} jetzt neu zu starten.") replacing HA's generic fallback text.
+- **Repair for pending OMV reboot**: When OMV has finished installing package updates and only a reboot is still required, the integration now raises a fixable Home Assistant Repair. Submitting the repair triggers the OMV reboot, marks the OMV system update as completed immediately in Home Assistant, and removes the repair automatically again after a manual reboot detected by the next coordinator refresh.
+
+### Changed
+
+- **Update card no longer shows a pending update after installation**: After OMV finishes installing updates and only a reboot remains, the Home Assistant update card now correctly shows the system as up-to-date. The reboot reminder appears exclusively as a Repair notification — no duplicate alert.
 
 ## [2.2.2] - 2026-05-19
 
