@@ -15,6 +15,8 @@
 - Disk temperature sensor renamed from `{disk} Temperatur` to `Temperatur` — redundant disk prefix removed since the entity is already attached to the disk device.
 - SMART status exposed as a plain sensor instead of a binary sensor, showing the full status string (`GOOD`, `BAD_SECTOR`, etc.) rather than a simple on/off.
 - SMART `getAttributes` is no longer attempted for RAID arrays and logical storage devices (md*, ZFS), which do not expose physical SMART attributes.
+- Virtual/emulated disks (`QEMU HARDDISK`, `VMware Virtual`, `VirtualBox`) are now auto-detected by model name: no SMART Status entity is created for them and OMV's unreliable `overallstatus` value is ignored, eliminating false `BAD_STATUS` alarms on Proxmox/VMware hosts.
+- Optical drives (`sr*`) are excluded from the SMART Status entity.
 
 ## [2.2.4] - 2026-05-20
 

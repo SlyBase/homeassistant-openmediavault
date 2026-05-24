@@ -548,7 +548,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if smart_record is not None:
                     break
 
-            if smart_record is not None:
+            if smart_record is not None and not disk.get("is_virtual"):
                 smart_temp = self._coerce_optional_float(smart_record.get("temperature"))
                 if smart_temp:
                     disk["temperature"] = smart_temp
@@ -566,9 +566,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 or disk.get("hotpluggable")
                 or disk.get("israid")
                 or disk.get("is_logical")
+                or disk.get("is_virtual")
             ):
                 _LOGGER.debug(
-                    "Skipping SMART attributes for %s (removable/hotpluggable/logical)",
+                    "Skipping SMART attributes for %s (removable/hotpluggable/logical/virtual)",
                     canonical or disk.get("devicename"),
                 )
                 continue
@@ -1077,6 +1078,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             seen_devicenames.add(devicename)
             total_size_gb = self._coerce_storage_gb(record.get("size"))
+            model = str(record.get("model") or "unknown")
+            is_virtual = model.upper().startswith(("QEMU", "VMWARE", "VIRTUALBOX", "VBOX"))
             disk = {
                 "disk_key": devicename,
                 "devicename": devicename,
@@ -1085,7 +1088,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "size": record.get("size", "unknown"),
                 "total_size_gb": total_size_gb or None,
                 "vendor": str(record.get("vendor") or "unknown"),
-                "model": str(record.get("model") or "unknown"),
+                "model": model,
+                "is_virtual": is_virtual,
                 "description": str(record.get("description") or "unknown"),
                 "raid_level": self._extract_raid_level(str(record.get("description") or "")),
                 "serialnumber": str(record.get("serialnumber") or "unknown"),
