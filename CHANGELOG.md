@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Fixed SMART disabled checkbox resetting on every options flow open when virtual passthrough was enabled; the checkbox now reflects the actually saved value and the coordinator enforces the virtual-passthrough dependency at runtime.
+
 ## [2.2.4] - 2026-05-20
 
 ### Added

@@ -327,8 +327,13 @@ async def test_options_flow_persists_missing_resource_fields(hass, config_entry)
 
 
 @pytest.mark.asyncio
-async def test_options_flow_virtual_passthrough_forces_smart_disabled(hass, config_entry) -> None:
-    """Test virtual passthrough always persists with SMART disabled."""
+async def test_options_flow_virtual_passthrough_does_not_override_smart_disabled(hass, config_entry) -> None:
+    """Test that enabling virtual passthrough no longer silently forces smart_disabled=True.
+
+    The coordinator enforces the virtual-passthrough dependency at runtime
+    (self.smart_disabled = smart_disabled or virtual_passthrough), so the
+    options flow must persist exactly what the user chose.
+    """
     config_entry.runtime_data = type(
         "RuntimeCoordinator",
         (),
@@ -362,4 +367,4 @@ async def test_options_flow_virtual_passthrough_forces_smart_disabled(hass, conf
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_VIRTUAL_PASSTHROUGH] is True
-    assert result["data"][CONF_SMART_DISABLED] is True
+    assert result["data"][CONF_SMART_DISABLED] is False

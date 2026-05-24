@@ -195,8 +195,6 @@ class OMVOptionsFlow(OptionsFlow):
         """Manage the options flow."""
         if user_input is not None:
             data = dict(user_input)
-            if data.get(CONF_VIRTUAL_PASSTHROUGH):
-                data[CONF_SMART_DISABLED] = True
             for field in _RESOURCE_FIELDS:
                 if field not in data and field in self._entry.options:
                     data[field] = list(self._entry.options.get(field, []))
@@ -211,8 +209,7 @@ class OMVOptionsFlow(OptionsFlow):
                 ): vol.All(int, vol.Range(min=10, max=3600)),
                 vol.Optional(
                     CONF_SMART_DISABLED,
-                    default=self._entry.options.get(CONF_SMART_DISABLED, False)
-                    or self._entry.options.get(CONF_VIRTUAL_PASSTHROUGH, False),
+                    default=self._entry.options.get(CONF_SMART_DISABLED, False),
                 ): bool,
                 vol.Optional(
                     CONF_VIRTUAL_PASSTHROUGH,
