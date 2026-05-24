@@ -550,8 +550,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     break
 
             if smart_record is not None:
-                if smart_record.get("temperature") not in (None, ""):
-                    disk["temperature"] = self._coerce_optional_float(smart_record.get("temperature"))
+                smart_temp = self._coerce_optional_float(smart_record.get("temperature"))
+                if smart_temp:
+                    disk["temperature"] = smart_temp
                 disk["overallstatus"] = str(smart_record.get("overallstatus", disk.get("overallstatus", "unknown")))
                 disk["smart_details"] = {
                     key: value
@@ -1091,7 +1092,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "isroot": self._coerce_bool(record.get("isroot")),
                 "isreadonly": self._coerce_bool(record.get("isreadonly")),
                 "hotpluggable": self._coerce_bool(record.get("hotpluggable")),
-                "temperature": self._coerce_optional_float(record.get("temperature")),
+                "temperature": self._coerce_optional_float(record.get("temperature")) or None,
                 "overallstatus": str(record.get("overallstatus") or "unknown"),
                 "used_size_gb": None,
                 "free_size_gb": None,

@@ -10,6 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .binary_sensor_types import (
+    DISK_SMART_PROBLEM_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
     OMVBinarySensorDescription,
@@ -43,6 +44,16 @@ def get_expected_binary_sensor_unique_ids(
         if service_name:
             unique_ids.add(f"{entry_id}-{SERVICE_BINARY_SENSOR.key}-{service_name}")
 
+    if not coordinator.smart_disabled:
+        for disk in coordinator.data.get("disk", []):
+            if not isinstance(disk, dict):
+                continue
+            if disk.get("israid") or disk.get("is_logical"):
+                continue
+            item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+            if item_key:
+                unique_ids.add(f"{entry_id}-{DISK_SMART_PROBLEM_BINARY_SENSOR.key}-{item_key}")
+
     return unique_ids
 
 
@@ -64,6 +75,16 @@ async def async_setup_entry(
         if not name:
             continue
         entities.append(OMVBinarySensor(coordinator, SERVICE_BINARY_SENSOR, item_key=name))
+
+    if not coordinator.smart_disabled:
+        for disk in coordinator.data.get("disk", []):
+            if not isinstance(disk, dict):
+                continue
+            if disk.get("israid") or disk.get("is_logical"):
+                continue
+            item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+            if item_key:
+                entities.append(OMVBinarySensor(coordinator, DISK_SMART_PROBLEM_BINARY_SENSOR, item_key=item_key))
 
     async_add_entities(entities)
 

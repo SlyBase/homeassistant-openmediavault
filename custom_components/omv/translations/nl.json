@@ -1,195 +1,198 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Connect to OpenMediaVault",
-                "data": {
-                    "host": "Host",
-                    "username": "Username",
-                    "password": "Password",
-                    "port": "Poort",
-                    "ssl": "SSL gebruiken",
-                    "verify_ssl": "SSL-certificaat controleren"
-                }
-            }
-        },
-        "error": {
-            "invalid_auth": "Ongeldige inloggegevens",
-            "cannot_connect": "Kan geen verbinding maken met OMV",
-            "unknown": "Onbekende fout"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OpenMediaVault",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "port": "Poort",
+          "ssl": "SSL gebruiken",
+          "verify_ssl": "SSL-certificaat controleren"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "data": {
-                    "scan_interval": "Scaninterval (seconden)",
-                    "smart_disabled": "SMART-bewaking uitschakelen",
-                    "virtual_passthrough": "Virtuele passthrough (bijv. Proxmox)",
-                    "selected_disks": "Geselecteerde schijven",
-                    "selected_filesystems": "Geselecteerde bestandssystemen",
-                    "selected_services": "Geselecteerde services",
-                    "selected_network_interfaces": "Geselecteerde netwerkinterfaces",
-                    "selected_raids": "Geselecteerde RAIDs",
-                    "selected_zfs_pools": "Geselecteerde ZFS-pools",
-                    "selected_compose_projects": "Geselecteerde Compose-projecten",
-                    "selected_containers": "Geselecteerde containers"
-                }
-            }
-        }
-    },
-    "entity": {
-        "sensor": {
-            "cpu_utilization": {
-                "name": "CPU-gebruik"
-            },
-            "memory_usage": {
-                "name": "Geheugengebruik"
-            },
-            "memory_total": {
-                "name": "Totaal geheugen"
-            },
-            "memory_used": {
-                "name": "Gebruikt geheugen"
-            },
-            "cpu_temperature": {
-                "name": "CPU-temperatuur"
-            },
-            "uptime": {
-                "name": "Uptime"
-            },
-            "available_package_updates": {
-                "name": "Beschikbare pakketupdates"
-            },
-            "docker_container_total": {
-                "name": "Docker-containers totaal"
-            },
-            "docker_container_running": {
-                "name": "Docker-containers actief"
-            },
-            "docker_container_not_running": {
-                "name": "Docker-containers niet actief"
-            },
-            "compose_project_status": {
-                "name": "{resource} status"
-            },
-            "compose_project_total": {
-                "name": "{resource} containers totaal"
-            },
-            "compose_project_running": {
-                "name": "{resource} containers actief"
-            },
-            "compose_project_not_running": {
-                "name": "{resource} containers niet actief"
-            },
-            "container_state": {
-                "name": "{resource} status"
-            },
-            "container_status_detail": {
-                "name": "{resource} statusdetail"
-            },
-            "container_created_at": {
-                "name": "{resource} aangemaakt"
-            },
-            "container_started_at": {
-                "name": "{resource} gestart"
-            },
-            "container_version": {
-                "name": "{resource} versie"
-            },
-            "container_volume_size": {
-                "name": "Volume {resource} grootte"
-            },
-            "disk_temperature": {
-                "name": "{resource} temperatuur"
-            },
-            "disk_used_percent": {
-                "name": "{resource} gebruikt %"
-            },
-            "disk_free_percent": {
-                "name": "{resource} vrij %"
-            },
-            "disk_used_size": {
-                "name": "{resource} gebruikte grootte"
-            },
-            "disk_free_size": {
-                "name": "{resource} vrije grootte"
-            },
-            "disk_total_size": {
-                "name": "{resource} totale grootte"
-            },
-            "filesystem_used_percent": {
-                "name": "{resource} gebruikt %"
-            },
-            "filesystem_free_percent": {
-                "name": "{resource} vrij %"
-            },
-            "filesystem_used_size": {
-                "name": "{resource} gebruikte grootte"
-            },
-            "filesystem_free_size": {
-                "name": "{resource} vrije grootte"
-            },
-            "filesystem_total_size": {
-                "name": "{resource} totale grootte"
-            },
-            "network_tx": {
-                "name": "{resource} TX"
-            },
-            "network_rx": {
-                "name": "{resource} RX"
-            },
-            "raid": {
-                "name": "{resource} RAID-status"
-            },
-            "zfs_pool": {
-                "name": "{resource} ZFS-pool"
-            }
-        },
-        "binary_sensor": {
-            "update_available": {
-                "name": "Update beschikbaar"
-            },
-            "reboot_required": {
-                "name": "Herstart vereist"
-            },
-            "service": {
-                "name": "{resource} service"
-            }
-        },
-        "update": {
-            "omv_system_update": {
-                "name": "Systeem-update"
-            }
-        },
-        "button": {
-            "reboot": {
-                "name": "Herstarten"
-            },
-            "shutdown": {
-                "name": "Uitschakelen"
-            },
-            "compose_up": {
-                "name": "compose up"
-            },
-            "compose_down": {
-                "name": "compose down"
-            },
-            "compose_start": {
-                "name": "Start"
-            },
-            "compose_stop": {
-                "name": "Stop"
-            },
-            "compose_pull": {
-                "name": "Pull"
-            },
-            "compose_image_prune": {
-                "name": "docker image prune"
-            },
-            "compose_container_prune": {
-                "name": "docker container prune"
-            }
-        }
+    "error": {
+      "invalid_auth": "Ongeldige inloggegevens",
+      "cannot_connect": "Kan geen verbinding maken met OMV",
+      "unknown": "Onbekende fout"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Scaninterval (seconden)",
+          "smart_disabled": "SMART-bewaking uitschakelen",
+          "virtual_passthrough": "Virtuele passthrough (bijv. Proxmox)",
+          "selected_disks": "Geselecteerde schijven",
+          "selected_filesystems": "Geselecteerde bestandssystemen",
+          "selected_services": "Geselecteerde services",
+          "selected_network_interfaces": "Geselecteerde netwerkinterfaces",
+          "selected_raids": "Geselecteerde RAIDs",
+          "selected_zfs_pools": "Geselecteerde ZFS-pools",
+          "selected_compose_projects": "Geselecteerde Compose-projecten",
+          "selected_containers": "Geselecteerde containers"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_utilization": {
+        "name": "CPU-gebruik"
+      },
+      "memory_usage": {
+        "name": "Geheugengebruik"
+      },
+      "memory_total": {
+        "name": "Totaal geheugen"
+      },
+      "memory_used": {
+        "name": "Gebruikt geheugen"
+      },
+      "cpu_temperature": {
+        "name": "CPU-temperatuur"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "available_package_updates": {
+        "name": "Beschikbare pakketupdates"
+      },
+      "docker_container_total": {
+        "name": "Docker-containers totaal"
+      },
+      "docker_container_running": {
+        "name": "Docker-containers actief"
+      },
+      "docker_container_not_running": {
+        "name": "Docker-containers niet actief"
+      },
+      "compose_project_status": {
+        "name": "{resource} status"
+      },
+      "compose_project_total": {
+        "name": "{resource} containers totaal"
+      },
+      "compose_project_running": {
+        "name": "{resource} containers actief"
+      },
+      "compose_project_not_running": {
+        "name": "{resource} containers niet actief"
+      },
+      "container_state": {
+        "name": "{resource} status"
+      },
+      "container_status_detail": {
+        "name": "{resource} statusdetail"
+      },
+      "container_created_at": {
+        "name": "{resource} aangemaakt"
+      },
+      "container_started_at": {
+        "name": "{resource} gestart"
+      },
+      "container_version": {
+        "name": "{resource} versie"
+      },
+      "container_volume_size": {
+        "name": "Volume {resource} grootte"
+      },
+      "disk_temperature": {
+        "name": "{resource} temperatuur"
+      },
+      "disk_used_percent": {
+        "name": "{resource} gebruikt %"
+      },
+      "disk_free_percent": {
+        "name": "{resource} vrij %"
+      },
+      "disk_used_size": {
+        "name": "{resource} gebruikte grootte"
+      },
+      "disk_free_size": {
+        "name": "{resource} vrije grootte"
+      },
+      "disk_total_size": {
+        "name": "{resource} totale grootte"
+      },
+      "filesystem_used_percent": {
+        "name": "{resource} gebruikt %"
+      },
+      "filesystem_free_percent": {
+        "name": "{resource} vrij %"
+      },
+      "filesystem_used_size": {
+        "name": "{resource} gebruikte grootte"
+      },
+      "filesystem_free_size": {
+        "name": "{resource} vrije grootte"
+      },
+      "filesystem_total_size": {
+        "name": "{resource} totale grootte"
+      },
+      "network_tx": {
+        "name": "{resource} TX"
+      },
+      "network_rx": {
+        "name": "{resource} RX"
+      },
+      "raid": {
+        "name": "{resource} RAID-status"
+      },
+      "zfs_pool": {
+        "name": "{resource} ZFS-pool"
+      }
+    },
+    "binary_sensor": {
+      "update_available": {
+        "name": "Update beschikbaar"
+      },
+      "reboot_required": {
+        "name": "Herstart vereist"
+      },
+      "service": {
+        "name": "{resource} service"
+      },
+      "disk_smart_problem": {
+        "name": "{resource} SMART-probleem"
+      }
+    },
+    "update": {
+      "omv_system_update": {
+        "name": "Systeem-update"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Herstarten"
+      },
+      "shutdown": {
+        "name": "Uitschakelen"
+      },
+      "compose_up": {
+        "name": "compose up"
+      },
+      "compose_down": {
+        "name": "compose down"
+      },
+      "compose_start": {
+        "name": "Start"
+      },
+      "compose_stop": {
+        "name": "Stop"
+      },
+      "compose_pull": {
+        "name": "Pull"
+      },
+      "compose_image_prune": {
+        "name": "docker image prune"
+      },
+      "compose_container_prune": {
+        "name": "docker container prune"
+      }
+    }
+  }
 }

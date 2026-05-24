@@ -1,232 +1,235 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Mit OpenMediaVault verbinden",
-                "data": {
-                    "host": "Host",
-                    "username": "Benutzername",
-                    "password": "Passwort",
-                    "port": "Port",
-                    "ssl": "SSL verwenden",
-                    "verify_ssl": "SSL-Zertifikat überprüfen"
-                }
-            }
-        },
-        "error": {
-            "invalid_auth": "Ungültige Zugangsdaten",
-            "cannot_connect": "Verbindung zu OMV nicht möglich",
-            "unknown": "Unbekannter Fehler"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Mit OpenMediaVault verbinden",
+        "data": {
+          "host": "Host",
+          "username": "Benutzername",
+          "password": "Passwort",
+          "port": "Port",
+          "ssl": "SSL verwenden",
+          "verify_ssl": "SSL-Zertifikat überprüfen"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "data": {
-                    "scan_interval": "Abfrageintervall (Sekunden)",
-                    "smart_disabled": "SMART-Überwachung deaktivieren",
-                    "virtual_passthrough": "Virtueller Passthrough (z. B. Proxmox)",
-                    "reboot_repair_disabled": "Neustart-Benachrichtigung deaktivieren",
-                    "selected_disks": "Ausgewählte Festplatten",
-                    "selected_filesystems": "Ausgewählte Dateisysteme",
-                    "selected_services": "Ausgewählte Dienste",
-                    "selected_network_interfaces": "Ausgewählte Netzwerkschnittstellen",
-                    "selected_raids": "Ausgewählte RAIDs",
-                    "selected_zfs_pools": "Ausgewählte ZFS-Pools",
-                    "selected_compose_projects": "Ausgewählte Compose-Projekte",
-                    "selected_containers": "Ausgewählte Container"
-                },
-                "data_description": {
-                    "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen."
-                }
-            }
-        }
-    },
-    "entity": {
-        "sensor": {
-            "cpu_utilization": {
-                "name": "CPU-Auslastung"
-            },
-            "memory_usage": {
-                "name": "Speicherauslastung"
-            },
-            "memory_total": {
-                "name": "Gesamtspeicher"
-            },
-            "memory_used": {
-                "name": "Genutzter Speicher"
-            },
-            "cpu_temperature": {
-                "name": "CPU-Temperatur"
-            },
-            "uptime": {
-                "name": "Laufzeit"
-            },
-            "available_package_updates": {
-                "name": "Verfügbare Paket-Updates"
-            },
-            "gpu_load": {
-                "name": "GPU-Auslastung"
-            },
-            "gpu_cur_freq": {
-                "name": "GPU-Frequenz"
-            },
-            "docker_container_total": {
-                "name": "Docker Container gesamt"
-            },
-            "docker_container_running": {
-                "name": "Docker Container laufend"
-            },
-            "docker_container_not_running": {
-                "name": "Docker Container nicht laufend"
-            },
-            "compose_project_status": {
-                "name": "{resource} Status"
-            },
-            "compose_project_total": {
-                "name": "{resource} Container gesamt"
-            },
-            "compose_project_running": {
-                "name": "{resource} Container laufend"
-            },
-            "compose_project_not_running": {
-                "name": "{resource} Container nicht laufend"
-            },
-            "container_state": {
-                "name": "{resource} Zustand"
-            },
-            "container_status_detail": {
-                "name": "{resource} Statusdetail"
-            },
-            "container_created_at": {
-                "name": "{resource} Erstellt"
-            },
-            "container_started_at": {
-                "name": "{resource} Gestartet"
-            },
-            "container_version": {
-                "name": "{resource} Version"
-            },
-            "container_volume_size": {
-                "name": "Volume {resource} Größe"
-            },
-            "disk_temperature": {
-                "name": "{resource} Temperatur"
-            },
-            "disk_used_percent": {
-                "name": "{resource} Belegt %"
-            },
-            "disk_free_percent": {
-                "name": "{resource} Frei %"
-            },
-            "disk_used_size": {
-                "name": "{resource} Belegt"
-            },
-            "disk_free_size": {
-                "name": "{resource} Frei"
-            },
-            "disk_total_size": {
-                "name": "{resource} Gesamtgröße"
-            },
-            "filesystem_used_percent": {
-                "name": "{resource} Belegt %"
-            },
-            "filesystem_free_percent": {
-                "name": "{resource} Frei %"
-            },
-            "filesystem_used_size": {
-                "name": "{resource} Belegt"
-            },
-            "filesystem_free_size": {
-                "name": "{resource} Frei"
-            },
-            "filesystem_total_size": {
-                "name": "{resource} Gesamtgröße"
-            },
-            "network_tx": {
-                "name": "{resource} Senden"
-            },
-            "network_rx": {
-                "name": "{resource} Empfangen"
-            },
-            "raid": {
-                "name": "{resource} RAID-Status"
-            },
-            "zfs_pool": {
-                "name": "{resource} ZFS-Pool"
-            }
-        },
-        "binary_sensor": {
-            "update_available": {
-                "name": "Update verfügbar"
-            },
-            "reboot_required": {
-                "name": "Neustart erforderlich"
-            },
-            "service": {
-                "name": "{resource} Dienst"
-            }
-        },
-        "update": {
-            "omv_system_update": {
-                "name": "System-Update"
-            }
-        },
-        "button": {
-            "reboot": {
-                "name": "Neustart"
-            },
-            "shutdown": {
-                "name": "Herunterfahren"
-            },
-            "apply_config": {
-                "name": "Konfiguration anwenden"
-            },
-            "compose_up": {
-                "name": "Compose up"
-            },
-            "compose_down": {
-                "name": "Compose down"
-            },
-            "compose_start": {
-                "name": "Start"
-            },
-            "compose_stop": {
-                "name": "Stop"
-            },
-            "compose_pull": {
-                "name": "Pull"
-            },
-            "compose_image_prune": {
-                "name": "Docker Image prune"
-            },
-            "compose_container_prune": {
-                "name": "Docker Container prune"
-            }
-        }
-    },
-    "exceptions": {
-        "reboot_blocked_config_dirty": {
-            "message": "Neustart nicht möglich: OMV hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst 'Konfiguration anwenden' drücken."
-        },
-        "apply_config_failed": {
-            "message": "Konfigurationsänderungen konnten nicht angewendet werden. Bitte die OMV-Logs prüfen."
-        }
-    },
-    "issues": {
-        "reboot_required": {
-            "title": "Neustart erforderlich \u2013 {title}",
-            "fix_flow": {
-                "step": {
-                    "confirm": {
-                        "title": "{title} neu starten?",
-                        "description": "Klicke auf **OK**, um {title} jetzt neu zu starten. Das System ist kurzzeitig nicht erreichbar."
-                    }
-                },
-                "abort": {
-                    "config_dirty": "Neustart abgebrochen: {title} hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst die Konfiguration anwenden."
-                }
-            }
-        }
+    "error": {
+      "invalid_auth": "Ungültige Zugangsdaten",
+      "cannot_connect": "Verbindung zu OMV nicht möglich",
+      "unknown": "Unbekannter Fehler"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Abfrageintervall (Sekunden)",
+          "smart_disabled": "SMART-Überwachung deaktivieren",
+          "virtual_passthrough": "Virtueller Passthrough (z. B. Proxmox)",
+          "reboot_repair_disabled": "Neustart-Benachrichtigung deaktivieren",
+          "selected_disks": "Ausgewählte Festplatten",
+          "selected_filesystems": "Ausgewählte Dateisysteme",
+          "selected_services": "Ausgewählte Dienste",
+          "selected_network_interfaces": "Ausgewählte Netzwerkschnittstellen",
+          "selected_raids": "Ausgewählte RAIDs",
+          "selected_zfs_pools": "Ausgewählte ZFS-Pools",
+          "selected_compose_projects": "Ausgewählte Compose-Projekte",
+          "selected_containers": "Ausgewählte Container"
+        },
+        "data_description": {
+          "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_utilization": {
+        "name": "CPU-Auslastung"
+      },
+      "memory_usage": {
+        "name": "Speicherauslastung"
+      },
+      "memory_total": {
+        "name": "Gesamtspeicher"
+      },
+      "memory_used": {
+        "name": "Genutzter Speicher"
+      },
+      "cpu_temperature": {
+        "name": "CPU-Temperatur"
+      },
+      "uptime": {
+        "name": "Laufzeit"
+      },
+      "available_package_updates": {
+        "name": "Verfügbare Paket-Updates"
+      },
+      "gpu_load": {
+        "name": "GPU-Auslastung"
+      },
+      "gpu_cur_freq": {
+        "name": "GPU-Frequenz"
+      },
+      "docker_container_total": {
+        "name": "Docker Container gesamt"
+      },
+      "docker_container_running": {
+        "name": "Docker Container laufend"
+      },
+      "docker_container_not_running": {
+        "name": "Docker Container nicht laufend"
+      },
+      "compose_project_status": {
+        "name": "{resource} Status"
+      },
+      "compose_project_total": {
+        "name": "{resource} Container gesamt"
+      },
+      "compose_project_running": {
+        "name": "{resource} Container laufend"
+      },
+      "compose_project_not_running": {
+        "name": "{resource} Container nicht laufend"
+      },
+      "container_state": {
+        "name": "{resource} Zustand"
+      },
+      "container_status_detail": {
+        "name": "{resource} Statusdetail"
+      },
+      "container_created_at": {
+        "name": "{resource} Erstellt"
+      },
+      "container_started_at": {
+        "name": "{resource} Gestartet"
+      },
+      "container_version": {
+        "name": "{resource} Version"
+      },
+      "container_volume_size": {
+        "name": "Volume {resource} Größe"
+      },
+      "disk_temperature": {
+        "name": "{resource} Temperatur"
+      },
+      "disk_used_percent": {
+        "name": "{resource} Belegt %"
+      },
+      "disk_free_percent": {
+        "name": "{resource} Frei %"
+      },
+      "disk_used_size": {
+        "name": "{resource} Belegt"
+      },
+      "disk_free_size": {
+        "name": "{resource} Frei"
+      },
+      "disk_total_size": {
+        "name": "{resource} Gesamtgröße"
+      },
+      "filesystem_used_percent": {
+        "name": "{resource} Belegt %"
+      },
+      "filesystem_free_percent": {
+        "name": "{resource} Frei %"
+      },
+      "filesystem_used_size": {
+        "name": "{resource} Belegt"
+      },
+      "filesystem_free_size": {
+        "name": "{resource} Frei"
+      },
+      "filesystem_total_size": {
+        "name": "{resource} Gesamtgröße"
+      },
+      "network_tx": {
+        "name": "{resource} Senden"
+      },
+      "network_rx": {
+        "name": "{resource} Empfangen"
+      },
+      "raid": {
+        "name": "{resource} RAID-Status"
+      },
+      "zfs_pool": {
+        "name": "{resource} ZFS-Pool"
+      }
+    },
+    "binary_sensor": {
+      "update_available": {
+        "name": "Update verfügbar"
+      },
+      "reboot_required": {
+        "name": "Neustart erforderlich"
+      },
+      "service": {
+        "name": "{resource} Dienst"
+      },
+      "disk_smart_problem": {
+        "name": "{resource} SMART-Problem"
+      }
+    },
+    "update": {
+      "omv_system_update": {
+        "name": "System-Update"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Neustart"
+      },
+      "shutdown": {
+        "name": "Herunterfahren"
+      },
+      "apply_config": {
+        "name": "Konfiguration anwenden"
+      },
+      "compose_up": {
+        "name": "Compose up"
+      },
+      "compose_down": {
+        "name": "Compose down"
+      },
+      "compose_start": {
+        "name": "Start"
+      },
+      "compose_stop": {
+        "name": "Stop"
+      },
+      "compose_pull": {
+        "name": "Pull"
+      },
+      "compose_image_prune": {
+        "name": "Docker Image prune"
+      },
+      "compose_container_prune": {
+        "name": "Docker Container prune"
+      }
+    }
+  },
+  "exceptions": {
+    "reboot_blocked_config_dirty": {
+      "message": "Neustart nicht möglich: OMV hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst 'Konfiguration anwenden' drücken."
+    },
+    "apply_config_failed": {
+      "message": "Konfigurationsänderungen konnten nicht angewendet werden. Bitte die OMV-Logs prüfen."
+    }
+  },
+  "issues": {
+    "reboot_required": {
+      "title": "Neustart erforderlich – {title}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "{title} neu starten?",
+            "description": "Klicke auf **OK**, um {title} jetzt neu zu starten. Das System ist kurzzeitig nicht erreichbar."
+          }
+        },
+        "abort": {
+          "config_dirty": "Neustart abgebrochen: {title} hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst die Konfiguration anwenden."
+        }
+      }
+    }
+  }
 }

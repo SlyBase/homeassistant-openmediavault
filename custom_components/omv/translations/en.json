@@ -1,232 +1,235 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "title": "Connect to OpenMediaVault",
-                "data": {
-                    "host": "Host",
-                    "username": "Username",
-                    "password": "Password",
-                    "port": "Port",
-                    "ssl": "Use SSL",
-                    "verify_ssl": "Verify SSL certificate"
-                }
-            }
-        },
-        "error": {
-            "invalid_auth": "Invalid credentials",
-            "cannot_connect": "Cannot connect to OMV",
-            "unknown": "Unknown error"
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OpenMediaVault",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "port": "Port",
+          "ssl": "Use SSL",
+          "verify_ssl": "Verify SSL certificate"
         }
+      }
     },
-    "options": {
-        "step": {
-            "init": {
-                "data": {
-                    "scan_interval": "Scan interval (seconds)",
-                    "smart_disabled": "Disable SMART monitoring",
-                    "virtual_passthrough": "Virtual passthrough (e.g. Proxmox)",
-                    "reboot_repair_disabled": "Disable reboot required notification",
-                    "selected_disks": "Selected disks",
-                    "selected_filesystems": "Selected filesystems",
-                    "selected_services": "Selected services",
-                    "selected_network_interfaces": "Selected network interfaces",
-                    "selected_raids": "Selected RAIDs",
-                    "selected_zfs_pools": "Selected ZFS pools",
-                    "selected_compose_projects": "Selected Compose projects",
-                    "selected_containers": "Selected containers"
-                },
-                "data_description": {
-                    "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS."
-                }
-            }
-        }
-    },
-    "entity": {
-        "sensor": {
-            "cpu_utilization": {
-                "name": "CPU utilization"
-            },
-            "memory_usage": {
-                "name": "Memory usage"
-            },
-            "memory_total": {
-                "name": "Memory total"
-            },
-            "memory_used": {
-                "name": "Memory used"
-            },
-            "cpu_temperature": {
-                "name": "CPU temperature"
-            },
-            "uptime": {
-                "name": "Uptime"
-            },
-            "available_package_updates": {
-                "name": "Available package updates"
-            },
-            "gpu_load": {
-                "name": "GPU load"
-            },
-            "gpu_cur_freq": {
-                "name": "GPU frequency"
-            },
-            "docker_container_total": {
-                "name": "Docker containers total"
-            },
-            "docker_container_running": {
-                "name": "Docker containers running"
-            },
-            "docker_container_not_running": {
-                "name": "Docker containers not running"
-            },
-            "compose_project_status": {
-                "name": "{resource} status"
-            },
-            "compose_project_total": {
-                "name": "{resource} containers total"
-            },
-            "compose_project_running": {
-                "name": "{resource} containers running"
-            },
-            "compose_project_not_running": {
-                "name": "{resource} containers not running"
-            },
-            "container_state": {
-                "name": "{resource} state"
-            },
-            "container_status_detail": {
-                "name": "{resource} status detail"
-            },
-            "container_created_at": {
-                "name": "{resource} created"
-            },
-            "container_started_at": {
-                "name": "{resource} started"
-            },
-            "container_version": {
-                "name": "{resource} version"
-            },
-            "container_volume_size": {
-                "name": "Volume {resource} size"
-            },
-            "disk_temperature": {
-                "name": "{resource} temperature"
-            },
-            "disk_used_percent": {
-                "name": "{resource} used %"
-            },
-            "disk_free_percent": {
-                "name": "{resource} free %"
-            },
-            "disk_used_size": {
-                "name": "{resource} used size"
-            },
-            "disk_free_size": {
-                "name": "{resource} free size"
-            },
-            "disk_total_size": {
-                "name": "{resource} total size"
-            },
-            "filesystem_used_percent": {
-                "name": "{resource} used %"
-            },
-            "filesystem_free_percent": {
-                "name": "{resource} free %"
-            },
-            "filesystem_used_size": {
-                "name": "{resource} used size"
-            },
-            "filesystem_free_size": {
-                "name": "{resource} free size"
-            },
-            "filesystem_total_size": {
-                "name": "{resource} total size"
-            },
-            "network_tx": {
-                "name": "{resource} TX"
-            },
-            "network_rx": {
-                "name": "{resource} RX"
-            },
-            "raid": {
-                "name": "{resource} RAID health"
-            },
-            "zfs_pool": {
-                "name": "{resource} ZFS pool"
-            }
-        },
-        "binary_sensor": {
-            "update_available": {
-                "name": "Update available"
-            },
-            "reboot_required": {
-                "name": "Reboot required"
-            },
-            "service": {
-                "name": "{resource} service"
-            }
-        },
-        "update": {
-            "omv_system_update": {
-                "name": "System update"
-            }
-        },
-        "button": {
-            "reboot": {
-                "name": "Reboot"
-            },
-            "shutdown": {
-                "name": "Shutdown"
-            },
-            "apply_config": {
-                "name": "Apply Configuration"
-            },
-            "compose_up": {
-                "name": "compose up"
-            },
-            "compose_down": {
-                "name": "compose down"
-            },
-            "compose_start": {
-                "name": "Start"
-            },
-            "compose_stop": {
-                "name": "Stop"
-            },
-            "compose_pull": {
-                "name": "Pull"
-            },
-            "compose_image_prune": {
-                "name": "docker image prune"
-            },
-            "compose_container_prune": {
-                "name": "docker container prune"
-            }
-        }
-    },
-    "exceptions": {
-        "reboot_blocked_config_dirty": {
-            "message": "Cannot reboot: OMV has pending configuration changes ({modules}). Press 'Apply Configuration' first."
-        },
-        "apply_config_failed": {
-            "message": "Failed to apply OMV configuration changes. Check the OMV logs."
-        }
-    },
-    "issues": {
-        "reboot_required": {
-            "title": "Reboot required \u2013 {title}",
-            "fix_flow": {
-                "step": {
-                    "confirm": {
-                        "title": "Reboot {title}?",
-                        "description": "Click **Submit** to reboot {title} now. The system will be briefly unavailable."
-                    }
-                },
-                "abort": {
-                    "config_dirty": "Reboot aborted: {title} has pending configuration changes ({modules}). Apply the configuration first."
-                }
-            }
-        }
+    "error": {
+      "invalid_auth": "Invalid credentials",
+      "cannot_connect": "Cannot connect to OMV",
+      "unknown": "Unknown error"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Scan interval (seconds)",
+          "smart_disabled": "Disable SMART monitoring",
+          "virtual_passthrough": "Virtual passthrough (e.g. Proxmox)",
+          "reboot_repair_disabled": "Disable reboot required notification",
+          "selected_disks": "Selected disks",
+          "selected_filesystems": "Selected filesystems",
+          "selected_services": "Selected services",
+          "selected_network_interfaces": "Selected network interfaces",
+          "selected_raids": "Selected RAIDs",
+          "selected_zfs_pools": "Selected ZFS pools",
+          "selected_compose_projects": "Selected Compose projects",
+          "selected_containers": "Selected containers"
+        },
+        "data_description": {
+          "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "cpu_utilization": {
+        "name": "CPU utilization"
+      },
+      "memory_usage": {
+        "name": "Memory usage"
+      },
+      "memory_total": {
+        "name": "Memory total"
+      },
+      "memory_used": {
+        "name": "Memory used"
+      },
+      "cpu_temperature": {
+        "name": "CPU temperature"
+      },
+      "uptime": {
+        "name": "Uptime"
+      },
+      "available_package_updates": {
+        "name": "Available package updates"
+      },
+      "gpu_load": {
+        "name": "GPU load"
+      },
+      "gpu_cur_freq": {
+        "name": "GPU frequency"
+      },
+      "docker_container_total": {
+        "name": "Docker containers total"
+      },
+      "docker_container_running": {
+        "name": "Docker containers running"
+      },
+      "docker_container_not_running": {
+        "name": "Docker containers not running"
+      },
+      "compose_project_status": {
+        "name": "{resource} status"
+      },
+      "compose_project_total": {
+        "name": "{resource} containers total"
+      },
+      "compose_project_running": {
+        "name": "{resource} containers running"
+      },
+      "compose_project_not_running": {
+        "name": "{resource} containers not running"
+      },
+      "container_state": {
+        "name": "{resource} state"
+      },
+      "container_status_detail": {
+        "name": "{resource} status detail"
+      },
+      "container_created_at": {
+        "name": "{resource} created"
+      },
+      "container_started_at": {
+        "name": "{resource} started"
+      },
+      "container_version": {
+        "name": "{resource} version"
+      },
+      "container_volume_size": {
+        "name": "Volume {resource} size"
+      },
+      "disk_temperature": {
+        "name": "{resource} temperature"
+      },
+      "disk_used_percent": {
+        "name": "{resource} used %"
+      },
+      "disk_free_percent": {
+        "name": "{resource} free %"
+      },
+      "disk_used_size": {
+        "name": "{resource} used size"
+      },
+      "disk_free_size": {
+        "name": "{resource} free size"
+      },
+      "disk_total_size": {
+        "name": "{resource} total size"
+      },
+      "filesystem_used_percent": {
+        "name": "{resource} used %"
+      },
+      "filesystem_free_percent": {
+        "name": "{resource} free %"
+      },
+      "filesystem_used_size": {
+        "name": "{resource} used size"
+      },
+      "filesystem_free_size": {
+        "name": "{resource} free size"
+      },
+      "filesystem_total_size": {
+        "name": "{resource} total size"
+      },
+      "network_tx": {
+        "name": "{resource} TX"
+      },
+      "network_rx": {
+        "name": "{resource} RX"
+      },
+      "raid": {
+        "name": "{resource} RAID health"
+      },
+      "zfs_pool": {
+        "name": "{resource} ZFS pool"
+      }
+    },
+    "binary_sensor": {
+      "update_available": {
+        "name": "Update available"
+      },
+      "reboot_required": {
+        "name": "Reboot required"
+      },
+      "service": {
+        "name": "{resource} service"
+      },
+      "disk_smart_problem": {
+        "name": "{resource} SMART problem"
+      }
+    },
+    "update": {
+      "omv_system_update": {
+        "name": "System update"
+      }
+    },
+    "button": {
+      "reboot": {
+        "name": "Reboot"
+      },
+      "shutdown": {
+        "name": "Shutdown"
+      },
+      "apply_config": {
+        "name": "Apply Configuration"
+      },
+      "compose_up": {
+        "name": "compose up"
+      },
+      "compose_down": {
+        "name": "compose down"
+      },
+      "compose_start": {
+        "name": "Start"
+      },
+      "compose_stop": {
+        "name": "Stop"
+      },
+      "compose_pull": {
+        "name": "Pull"
+      },
+      "compose_image_prune": {
+        "name": "docker image prune"
+      },
+      "compose_container_prune": {
+        "name": "docker container prune"
+      }
+    }
+  },
+  "exceptions": {
+    "reboot_blocked_config_dirty": {
+      "message": "Cannot reboot: OMV has pending configuration changes ({modules}). Press 'Apply Configuration' first."
+    },
+    "apply_config_failed": {
+      "message": "Failed to apply OMV configuration changes. Check the OMV logs."
+    }
+  },
+  "issues": {
+    "reboot_required": {
+      "title": "Reboot required – {title}",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Reboot {title}?",
+            "description": "Click **Submit** to reboot {title} now. The system will be briefly unavailable."
+          }
+        },
+        "abort": {
+          "config_dirty": "Reboot aborted: {title} has pending configuration changes ({modules}). Apply the configuration first."
+        }
+      }
+    }
+  }
 }

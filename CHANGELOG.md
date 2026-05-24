@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- New binary sensor per physical disk: `{disk} SMART problem` (device class `problem`) — turns `on` when the disk's SMART overall status is anything other than `GOOD` or `unknown` (e.g. `BAD_SECTOR`, `BAD_STATUS`). Created only when SMART monitoring is enabled.
+
 ### Fixed
 
 - Fixed SMART disabled checkbox resetting on every options flow open when virtual passthrough was enabled; the checkbox now reflects the actually saved value and the coordinator enforces the virtual-passthrough dependency at runtime.
+- Temperature sensors no longer show `0 °C` for disks that do not support SMART (e.g. VM passthrough disks); `0` returned by OMV is now treated as no-data and the sensor shows `unknown` instead.
 
 ## [2.2.4] - 2026-05-20
 
