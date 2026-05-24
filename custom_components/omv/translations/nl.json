@@ -24,7 +24,6 @@
       "init": {
         "data": {
           "scan_interval": "Scaninterval (seconden)",
-          "virtual_passthrough": "Virtuele passthrough (bijv. Proxmox)",
           "selected_disks": "Geselecteerde schijven",
           "selected_filesystems": "Geselecteerde bestandssystemen",
           "selected_services": "Geselecteerde services",
@@ -34,9 +33,7 @@
           "selected_compose_projects": "Geselecteerde Compose-projecten",
           "selected_containers": "Geselecteerde containers"
         },
-        "data_description": {
-          "virtual_passthrough": "Inschakelen als OMV als virtuele machine (bijv. Proxmox, VMware) draait met fysieke schijven die via PCI-passthrough worden doorgegeven. Onderdrukt de CPU-temperatuursensor, die anders onjuiste waarden vanuit een VM zou rapporteren."
-        }
+        "data_description": {}
       }
     }
   },

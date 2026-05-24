@@ -24,7 +24,6 @@
       "init": {
         "data": {
           "scan_interval": "Intervalo de varredura (segundos)",
-          "virtual_passthrough": "Passthrough virtual (ex.: Proxmox)",
           "selected_disks": "Discos selecionados",
           "selected_filesystems": "Sistemas de arquivos selecionados",
           "selected_services": "Serviços selecionados",
@@ -34,9 +33,7 @@
           "selected_compose_projects": "Projetos Compose selecionados",
           "selected_containers": "Containers selecionados"
         },
-        "data_description": {
-          "virtual_passthrough": "Ative quando o OMV for executado como máquina virtual (p. ex. Proxmox, VMware) com discos físicos passados via PCI passthrough. Suprime o sensor de temperatura da CPU, que de outra forma reportaria valores incorretos de dentro de uma VM."
-        }
+        "data_description": {}
       }
     }
   },

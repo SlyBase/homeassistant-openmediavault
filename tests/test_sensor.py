@@ -431,9 +431,12 @@ async def test_raid_disk_entries_do_not_generate_disk_sensors(coordinator, confi
 
 
 @pytest.mark.asyncio
-async def test_virtual_passthrough_hides_temperature_entities(coordinator, config_entry) -> None:
-    """Test virtual passthrough removes CPU and disk temperature entities."""
-    coordinator.virtual_passthrough = True
+async def test_virtual_disk_has_no_temperature_or_smart_entity(coordinator, config_entry) -> None:
+    """Test that QEMU/virtual disks get no temperature or SMART Status entity."""
+    for disk in coordinator.data.get("disk", []):
+        if disk.get("disk_key") == "sda":
+            disk["is_virtual"] = True
+            disk["temperature"] = None
     added = []
 
     def add_entities(entities):
@@ -441,6 +444,6 @@ async def test_virtual_passthrough_hides_temperature_entities(coordinator, confi
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert not any(entity.unique_id.endswith("cpu_temperature") for entity in added)
     assert not any(entity.unique_id.endswith("disk-sda") for entity in added)
+    assert not any(entity.unique_id.endswith("disk_smart_status-sda") for entity in added)
     assert any(entity.unique_id.endswith("disk_used_size-sda") for entity in added)

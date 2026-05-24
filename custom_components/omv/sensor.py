@@ -215,8 +215,6 @@ def get_expected_sensor_registry_state(
     hwinfo = coordinator.data.get("hwinfo", {})
     if isinstance(hwinfo, dict):
         for description in SYSTEM_SENSORS:
-            if coordinator.virtual_passthrough and description.key == "cpu_temperature":
-                continue
             if _should_add_description(description, hwinfo):
                 unique_ids.add(f"{entry_id}-{description.key}")
 
@@ -238,11 +236,7 @@ def get_expected_sensor_registry_state(
         item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
         if not item_key:
             continue
-        if (
-            not coordinator.virtual_passthrough
-            and not (disk.get("israid") or disk.get("is_logical"))
-            and disk.get("temperature") is not None
-        ):
+        if not (disk.get("israid") or disk.get("is_logical")) and disk.get("temperature") is not None:
             unique_ids.add(f"{entry_id}-{DISK_SENSOR.key}-{item_key}")
             _collect_device_identifiers(
                 get_disk_device_info(coordinator, disk),
@@ -255,7 +249,7 @@ def get_expected_sensor_registry_state(
                     get_disk_device_info(coordinator, disk),
                     device_identifiers,
                 )
-        if not coordinator.smart_disabled and _disk_is_smart_eligible(disk):
+        if _disk_is_smart_eligible(disk):
             unique_ids.add(f"{entry_id}-{DISK_SMART_STATUS_SENSOR.key}-{item_key}")
             _collect_device_identifiers(get_disk_device_info(coordinator, disk), device_identifiers)
 
@@ -338,8 +332,7 @@ async def async_setup_entry(
     entities: list[OMVSensor] = [
         OMVSensor(coordinator, description)
         for description in SYSTEM_SENSORS
-        if not (coordinator.virtual_passthrough and description.key == "cpu_temperature")
-        and _should_add_description(description, coordinator.data.get("hwinfo", {}))
+        if _should_add_description(description, coordinator.data.get("hwinfo", {}))
     ]
 
     gpu_data = coordinator.data.get("gpu", {})
@@ -413,11 +406,7 @@ async def async_setup_entry(
         if not item_key:
             continue
         device_info = get_disk_device_info(coordinator, disk)
-        if (
-            not coordinator.virtual_passthrough
-            and not (disk.get("israid") or disk.get("is_logical"))
-            and disk.get("temperature") is not None
-        ):
+        if not (disk.get("israid") or disk.get("is_logical")) and disk.get("temperature") is not None:
             entities.append(
                 OMVSensor(
                     coordinator,
@@ -437,7 +426,7 @@ async def async_setup_entry(
                     device_info=device_info,
                 )
             )
-        if not coordinator.smart_disabled and _disk_is_smart_eligible(disk):
+        if _disk_is_smart_eligible(disk):
             entities.append(
                 OMVSensor(
                     coordinator,

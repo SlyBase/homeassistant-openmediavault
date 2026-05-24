@@ -27,7 +27,6 @@ from custom_components.omv.const import (
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_ZFS_POOLS,
-    CONF_VIRTUAL_PASSTHROUGH,
     DOMAIN,
 )
 from custom_components.omv.exceptions import OMVAuthError
@@ -325,8 +324,8 @@ async def test_options_flow_persists_missing_resource_fields(hass, config_entry)
 
 
 @pytest.mark.asyncio
-async def test_options_flow_virtual_passthrough_saves_correctly(hass, config_entry) -> None:
-    """Test that the virtual_passthrough flag is persisted as-is."""
+async def test_options_flow_scan_interval_saves_correctly(hass, config_entry) -> None:
+    """Test that the scan interval is persisted correctly."""
     config_entry.runtime_data = type(
         "RuntimeCoordinator",
         (),
@@ -351,11 +350,8 @@ async def test_options_flow_virtual_passthrough_saves_correctly(hass, config_ent
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {
-            CONF_SCAN_INTERVAL: 120,
-            CONF_VIRTUAL_PASSTHROUGH: True,
-        },
+        {CONF_SCAN_INTERVAL: 300},
     )
 
     assert result["type"] == "create_entry"
-    assert result["data"][CONF_VIRTUAL_PASSTHROUGH] is True
+    assert result["data"][CONF_SCAN_INTERVAL] == 300

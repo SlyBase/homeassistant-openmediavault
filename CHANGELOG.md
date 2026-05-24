@@ -17,6 +17,7 @@
 - SMART `getAttributes` is no longer attempted for RAID arrays and logical storage devices (md*, ZFS), which do not expose physical SMART attributes.
 - Virtual/emulated disks (`QEMU HARDDISK`, `VMware Virtual`, `VirtualBox`) are now auto-detected by model name: no SMART Status entity is created for them and OMV's unreliable `overallstatus` value is ignored, eliminating false `BAD_STATUS` alarms on Proxmox/VMware hosts.
 - Optical drives (`sr*`) are excluded from the SMART Status entity.
+- Removed the Virtual Passthrough option — CPU temperature `0 °C` (reported by VMs without a hardware sensor) is now treated as no-data automatically, the same way disk temperature `0 °C` is handled. No configuration needed.
 
 ## [2.2.4] - 2026-05-20
 

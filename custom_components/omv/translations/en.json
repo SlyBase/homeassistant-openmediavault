@@ -24,7 +24,6 @@
       "init": {
         "data": {
           "scan_interval": "Scan interval (seconds)",
-          "virtual_passthrough": "Virtual passthrough (e.g. Proxmox)",
           "reboot_repair_disabled": "Disable reboot required notification",
           "selected_disks": "Selected disks",
           "selected_filesystems": "Selected filesystems",
@@ -36,8 +35,7 @@
           "selected_containers": "Selected containers"
         },
         "data_description": {
-          "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS.",
-          "virtual_passthrough": "Enable when OMV runs as a virtual machine (e.g. Proxmox, VMware) with physical disks passed through via PCI passthrough. Suppresses the CPU temperature sensor, which would otherwise report incorrect values from inside a VM."
+          "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS."
         }
       }
     }

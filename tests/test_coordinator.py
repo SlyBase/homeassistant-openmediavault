@@ -1480,8 +1480,8 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(hass, coord
 
 
 @pytest.mark.asyncio
-async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(hass, config_entry) -> None:
-    """Test virtual passthrough suppresses SMART and CPU temperature fetching."""
+async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
+    """Test that a CPU temperature of 0°C (reported by VMs) is treated as no-data."""
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
@@ -1489,10 +1489,13 @@ async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(hass, confi
     async def async_call(service, method, params=None, **kwargs):
         responses = {
             ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 0},
             ("FileSystemMgmt", "enumerateFilesystems"): [],
             ("Services", "getStatus"): [],
             ("Network", "enumerateDevices"): [],
             ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
             ("compose", "getContainerList"): {"data": []},
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
@@ -1502,20 +1505,13 @@ async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(hass, confi
         return responses[(service, method)]
 
     api.async_call = AsyncMock(side_effect=async_call)
-    coordinator = OMVDataUpdateCoordinator(
-        hass,
-        config_entry,
-        api,
-        scan_interval=60,
-        virtual_passthrough=True,
-    )
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
     await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
 
     data = await coordinator._async_update_data()
 
-    assert data["hwinfo"]["cputemp"] == 0.0
-    assert not any(call.args[:2] == ("CpuTemp", "get") for call in api.async_call.await_args_list)
-    assert not any(call.args[:2] == ("Smart", "getListBg") for call in api.async_call.await_args_list)
+    assert data["hwinfo"]["cputemp"] is None
+    assert any(call.args[:2] == ("CpuTemp", "get") for call in api.async_call.await_args_list)
 
 
 @pytest.mark.asyncio

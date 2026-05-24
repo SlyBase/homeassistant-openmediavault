@@ -73,7 +73,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         api: OMVAPI,
         *,
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
-        virtual_passthrough: bool = False,
     ) -> None:
         """Initialize the coordinator."""
         super().__init__(
@@ -85,8 +84,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = config_entry
         self.api = api
         self.omv_version = 0
-        self.smart_disabled = virtual_passthrough
-        self.virtual_passthrough = virtual_passthrough
         self._hwinfo: dict[str, Any] = {}
         self._hwinfo_counter = 0
         self._network_counters: dict[str, dict[str, float]] = {}
@@ -215,9 +212,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._apply_storage_metrics(disks, filesystems, zfs_pools)
 
-            smart_records: list[dict[str, Any]] = []
-            if not self.smart_disabled and not self.virtual_passthrough:
-                smart_records = await self._async_get_smart(disks)
+            smart_records = await self._async_get_smart(disks)
 
             gpu = await self._async_get_gpu_info()
 
@@ -513,10 +508,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         system_info = await self.api.async_call("System", "getInformation")
         hwinfo = self._normalize_hwinfo(system_info if isinstance(system_info, dict) else {})
 
-        if not self.virtual_passthrough:
-            cpu_temp = await self._fetch_optional("CpuTemp", "get")
-            if isinstance(cpu_temp, dict) and cpu_temp.get("cputemp") is not None:
-                hwinfo["cputemp"] = round(self._coerce_float(cpu_temp.get("cputemp")), 1)
+        cpu_temp = await self._fetch_optional("CpuTemp", "get")
+        if isinstance(cpu_temp, dict):
+            temp = self._coerce_optional_float(cpu_temp.get("cputemp"))
+            if temp:
+                hwinfo["cputemp"] = round(temp, 1)
 
         return hwinfo
 
@@ -869,7 +865,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "hostname": str(info.get("hostname", "unknown")),
             "version": str(info.get("version", "unknown")),
             "cpuUtilization": round(self._coerce_float(info.get("cpuUtilization")), 1),
-            "cputemp": round(self._coerce_float(info.get("cputemp")), 1),
+            "cputemp": self._coerce_optional_float(info.get("cputemp")) or None,
             "memTotal": mem_total,
             "memUsed": mem_used,
             "memUsage": (round((mem_used / mem_total) * 100, 1) if mem_total else 0),
