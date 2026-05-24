@@ -264,6 +264,8 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
                     "description": "Software RAID omv7:0 [/dev/md0, raid0, 1.99 GiB]",
                 }
             ],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
             ("compose", "getContainerList"): {"data": []},
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): [],
@@ -273,7 +275,7 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
         return responses[(service, method)]
 
     api.async_call = AsyncMock(side_effect=async_call)
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     await coordinator.async_init(await async_call("System", "getInformation"))
     data = await coordinator._async_update_data()
@@ -302,7 +304,6 @@ async def test_container_version_prefers_metadata_over_image_tag(hass, config_en
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     assert (
@@ -358,7 +359,7 @@ async def test_parse_json_text_strips_shell_boilerplate(hass, config_entry) -> N
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     shell_prefix = (
         "export PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin; "
@@ -422,7 +423,7 @@ async def test_fetch_optional_background_json_with_shell_boilerplate(hass, confi
         raise AssertionError((service, method, params))
 
     api.async_call = AsyncMock(side_effect=async_call)
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     result = await coordinator._fetch_optional_background_json(
         "Compose",
@@ -471,7 +472,6 @@ async def test_fetch_optional_background_json_handles_inline_output(hass, config
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     result = await coordinator._fetch_optional_background_json(
@@ -509,7 +509,6 @@ async def test_fetch_optional_background_json_handles_raw_json_string(hass, conf
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     result = await coordinator._fetch_optional_background_json(
@@ -556,7 +555,6 @@ async def test_compose_inspect_targets_includes_containers_without_project_key(h
         patched_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     compose = [
@@ -592,7 +590,6 @@ async def test_compose_volume_normalization_skips_bind_mounts_and_parses_data_si
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     volumes = coordinator._normalize_compose_volumes(
@@ -649,7 +646,6 @@ async def test_compose_volume_normalization_omv7_string_mounts(hass, config_entr
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     # OMV7 getContainerList: mounts is a plain string (named volume or bind path)
@@ -709,7 +705,6 @@ async def test_compose_volume_normalization_omv7_string_mounts_fallback(hass, co
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     compose = [
@@ -756,7 +751,6 @@ async def test_fetch_optional_background_json_parses_exec_output(hass, config_en
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     response = await coordinator._fetch_optional_background_json(
@@ -878,7 +872,6 @@ async def test_coordinator_exposes_unfiltered_inventory_but_filters_runtime_data
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
     coordinator.data = coordinator.filter_data_by_selection(
         {
@@ -997,7 +990,6 @@ async def test_coordinator_treats_empty_raid_selection_as_unfiltered_for_md_devi
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     filtered = coordinator.filter_data_by_selection(
@@ -1038,7 +1030,6 @@ async def test_filesystem_mapping_uses_parent_and_canonical_device_files(hass, c
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     disks = [
@@ -1149,6 +1140,9 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
                     "size": "1000204886016",
                 },
             ],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("Smart", "getAttributes"): {"data": []},
             ("compose", "getContainerList"): {"data": []},
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
@@ -1183,7 +1177,6 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
     await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
 
@@ -1225,6 +1218,8 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
                 {"devicename": "sde", "canonicaldevicefile": "/dev/sde", "devicefile": "/dev/sde"},
             ],
             ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("Smart", "getAttributes"): {"data": []},
             ("compose", "getContainerList"): {"data": []},
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
@@ -1249,7 +1244,6 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
     await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
 
@@ -1278,7 +1272,6 @@ async def test_zfs_pool_mapping_accepts_child_mountpoints(hass, config_entry) ->
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     disk_key = coordinator._map_zfs_pool_to_disk(
@@ -1310,7 +1303,6 @@ async def test_zfs_pool_mapping_uses_origin_or_id_device_references(hass, config
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     disk_key = coordinator._map_zfs_pool_to_disk(
@@ -1344,7 +1336,6 @@ async def test_numeric_string_sizes_are_treated_as_bytes(hass, config_entry) -> 
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     assert coordinator._coerce_storage_gb("2000398934016") == 2000.4
@@ -1362,7 +1353,6 @@ async def test_container_version_falls_back_to_image_tag(hass, config_entry) -> 
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     assert coordinator._extract_container_version({"image": "vaultwarden/server:1.33.2"}) == "1.33.2"
@@ -1517,7 +1507,6 @@ async def test_virtual_passthrough_disables_cpu_temp_and_smart_calls(hass, confi
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=False,
         virtual_passthrough=True,
     )
     await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
@@ -1704,7 +1693,7 @@ async def test_normalize_hwinfo_uses_api_memused_field(hass, config_entry) -> No
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     # memFree is tiny (lots of kernel cache), but memUsed (= total - available) is small
     result = coordinator._normalize_hwinfo(
@@ -1731,7 +1720,7 @@ async def test_normalize_hwinfo_falls_back_to_calculated_memusage(hass, config_e
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     result = coordinator._normalize_hwinfo(
         {
@@ -1756,7 +1745,7 @@ async def test_normalize_disks_stores_hotpluggable_flag(hass, config_entry) -> N
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     disks = coordinator._normalize_disks(
         [
@@ -1791,7 +1780,6 @@ async def test_virtual_filesystems_skip_size_based_disk_mapping(hass, config_ent
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=True,
     )
 
     disks = [
@@ -1855,7 +1843,7 @@ async def test_normalize_disks_strips_dev_prefix_from_devicename(hass, config_en
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     disks = coordinator._normalize_disks(
         [
@@ -1886,7 +1874,7 @@ async def test_augment_disks_does_not_add_duplicate_when_dev_prefix_present(hass
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
     api.async_call = AsyncMock()
-    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60, smart_disabled=True)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
 
     # Simulate a disk list that has the md device with /dev/ prefix still present
     # (guards against regressions if a future code path re-introduces unnormalized keys)

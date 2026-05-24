@@ -24,7 +24,6 @@
       "init": {
         "data": {
           "scan_interval": "Skanningsintervall (sekunder)",
-          "smart_disabled": "Inaktivera SMART-overvakning",
           "virtual_passthrough": "Virtuell passthrough (t.ex. Proxmox)",
           "selected_disks": "Valda diskar",
           "selected_filesystems": "Valda filsystem",
@@ -34,6 +33,9 @@
           "selected_zfs_pools": "Valda ZFS-pooler",
           "selected_compose_projects": "Valda Compose-projekt",
           "selected_containers": "Valda containrar"
+        },
+        "data_description": {
+          "virtual_passthrough": "Aktivera när OMV körs som en virtuell maskin (t.ex. Proxmox, VMware) med fysiska diskar via PCI-genomslag. Undertrycker CPU-temperatursensorn som annars skulle rapportera felaktiga värden inifrån en VM."
         }
       }
     }
@@ -101,7 +103,7 @@
         "name": "Volym {resource} storlek"
       },
       "disk_temperature": {
-        "name": "{resource} temperatur"
+        "name": "Temperatur"
       },
       "disk_used_percent": {
         "name": "{resource} anvant %"
@@ -144,6 +146,9 @@
       },
       "zfs_pool": {
         "name": "{resource} ZFS-pool"
+      },
+      "disk_smart_status": {
+        "name": "SMART-status"
       }
     },
     "binary_sensor": {
@@ -155,9 +160,6 @@
       },
       "service": {
         "name": "{resource} tjanst"
-      },
-      "disk_smart_problem": {
-        "name": "{resource} SMART-problem"
       }
     },
     "update": {

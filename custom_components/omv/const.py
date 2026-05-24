@@ -19,7 +19,6 @@ DEFAULT_VERIFY_SSL = True
 
 # Optionsschlüssel für auswählbare Ressourcen
 CONF_SCAN_INTERVAL = "scan_interval"
-CONF_SMART_DISABLED = "smart_disabled"
 CONF_VIRTUAL_PASSTHROUGH = "virtual_passthrough"
 CONF_REBOOT_REPAIR_DISABLED = "reboot_repair_disabled"
 CONF_SELECTED_DISKS = "selected_disks"

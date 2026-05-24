@@ -18,7 +18,6 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_SCAN_INTERVAL,
-    CONF_SMART_DISABLED,
     CONF_VIRTUAL_PASSTHROUGH,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -126,7 +125,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
         entry,
         api,
         scan_interval=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-        smart_disabled=entry.options.get(CONF_SMART_DISABLED, False),
         virtual_passthrough=entry.options.get(CONF_VIRTUAL_PASSTHROUGH, False),
     )
     await coordinator.async_init(system_info)

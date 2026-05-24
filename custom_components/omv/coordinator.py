@@ -73,7 +73,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         api: OMVAPI,
         *,
         scan_interval: int = DEFAULT_SCAN_INTERVAL,
-        smart_disabled: bool = False,
         virtual_passthrough: bool = False,
     ) -> None:
         """Initialize the coordinator."""
@@ -86,7 +85,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config_entry = config_entry
         self.api = api
         self.omv_version = 0
-        self.smart_disabled = smart_disabled or virtual_passthrough
+        self.smart_disabled = virtual_passthrough
         self.virtual_passthrough = virtual_passthrough
         self._hwinfo: dict[str, Any] = {}
         self._hwinfo_counter = 0
@@ -565,9 +564,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 not canonical
                 or str(disk.get("devicename") or "").startswith(("mmcblk", "sr", "bcache"))
                 or disk.get("hotpluggable")
+                or disk.get("israid")
+                or disk.get("is_logical")
             ):
                 _LOGGER.debug(
-                    "Skipping SMART attributes for %s (removable/hotpluggable)",
+                    "Skipping SMART attributes for %s (removable/hotpluggable/logical)",
                     canonical or disk.get("devicename"),
                 )
                 continue

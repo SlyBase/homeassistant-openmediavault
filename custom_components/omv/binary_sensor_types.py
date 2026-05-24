@@ -34,19 +34,6 @@ SYSTEM_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
     ),
 )
 
-DISK_SMART_PROBLEM_BINARY_SENSOR = OMVBinarySensorDescription(
-    key="disk_smart_problem",
-    translation_key="disk_smart_problem",
-    device_class=BinarySensorDeviceClass.PROBLEM,
-    icon="mdi:harddisk-remove",
-    data_path="disk",
-    is_collection=True,
-    collection_key="disk_key",
-    name_key="devicename",
-    value_fn=lambda data: str(data.get("overallstatus") or "unknown") not in ("GOOD", "unknown"),
-    extra_attrs_fn=lambda data: {"overall_status": data.get("overallstatus")},
-)
-
 SERVICE_BINARY_SENSOR = OMVBinarySensorDescription(
     key="service",
     translation_key="service",

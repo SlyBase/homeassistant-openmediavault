@@ -31,7 +31,6 @@ from .const import (
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_ZFS_POOLS,
-    CONF_SMART_DISABLED,
     CONF_VIRTUAL_PASSTHROUGH,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -207,10 +206,6 @@ class OMVOptionsFlow(OptionsFlow):
                     CONF_SCAN_INTERVAL,
                     default=self._entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
                 ): vol.All(int, vol.Range(min=10, max=3600)),
-                vol.Optional(
-                    CONF_SMART_DISABLED,
-                    default=self._entry.options.get(CONF_SMART_DISABLED, False),
-                ): bool,
                 vol.Optional(
                     CONF_VIRTUAL_PASSTHROUGH,
                     default=self._entry.options.get(CONF_VIRTUAL_PASSTHROUGH, False),

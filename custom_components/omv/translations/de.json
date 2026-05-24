@@ -24,7 +24,6 @@
       "init": {
         "data": {
           "scan_interval": "Abfrageintervall (Sekunden)",
-          "smart_disabled": "SMART-Überwachung deaktivieren",
           "virtual_passthrough": "Virtueller Passthrough (z. B. Proxmox)",
           "reboot_repair_disabled": "Neustart-Benachrichtigung deaktivieren",
           "selected_disks": "Ausgewählte Festplatten",
@@ -37,7 +36,8 @@
           "selected_containers": "Ausgewählte Container"
         },
         "data_description": {
-          "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen."
+          "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen.",
+          "virtual_passthrough": "Aktivieren, wenn OMV als virtuelle Maschine (z. B. Proxmox, VMware) betrieben wird und physische Festplatten per PCI-Passthrough durchgereicht werden. Unterdrückt den CPU-Temperatursensor, der andernfalls fehlerhafte Werte aus der VM liefern würde."
         }
       }
     }
@@ -111,7 +111,7 @@
         "name": "Volume {resource} Größe"
       },
       "disk_temperature": {
-        "name": "{resource} Temperatur"
+        "name": "Temperatur"
       },
       "disk_used_percent": {
         "name": "{resource} Belegt %"
@@ -154,6 +154,9 @@
       },
       "zfs_pool": {
         "name": "{resource} ZFS-Pool"
+      },
+      "disk_smart_status": {
+        "name": "SMART Status"
       }
     },
     "binary_sensor": {
@@ -165,9 +168,6 @@
       },
       "service": {
         "name": "{resource} Dienst"
-      },
-      "disk_smart_problem": {
-        "name": "{resource} SMART-Problem"
       }
     },
     "update": {

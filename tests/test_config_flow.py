@@ -27,7 +27,6 @@ from custom_components.omv.const import (
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_ZFS_POOLS,
-    CONF_SMART_DISABLED,
     CONF_VIRTUAL_PASSTHROUGH,
     DOMAIN,
 )
@@ -314,12 +313,11 @@ async def test_options_flow_persists_missing_resource_fields(hass, config_entry)
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {CONF_SCAN_INTERVAL: 120, CONF_SMART_DISABLED: True},
+        {CONF_SCAN_INTERVAL: 120},
     )
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_SCAN_INTERVAL] == 120
-    assert result["data"][CONF_SMART_DISABLED] is True
     assert result["data"][CONF_SELECTED_DISKS] == ["sda"]
     assert result["data"][CONF_SELECTED_FILESYSTEMS] == ["fs-1"]
     assert result["data"][CONF_SELECTED_COMPOSE_PROJECTS] == ["paperless"]
@@ -327,13 +325,8 @@ async def test_options_flow_persists_missing_resource_fields(hass, config_entry)
 
 
 @pytest.mark.asyncio
-async def test_options_flow_virtual_passthrough_does_not_override_smart_disabled(hass, config_entry) -> None:
-    """Test that enabling virtual passthrough no longer silently forces smart_disabled=True.
-
-    The coordinator enforces the virtual-passthrough dependency at runtime
-    (self.smart_disabled = smart_disabled or virtual_passthrough), so the
-    options flow must persist exactly what the user chose.
-    """
+async def test_options_flow_virtual_passthrough_saves_correctly(hass, config_entry) -> None:
+    """Test that the virtual_passthrough flag is persisted as-is."""
     config_entry.runtime_data = type(
         "RuntimeCoordinator",
         (),
@@ -360,11 +353,9 @@ async def test_options_flow_virtual_passthrough_does_not_override_smart_disabled
         result["flow_id"],
         {
             CONF_SCAN_INTERVAL: 120,
-            CONF_SMART_DISABLED: False,
             CONF_VIRTUAL_PASSTHROUGH: True,
         },
     )
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_VIRTUAL_PASSTHROUGH] is True
-    assert result["data"][CONF_SMART_DISABLED] is False

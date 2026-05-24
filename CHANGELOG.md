@@ -4,12 +4,17 @@
 
 ### Added
 
-- New binary sensor per physical disk: `{disk} SMART problem` (device class `problem`) — turns `on` when the disk's SMART overall status is anything other than `GOOD` or `unknown` (e.g. `BAD_SECTOR`, `BAD_STATUS`). Created only when SMART monitoring is enabled.
+- New sensor per physical disk: `SMART Status` — exposes the disk's SMART overall status (`GOOD`, `BAD_SECTOR`, `BAD_STATUS`, …) as a text sensor attached to the disk device. Created only when SMART monitoring is enabled.
 
 ### Fixed
 
 - Fixed SMART disabled checkbox resetting on every options flow open when virtual passthrough was enabled; the checkbox now reflects the actually saved value and the coordinator enforces the virtual-passthrough dependency at runtime.
 - Temperature sensors no longer show `0 °C` for disks that do not support SMART (e.g. VM passthrough disks); `0` returned by OMV is now treated as no-data and the sensor shows `unknown` instead.
+- Removed the separate "Disable SMART monitoring" option — SMART failures are now handled gracefully per disk; the virtual passthrough flag alone covers the VM use case.
+- Added description text to the Virtual Passthrough option explaining when and why to enable it.
+- Disk temperature sensor renamed from `{disk} Temperatur` to `Temperatur` — redundant disk prefix removed since the entity is already attached to the disk device.
+- SMART status exposed as a plain sensor instead of a binary sensor, showing the full status string (`GOOD`, `BAD_SECTOR`, etc.) rather than a simple on/off.
+- SMART `getAttributes` is no longer attempted for RAID arrays and logical storage devices (md*, ZFS), which do not expose physical SMART attributes.
 
 ## [2.2.4] - 2026-05-20
 

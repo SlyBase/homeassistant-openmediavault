@@ -390,7 +390,6 @@ DISK_SENSOR = OMVSensorDescription(
     data_path="disk",
     is_collection=True,
     collection_key="disk_key",
-    name_key="devicename",
     value_fn=lambda data: data.get("temperature"),
     extra_attrs_fn=lambda data: {
         **_disk_attrs(data),
@@ -405,6 +404,17 @@ DISK_SENSOR = OMVSensorDescription(
         "udma_crc_error_count": data.get("UDMA_CRC_Error_Count"),
         "multi_zone_error_rate": data.get("Multi_Zone_Error_Rate"),
     },
+)
+
+DISK_SMART_STATUS_SENSOR = OMVSensorDescription(
+    key="disk_smart_status",
+    translation_key="disk_smart_status",
+    icon="mdi:shield-check",
+    data_path="disk",
+    is_collection=True,
+    collection_key="disk_key",
+    value_fn=lambda data: str(data.get("overallstatus") or "unknown"),
+    extra_attrs_fn=lambda data: {"overall_status": data.get("overallstatus")},
 )
 
 DISK_USED_PERCENT_SENSOR = OMVSensorDescription(

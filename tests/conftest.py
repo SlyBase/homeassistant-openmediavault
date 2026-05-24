@@ -471,7 +471,6 @@ async def coordinator(
         config_entry,
         api,
         scan_interval=60,
-        smart_disabled=False,
         virtual_passthrough=False,
     )
     await coordinator.async_init(

@@ -27,6 +27,7 @@ from .sensor_types import (
     DISK_FREE_PERCENT_SENSOR,
     DISK_FREE_SIZE_SENSOR,
     DISK_SENSOR,
+    DISK_SMART_STATUS_SENSOR,
     DISK_TOTAL_SIZE_SENSOR,
     DISK_USED_PERCENT_SENSOR,
     DISK_USED_SIZE_SENSOR,
@@ -244,6 +245,9 @@ def get_expected_sensor_registry_state(
                     get_disk_device_info(coordinator, disk),
                     device_identifiers,
                 )
+        if not coordinator.smart_disabled and not (disk.get("israid") or disk.get("is_logical")):
+            unique_ids.add(f"{entry_id}-{DISK_SMART_STATUS_SENSOR.key}-{item_key}")
+            _collect_device_identifiers(get_disk_device_info(coordinator, disk), device_identifiers)
 
     for description in _FILESYSTEM_SENSORS:
         for filesystem in coordinator.data.get("fs", []):
@@ -423,6 +427,15 @@ async def async_setup_entry(
                     device_info=device_info,
                 )
             )
+        if not coordinator.smart_disabled and not (disk.get("israid") or disk.get("is_logical")):
+            entities.append(
+                OMVSensor(
+                    coordinator,
+                    DISK_SMART_STATUS_SENSOR,
+                    item_key=item_key,
+                    device_info=device_info,
+                )
+            )
 
     for description in _FILESYSTEM_SENSORS:
         for filesystem in coordinator.data.get("fs", []):
@@ -503,8 +516,10 @@ class OMVSensor(OMVEntity, SensorEntity):
         if item_key:
             data = self._get_data()
             display_name = str(data.get(description.name_key or "") or item_key)
-            if description.translation_key:
+            if description.translation_key and description.name_key:
                 self._attr_translation_placeholders = {"resource": display_name}
+            elif description.translation_key:
+                pass  # no placeholder needed; translation text is a fixed string
             elif description.name:
                 self._attr_name = f"{display_name} {description.name}"
             else:
