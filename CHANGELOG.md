@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- CI: HACS validation job now skipped on pull requests to prevent false-negative failures on non-release branches.
+
 ## [2.3.0] - 2026-05-25
 
 ### Added
