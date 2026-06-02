@@ -1,6 +1,7 @@
 # OpenMediaVault (OMV) for Home Assistant
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink?logo=github)](https://github.com/sponsors/slydlake)
 
 Monitor and control your OpenMediaVault NAS from Home Assistant.
 
