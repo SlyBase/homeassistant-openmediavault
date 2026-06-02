@@ -78,6 +78,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | `kvm` | KVM virtual machines |
 | `zfs` | ZFS pool status |
 | `raid` | RAID arrays |
+| `tempmon` | Temperature sensors from `openmediavault-tempmon` plugin (empty list when plugin absent) |
 
 ### API Client Gotchas
 

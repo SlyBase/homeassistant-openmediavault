@@ -644,3 +644,20 @@ ZFS_POOL_SENSOR = OMVSensorDescription(
         "capacity": data.get("capacity"),
     },
 )
+
+TEMPMON_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="tempmon_temperature",
+        translation_key="tempmon_temperature",
+        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
+        device_class=SensorDeviceClass.TEMPERATURE,
+        icon="mdi:thermometer",
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="tempmon",
+        is_collection=True,
+        collection_key="sensor_key",
+        name_key="name",
+        value_fn=lambda data: data.get("temperature"),
+        extra_attrs_fn=lambda data: {"group": data.get("widgetgroup") or None},
+    ),
+)

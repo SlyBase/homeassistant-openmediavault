@@ -237,6 +237,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "kvm": self._normalize_named_collection(
                     await self._fetch_optional("Kvm", "getVmList", {"start": 0, "limit": 999})
                 ),
+                "tempmon": self._normalize_tempmon(
+                    await self._fetch_optional("TempMon", "getSensorsList", {"start": 0, "limit": 100})
+                ),
                 "zfs": zfs_pools,
                 "raid": raids,
                 "gpu": gpu,
@@ -499,6 +502,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             filtered["service"],
         )
         filtered["kvm"] = list(data.get("kvm", []))
+        filtered["tempmon"] = list(data.get("tempmon", []))
         filtered["gpu"] = data.get("gpu", {})
         filtered["upgradedList"] = list(data.get("upgradedList", []))
         return filtered
@@ -1398,6 +1402,34 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _normalize_named_collection(self, response: Any) -> list[dict[str, Any]]:
         """Normalize plugin collections that already contain flat object data."""
         return self._records_from_response(response)
+
+    def _normalize_tempmon(self, response: Any) -> list[dict[str, Any]]:
+        """Normalize openmediavault-tempmon sensor list into coordinator records.
+
+        Args:
+            response: Raw response from TempMon.getSensorsList.
+
+        Returns:
+            List of sensor dicts with sensor_key, name, widgetgroup, and temperature.
+        """
+        result: list[dict[str, Any]] = []
+        for record in self._records_from_response(response):
+            uuid = str(record.get("uuid") or "")
+            if not uuid:
+                continue
+            raw_temp = str(record.get("currenttemp") or "").strip()
+            temp: float | None = None
+            if raw_temp and raw_temp != "-":
+                temp = self._coerce_optional_float(raw_temp.replace("°C", "").replace("°", "").strip())
+            result.append(
+                {
+                    "sensor_key": uuid,
+                    "name": str(record.get("name") or uuid),
+                    "widgetgroup": str(record.get("widgetgroup") or ""),
+                    "temperature": temp,
+                }
+            )
+        return result
 
     def _normalize_compose(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Docker/Compose containers and extract project relationships."""

@@ -109,6 +109,24 @@ After setup, the options flow lets you adjust:
 
 - Pool status
 
+### TempMon sensors (requires `openmediavault-tempmon`)
+
+The [`openmediavault-tempmon`](https://github.com/openmediavault-plugin-developers/openmediavault-tempmon) plugin lets you expose any temperature sensor on the OMV host to Home Assistant. Each configured sensor becomes its own HA entity (named after the sensor name you set in OMV).
+
+**Use case: ARM CPU temperature (e.g. Rock5 ITX / Armbian)**
+
+OMV's built-in CPU temperature sensor reads from `thermal_zone0`, which returns 0 on many ARM SoCs. Install `openmediavault-tempmon` via OMV-Extras and configure a custom sensor:
+
+| Field | Value |
+|---|---|
+| Name | `CPU Temp` (or any label) |
+| Script path | `/usr/bin/cat /sys/class/hwmon/hwmon0/temp1_input` |
+| Divisor | `1000` (sensor reports millidegrees) |
+
+Once saved in OMV, the integration picks up the sensor automatically on the next coordinator refresh. No integration restart required.
+
+> **Tip:** The correct hwmon path varies by board. Check `/etc/armbianmonitor/datasources/soctemp` on Armbian systems — it is a symlink to the right input file.
+
 ### OMV service devices
 
 - Binary sensor: service running / not running

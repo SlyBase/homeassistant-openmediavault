@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- TempMon sensor support: temperature sensors configured via the `openmediavault-tempmon` plugin are automatically exposed as HA entities. Each sensor appears as a dedicated temperature entity on the OMV hub device, named after the label set in OMV. Enables correct CPU temperature readings on ARM boards (e.g. Rock5 ITX / Armbian) where OMV's built-in `CpuTemp` plugin reports 0 °C.
+
 ## [2.3.0] - 2026-05-25
 
 ### Added

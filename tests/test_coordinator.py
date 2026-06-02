@@ -22,7 +22,7 @@ from custom_components.omv.const import (
     DOMAIN,
 )
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
-from custom_components.omv.exceptions import OMVConnectionError
+from custom_components.omv.exceptions import OMVApiError, OMVConnectionError
 
 
 @pytest.mark.asyncio
@@ -155,6 +155,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
                 ]
             },
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [{"name": "tank", "state": "ONLINE"}],
             ("Apt", "getUpgradedList"): {
                 "total": 1,
@@ -271,6 +272,7 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
             ("Compose", "getVolumesBg"): [],
             ("zfs", "listPools"): [],
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
         }
         return responses[(service, method)]
 
@@ -782,6 +784,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
         }
         return responses[(service, method)]
@@ -823,6 +826,7 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
         }
         return responses[(service, method)]
@@ -1147,6 +1151,7 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): {
                 "data": [
                     {
@@ -1224,6 +1229,7 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [
                 {
                     "name": "bigdata",
@@ -1500,6 +1506,7 @@ async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
             ("compose", "getFileList"): {"data": []},
             ("Compose", "getVolumesBg"): {"data": []},
             ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
         }
         return responses[(service, method)]
@@ -1904,3 +1911,153 @@ async def test_augment_disks_does_not_add_duplicate_when_dev_prefix_present(hass
     assert len(md_entries) == 1, (
         f"Expected 1 md0 disk entry, got {len(md_entries)}: {[d['disk_key'] for d in md_entries]}"
     )
+
+
+@pytest.mark.asyncio
+async def test_tempmon_sensors_normalized(hass, config_entry) -> None:
+    """Test that TempMon.getSensorsList records are normalized into coordinator data."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        responses = {
+            ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 55.0},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): {"data": []},
+            ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {
+                "data": [
+                    {
+                        "uuid": "uuid-1",
+                        "name": "CPU Temp",
+                        "scriptpath": "/usr/local/bin/cpu-temp",
+                        "divisor": 1000,
+                        "widgetgroup": "CPU",
+                        "currenttemp": "26.8 °C",
+                    },
+                    {
+                        "uuid": "uuid-2",
+                        "name": "NVMe Temp",
+                        "scriptpath": "/usr/local/bin/nvme-temp",
+                        "divisor": 1,
+                        "widgetgroup": "",
+                        "currenttemp": "38.0 °C",
+                    },
+                ],
+                "total": 2,
+            },
+            ("zfs", "listPools"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    sensors = data["tempmon"]
+    assert len(sensors) == 2
+
+    cpu = next(s for s in sensors if s["name"] == "CPU Temp")
+    assert cpu["sensor_key"] == "uuid-1"
+    assert cpu["temperature"] == 26.8
+    assert cpu["widgetgroup"] == "CPU"
+
+    nvme = next(s for s in sensors if s["name"] == "NVMe Temp")
+    assert nvme["sensor_key"] == "uuid-2"
+    assert nvme["temperature"] == 38.0
+    assert nvme["widgetgroup"] == ""
+
+
+@pytest.mark.asyncio
+async def test_tempmon_absent_when_plugin_not_installed(hass, config_entry) -> None:
+    """Test that coordinator.data['tempmon'] is empty when the plugin is not installed."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        if (service, method) == ("TempMon", "getSensorsList"):
+            raise OMVApiError("RPC service TempMon not found")
+        responses = {
+            ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 55.0},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): {"data": []},
+            ("Kvm", "getVmList"): {"data": []},
+            ("zfs", "listPools"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert data["tempmon"] == []
+
+
+@pytest.mark.asyncio
+async def test_tempmon_script_error_returns_none_temperature(hass, config_entry) -> None:
+    """Test that a sensor with a failing script (currenttemp='-') gets temperature=None."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        responses = {
+            ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 55.0},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): {"data": []},
+            ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {
+                "data": [
+                    {
+                        "uuid": "uuid-1",
+                        "name": "Broken Sensor",
+                        "scriptpath": "/usr/local/bin/broken",
+                        "divisor": 1,
+                        "widgetgroup": "",
+                        "currenttemp": "-",
+                    }
+                ],
+                "total": 1,
+            },
+            ("zfs", "listPools"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert len(data["tempmon"]) == 1
+    assert data["tempmon"][0]["temperature"] is None
