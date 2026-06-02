@@ -119,7 +119,6 @@ OMV's built-in CPU temperature sensor reads from `thermal_zone0`, which returns 
 
 | Field | Value |
 |---|---|
-| Name | `CPU Temp` (or any label) |
 | Script path | `/usr/bin/cat /sys/class/hwmon/hwmon0/temp1_input` |
 | Divisor | `1000` (sensor reports millidegrees) |
 
