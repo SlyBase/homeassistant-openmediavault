@@ -155,6 +155,9 @@
       },
       "disk_smart_status": {
         "name": "SMART Status"
+      },
+      "tempmon_temperature": {
+        "name": "{resource} temperature"
       }
     },
     "binary_sensor": {

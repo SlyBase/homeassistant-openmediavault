@@ -146,6 +146,9 @@
             },
             "zfs_pool": {
                 "name": "{resource} ZFS pool"
+            },
+            "tempmon_temperature": {
+                "name": "{resource} temperature"
             }
         },
         "binary_sensor": {

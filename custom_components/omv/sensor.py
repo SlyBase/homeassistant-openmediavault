@@ -17,6 +17,7 @@ from .entity import (
     get_container_device_info,
     get_disk_device_info,
     get_filesystem_device_info,
+    get_hub_device_info,
     get_storage_device_info,
 )
 from .sensor_types import (
@@ -41,6 +42,7 @@ from .sensor_types import (
     NETWORK_TX_SENSOR,
     RAID_SENSOR,
     SYSTEM_SENSORS,
+    TEMPMON_SENSORS,
     ZFS_POOL_SENSOR,
     OMVSensorDescription,
 )
@@ -468,6 +470,22 @@ async def async_setup_entry(
                     description,
                     item_key=item_key,
                     device_info=get_storage_device_info(coordinator, item),
+                )
+            )
+
+    for description in TEMPMON_SENSORS:
+        for sensor in coordinator.data.get("tempmon", []):
+            if not isinstance(sensor, dict):
+                continue
+            item_key = str(sensor.get("sensor_key") or "")
+            if not item_key or not _should_add_description(description, sensor):
+                continue
+            entities.append(
+                OMVSensor(
+                    coordinator,
+                    description,
+                    item_key=item_key,
+                    device_info=get_hub_device_info(coordinator),
                 )
             )
 
