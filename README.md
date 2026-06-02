@@ -120,7 +120,9 @@ OMV's built-in CPU temperature sensor reads from `thermal_zone0`, which returns 
 
 | Field | Value |
 |---|---|
-| Script path | `/usr/bin/cat /sys/class/hwmon/hwmon0/temp1_input` |
+| Name | `CPU Temp` (or any label) |
+| Script path | `/usr/sbin/cpu-temp` |
+| Script | `cat /sys/class/hwmon/hwmon0/temp1_input` |
 | Divisor | `1000` (sensor reports millidegrees) |
 
 Once saved in OMV, the integration picks up the sensor automatically on the next coordinator refresh. No integration restart required.
