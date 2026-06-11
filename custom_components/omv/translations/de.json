@@ -175,6 +175,12 @@
       },
       "service": {
         "name": "{resource} Dienst"
+      },
+      "disk_bad_sectors": {
+        "name": "{resource} defekte Sektoren"
+      },
+      "disk_crc_errors": {
+        "name": "{resource} CRC-Fehler"
       }
     },
     "update": {

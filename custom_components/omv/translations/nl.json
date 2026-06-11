@@ -166,6 +166,12 @@
       },
       "service": {
         "name": "{resource} service"
+      },
+      "disk_bad_sectors": {
+        "name": "{resource} slechte sectoren"
+      },
+      "disk_crc_errors": {
+        "name": "{resource} CRC-fouten"
       }
     },
     "update": {

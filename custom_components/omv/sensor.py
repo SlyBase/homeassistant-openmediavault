@@ -13,6 +13,7 @@ from .coordinator import OMVDataUpdateCoordinator
 from .entity import (
     OMVEntity,
     build_host_object_id,
+    disk_is_smart_eligible,
     get_compose_project_device_info,
     get_container_device_info,
     get_disk_device_info,
@@ -196,16 +197,6 @@ def _should_add_disk_metric(
     return not _disk_has_backing_filesystem(coordinator, disk, item_key)
 
 
-def _disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
-    """Return True if a disk should receive a SMART Status entity."""
-    return not (
-        disk.get("israid")
-        or disk.get("is_logical")
-        or disk.get("is_virtual")
-        or str(disk.get("devicename") or "").startswith("sr")
-    )
-
-
 def get_expected_sensor_registry_state(
     coordinator: OMVDataUpdateCoordinator,
 ) -> tuple[set[str], set[tuple[str, str]]]:
@@ -251,7 +242,7 @@ def get_expected_sensor_registry_state(
                     get_disk_device_info(coordinator, disk),
                     device_identifiers,
                 )
-        if _disk_is_smart_eligible(disk):
+        if disk_is_smart_eligible(disk):
             unique_ids.add(f"{entry_id}-{DISK_SMART_STATUS_SENSOR.key}-{item_key}")
             _collect_device_identifiers(get_disk_device_info(coordinator, disk), device_identifiers)
 
@@ -428,7 +419,7 @@ async def async_setup_entry(
                     device_info=device_info,
                 )
             )
-        if _disk_is_smart_eligible(disk):
+        if disk_is_smart_eligible(disk):
             entities.append(
                 OMVSensor(
                     coordinator,

@@ -178,6 +178,12 @@
       },
       "service": {
         "name": "{resource} service"
+      },
+      "disk_bad_sectors": {
+        "name": "{resource} bad sectors"
+      },
+      "disk_crc_errors": {
+        "name": "{resource} CRC errors"
       }
     },
     "update": {

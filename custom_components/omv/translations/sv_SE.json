@@ -166,6 +166,12 @@
       },
       "service": {
         "name": "{resource} tjanst"
+      },
+      "disk_bad_sectors": {
+        "name": "{resource} skadade sektorer"
+      },
+      "disk_crc_errors": {
+        "name": "{resource} CRC-fel"
       }
     },
     "update": {

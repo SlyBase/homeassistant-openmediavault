@@ -6,6 +6,8 @@ import pytest
 
 from custom_components.omv.binary_sensor import OMVBinarySensor, async_setup_entry
 from custom_components.omv.binary_sensor_types import (
+    DISK_BAD_SECTORS_BINARY_SENSOR,
+    DISK_CRC_ERRORS_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
 )
@@ -59,3 +61,74 @@ async def test_compose_service_binary_sensor_includes_container_counts(coordinat
         "container_running": 3,
         "container_not_running": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_adds_smart_health_binary_sensors(coordinator, config_entry) -> None:
+    """Test SMART health binary sensors are created only for SMART-eligible disks."""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    unique_ids = {entity.unique_id for entity in added}
+    entry_id = coordinator.config_entry.entry_id
+
+    assert f"{entry_id}-disk_bad_sectors-sda" in unique_ids
+    assert f"{entry_id}-disk_crc_errors-sda" in unique_ids
+    assert f"{entry_id}-disk_bad_sectors-sdb" in unique_ids
+    assert f"{entry_id}-disk_bad_sectors-md0" not in unique_ids
+    assert f"{entry_id}-disk_crc_errors-md0" not in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_disk_bad_sectors_sensor_reports_no_problem(coordinator) -> None:
+    """Test the bad sectors sensor reports no problem when the SMART counter is zero."""
+    sensor = OMVBinarySensor(coordinator, DISK_BAD_SECTORS_BINARY_SENSOR, item_key="sda")
+
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes == {"reallocated_sector_ct": "0"}
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sda")}
+
+
+@pytest.mark.asyncio
+async def test_disk_crc_errors_sensor_detects_nonzero_counter(coordinator) -> None:
+    """Test the CRC errors sensor reports a problem for a non-zero counter."""
+    for disk in coordinator.data["disk"]:
+        if disk.get("disk_key") == "sda":
+            disk["UDMA_CRC_Error_Count"] = "3"
+
+    sensor = OMVBinarySensor(coordinator, DISK_CRC_ERRORS_BINARY_SENSOR, item_key="sda")
+
+    assert sensor.is_on is True
+
+
+@pytest.mark.asyncio
+async def test_smart_health_sensors_unknown_when_attribute_missing(coordinator) -> None:
+    """Test SMART health sensors stay unknown when the raw attribute is unavailable."""
+    bad_sectors = OMVBinarySensor(coordinator, DISK_BAD_SECTORS_BINARY_SENSOR, item_key="sdb")
+    crc_errors = OMVBinarySensor(coordinator, DISK_CRC_ERRORS_BINARY_SENSOR, item_key="sdb")
+
+    assert bad_sectors.is_on is None
+    assert crc_errors.is_on is None
+    assert bad_sectors.extra_state_attributes == {}
+
+
+@pytest.mark.asyncio
+async def test_virtual_disk_has_no_smart_health_binary_sensors(coordinator, config_entry) -> None:
+    """Test virtual disks get no SMART health binary sensors."""
+    for disk in coordinator.data.get("disk", []):
+        if disk.get("disk_key") == "sda":
+            disk["is_virtual"] = True
+
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any(entity.unique_id.endswith("disk_bad_sectors-sda") for entity in added)
+    assert not any(entity.unique_id.endswith("disk_crc_errors-sda") for entity in added)

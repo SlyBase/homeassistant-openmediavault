@@ -7,15 +7,23 @@ from typing import Any
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .binary_sensor_types import (
+    DISK_BAD_SECTORS_BINARY_SENSOR,
+    DISK_CRC_ERRORS_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
     OMVBinarySensorDescription,
 )
 from .coordinator import OMVDataUpdateCoordinator
-from .entity import OMVEntity, build_host_object_id
+from .entity import OMVEntity, build_host_object_id, disk_is_smart_eligible, get_disk_device_info
+
+_DISK_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
+    DISK_BAD_SECTORS_BINARY_SENSOR,
+    DISK_CRC_ERRORS_BINARY_SENSOR,
+)
 
 
 def _binary_sensor_suggested_object_id(
@@ -43,6 +51,14 @@ def get_expected_binary_sensor_unique_ids(
         if service_name:
             unique_ids.add(f"{entry_id}-{SERVICE_BINARY_SENSOR.key}-{service_name}")
 
+    for disk in coordinator.data.get("disk", []):
+        if not isinstance(disk, dict):
+            continue
+        item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+        if item_key and disk_is_smart_eligible(disk):
+            for description in _DISK_BINARY_SENSORS:
+                unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
+
     return unique_ids
 
 
@@ -65,6 +81,16 @@ async def async_setup_entry(
             continue
         entities.append(OMVBinarySensor(coordinator, SERVICE_BINARY_SENSOR, item_key=name))
 
+    for disk in coordinator.data.get("disk", []):
+        if not isinstance(disk, dict):
+            continue
+        item_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+        if not item_key or not disk_is_smart_eligible(disk):
+            continue
+        device_info = get_disk_device_info(coordinator, disk)
+        for description in _DISK_BINARY_SENSORS:
+            entities.append(OMVBinarySensor(coordinator, description, item_key=item_key, device_info=device_info))
+
     async_add_entities(entities)
 
 
@@ -78,9 +104,21 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
         coordinator: OMVDataUpdateCoordinator,
         description: OMVBinarySensorDescription,
         item_key: str | None = None,
+        device_info: DeviceInfo | None = None,
     ) -> None:
         uid = f"{description.key}-{item_key}" if item_key else description.key
-        super().__init__(coordinator, uid)
+        if device_info is None and item_key and description.data_path == "disk":
+            disk = next(
+                (
+                    item
+                    for item in coordinator.data.get("disk", [])
+                    if isinstance(item, dict) and str(item.get(description.collection_key or "") or "") == item_key
+                ),
+                None,
+            )
+            if disk is not None:
+                device_info = get_disk_device_info(coordinator, disk)
+        super().__init__(coordinator, uid, device_info=device_info)
         self.entity_description = description
         self._item_key = item_key
         self._attr_suggested_object_id = _binary_sensor_suggested_object_id(
@@ -153,8 +191,8 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
         return raw if isinstance(raw, dict) else {}
 
     @property
-    def is_on(self) -> bool:
-        """Return whether the binary sensor is on."""
+    def is_on(self) -> bool | None:
+        """Return whether the binary sensor is on, or None if unknown."""
         return self.entity_description.value_fn(self._get_data())
 
     @property

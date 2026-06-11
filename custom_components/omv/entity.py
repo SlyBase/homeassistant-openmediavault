@@ -164,6 +164,16 @@ def get_filesystem_device_identifier(coordinator: OMVDataUpdateCoordinator, fs_u
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:filesystem:{fs_uuid}")
 
 
+def disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
+    """Return True if a disk should receive SMART-derived entities."""
+    return not (
+        disk.get("israid")
+        or disk.get("is_logical")
+        or disk.get("is_virtual")
+        or str(disk.get("devicename") or "").startswith("sr")
+    )
+
+
 def get_disk_device_info(
     coordinator: OMVDataUpdateCoordinator,
     disk: dict[str, Any],
