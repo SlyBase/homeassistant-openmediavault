@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -9,7 +11,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
-from .entity import OMVEntity, build_host_object_id, get_compose_project_device_info
+from .entity import OMVEntity, build_host_object_id, get_compose_project_device_info, get_container_device_info
 
 _COMPOSE_PROJECT_ACTIONS: tuple[tuple[int, str, str, str], ...] = (
     (1, "compose_up", "up -d", "mdi:arrow-up-bold-box-outline"),
@@ -83,6 +85,12 @@ def get_expected_button_unique_ids(
     if coordinator._has_container_service(coordinator.data.get("service", [])):
         for order, translation_key, _command, _icon in _SYSTEM_COMPOSE_ACTIONS:
             unique_ids.add(f"{entry.entry_id}-{_system_button_unique_suffix(order, translation_key)}")
+    for container in coordinator.data.get("compose", []):
+        if not isinstance(container, dict):
+            continue
+        container_key = str(container.get("container_key") or "")
+        if container_key:
+            unique_ids.add(f"{entry.entry_id}-container_restart-{container_key}")
     return unique_ids
 
 
@@ -112,6 +120,11 @@ async def async_setup_entry(
             OMVComposeSystemButton(coordinator, order, translation_key, command, icon)
             for order, translation_key, command, icon in _SYSTEM_COMPOSE_ACTIONS
         )
+
+    for container in coordinator.data.get("compose", []):
+        if not isinstance(container, dict) or not str(container.get("container_key") or ""):
+            continue
+        entities.append(OMVContainerRestartButton(coordinator, container))
 
     async_add_entities(entities)
 
@@ -256,4 +269,38 @@ class OMVComposeSystemButton(OMVEntity, ButtonEntity):
         await self.coordinator.async_execute_compose_command(
             {"command": self._command},
         )
+        await self.coordinator.async_request_refresh()
+
+
+class OMVContainerRestartButton(OMVEntity, ButtonEntity):
+    """Button to restart one Docker Compose container."""
+
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_translation_key = "container_restart"
+    _attr_icon = "mdi:restart"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, container: dict[str, Any]) -> None:
+        """Initialize the container restart button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            container: The normalized compose container record.
+        """
+        container_key = str(container.get("container_key") or "")
+        self._container_id = str(container.get("container_id") or container_key)
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "container",
+            container.get("name") or container_key,
+            "restart",
+        )
+        super().__init__(
+            coordinator,
+            f"container_restart-{container_key}",
+            device_info=get_container_device_info(coordinator, container),
+        )
+
+    async def async_press(self) -> None:
+        """Restart this container via Compose.doContainerCommand."""
+        await self.coordinator.async_execute_container_command(self._container_id, "restart")
         await self.coordinator.async_request_refresh()

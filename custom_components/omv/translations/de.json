@@ -218,6 +218,9 @@
       },
       "compose_container_prune": {
         "name": "Docker Container prune"
+      },
+      "container_restart": {
+        "name": "Neustart"
       }
     }
   },

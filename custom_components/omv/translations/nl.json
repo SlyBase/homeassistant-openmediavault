@@ -206,6 +206,9 @@
       },
       "compose_container_prune": {
         "name": "docker container prune"
+      },
+      "container_restart": {
+        "name": "Herstarten"
       }
     }
   }

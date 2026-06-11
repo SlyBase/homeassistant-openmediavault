@@ -10,6 +10,7 @@ from custom_components.omv.button import (
     OMVApplyConfigButton,
     OMVComposeProjectButton,
     OMVComposeSystemButton,
+    OMVContainerRestartButton,
     OMVRebootButton,
     OMVShutdownButton,
     async_setup_entry,
@@ -27,15 +28,17 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 20
+    assert len(added) == 24
     assert added[3].unique_id.endswith("01-compose_up-paperless")
     assert added[4].unique_id.endswith("02-compose_down-paperless")
     assert added[5].unique_id.endswith("03-compose_start-paperless")
     assert added[6].unique_id.endswith("04-compose_stop-paperless")
     assert added[7].unique_id.endswith("05-compose_pull-paperless")
-    assert added[-2].unique_id.endswith("98-compose_image_prune")
-    assert added[-1].unique_id.endswith("99-compose_container_prune")
+    assert added[18].unique_id.endswith("98-compose_image_prune")
+    assert added[19].unique_id.endswith("99-compose_container_prune")
     assert added[3]._attr_suggested_object_id == "nas_01_compose_paperless_up"
+    assert added[-1].unique_id.endswith("container_restart-ctr-db")
+    assert added[-1]._attr_suggested_object_id == "nas_container_db_restart"
 
 
 @pytest.mark.asyncio
@@ -49,7 +52,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 18
+    assert len(added) == 22
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -273,6 +276,24 @@ async def test_reboot_button_proceeds_when_clean(coordinator) -> None:
     await button.async_press()
 
     coordinator.api.async_call.assert_awaited_once_with("System", "reboot")
+
+
+@pytest.mark.asyncio
+async def test_container_restart_button_calls_do_container_command_and_refresh(coordinator) -> None:
+    """Test container restart button triggers Compose.doContainerCommand and a refresh."""
+    coordinator.api.async_call = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
+    container = next(c for c in coordinator.data["compose"] if c["container_key"] == "ctr-db")
+    button = OMVContainerRestartButton(coordinator, container)
+
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with(
+        "Compose",
+        "doContainerCommand",
+        {"id": "ctr-db", "command": "restart", "command2": ""},
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
 
 
 def test_get_expected_button_unique_ids_includes_apply_config(
