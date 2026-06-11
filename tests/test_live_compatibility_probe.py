@@ -100,6 +100,71 @@ def test_summarize_response_flattens_nested_compose_fields() -> None:
     assert "mounts[].Name" in sample_keys
 
 
+def test_summarize_response_reports_live_omv8_compose_container_fields() -> None:
+    """Sample keys should match the fields confirmed on a live OMV8 8.3.0-1 probe."""
+    probe = _load_probe_module()
+
+    response_type, record_count, sample_keys = probe._summarize_response(
+        {
+            "data": [
+                {
+                    "id": "ctr-vaultwarden",
+                    "name": "vaultwarden",
+                    "image": "vaultwarden/server:latest",
+                    "command": "/start.sh",
+                    "created": "2026-01-01T00:00:00Z",
+                    "state": "running",
+                    "status": "Up 2 days",
+                    "running": True,
+                    "ports": [],
+                    "mounts": [],
+                    "network": "bridge",
+                    "execurl": "/exec/ctr-vaultwarden",
+                }
+            ]
+        }
+    )
+
+    assert response_type == "dict"
+    assert record_count == 1
+    assert sample_keys is not None
+    for field in (
+        "id",
+        "name",
+        "image",
+        "command",
+        "created",
+        "state",
+        "status",
+        "running",
+        "network",
+        "execurl",
+    ):
+        assert field in sample_keys
+
+
+@pytest.mark.asyncio
+async def test_call_endpoint_marks_missing_kvm_plugin_as_optional_error() -> None:
+    """A missing 'Kvm' RPC service (plugin not installed) must not abort the probe."""
+    probe = _load_probe_module()
+
+    class FakeClient:
+        async def async_call(self, service, method, params=None):
+            raise probe.ProbeError("RPC service 'Kvm' not found")
+
+    result, response = await probe._call_endpoint(
+        FakeClient(),
+        service="Kvm",
+        method="getVmList",
+        optional=True,
+        params={"start": 0, "limit": 999},
+    )
+
+    assert result.status == "optional-error"
+    assert result.error == "RPC service 'Kvm' not found"
+    assert response is None
+
+
 @pytest.mark.asyncio
 async def test_probe_target_requests_compose_file_list(monkeypatch) -> None:
     """The live probe should cover both compose list endpoints."""

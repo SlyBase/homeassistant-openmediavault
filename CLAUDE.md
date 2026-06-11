@@ -126,8 +126,9 @@ sample_data    # Complete normalized coordinator.data dict with realistic values
 | ZFS pool IDs | standard names | `root/pool-<Name>` |
 | Compose RPC | available | may be absent |
 | Filesystem key | `mountdir` | may use `mountpoint` |
+| `Kvm.getVmList` | not probed | `RPC service 'Kvm' not found` when `openmediavault-kvm` plugin is not installed — already handled gracefully by `_fetch_optional` (returns `[]`) |
 
-Supported: OMV 7 and 8. Live targets (as of 2026-03-14): OMV7 on `192.168.178.41` (7.7.24-7), OMV8 on `192.168.178.40` (8.1.2-1).
+Supported: OMV 7 and 8. Live targets (as of 2026-06-11): OMV7 on `192.168.178.41` (unreachable from dev machine during last probe — not re-verified since 7.7.24-7), OMV8 on `192.168.178.40` (8.3.0-1 "Synchrony"). `compose.getContainerList` confirmed fields: `command, created, execurl, id, image, mounts, name, network, ports, running, state, status`. `Kvm` RPC service is absent on this OMV8 instance (plugin not installed) — `Kvm.getVmList` payload shape for `_normalize_kvm()` (Tier 1, Step 6) could not be verified live; implement defensively with `.get()` defaults so it degrades to an empty list when the plugin/RPC is unavailable.
 
 ## Integration Domain & Platforms
 
