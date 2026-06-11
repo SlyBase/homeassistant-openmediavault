@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
     UnitOfDataRate,
     UnitOfFrequency,
     UnitOfInformation,
@@ -144,6 +145,33 @@ SYSTEM_SENSORS: tuple[OMVSensorDescription, ...] = (
         extra_attrs_fn=lambda data: {
             "pkg_updates_available": data.get("pkgUpdatesAvailable"),
         },
+    ),
+    OMVSensorDescription(
+        key="load_average_1min",
+        translation_key="load_average_1min",
+        icon="mdi:gauge",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        data_path="hwinfo",
+        value_fn=lambda data: data.get("loadAverage", {}).get("1min"),
+    ),
+    OMVSensorDescription(
+        key="load_average_5min",
+        translation_key="load_average_5min",
+        icon="mdi:gauge",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        data_path="hwinfo",
+        value_fn=lambda data: data.get("loadAverage", {}).get("5min"),
+    ),
+    OMVSensorDescription(
+        key="load_average_15min",
+        translation_key="load_average_15min",
+        icon="mdi:gauge",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        data_path="hwinfo",
+        value_fn=lambda data: data.get("loadAverage", {}).get("15min"),
     ),
 )
 

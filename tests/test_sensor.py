@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.const import EntityCategory
 
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.sensor import OMVSensor, async_setup_entry
@@ -200,6 +201,23 @@ async def test_available_package_updates_sensor_exposes_numeric_count(coordinato
 
     assert sensor.native_value == 3
     assert sensor._attr_suggested_object_id == "nas_available_package_updates"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        (SYSTEM_SENSORS[7], 0.1),
+        (SYSTEM_SENSORS[8], 0.2),
+        (SYSTEM_SENSORS[9], 0.3),
+    ],
+)
+async def test_load_average_sensors_expose_values(coordinator, description, expected) -> None:
+    """Test load average sensors expose the per-interval system load."""
+    sensor = OMVSensor(coordinator, description)
+
+    assert sensor.native_value == expected
+    assert sensor.entity_category == EntityCategory.DIAGNOSTIC
 
 
 @pytest.mark.asyncio

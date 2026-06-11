@@ -63,6 +63,15 @@
             "available_package_updates": {
                 "name": "Available package updates"
             },
+            "load_average_1min": {
+                "name": "Load average (1 min)"
+            },
+            "load_average_5min": {
+                "name": "Load average (5 min)"
+            },
+            "load_average_15min": {
+                "name": "Load average (15 min)"
+            },
             "docker_container_total": {
                 "name": "Docker containers total"
             },

@@ -60,6 +60,15 @@
       "available_package_updates": {
         "name": "Tillgangliga paketuppdateringar"
       },
+      "load_average_1min": {
+        "name": "Genomsnittlig belastning (1 min)"
+      },
+      "load_average_5min": {
+        "name": "Genomsnittlig belastning (5 min)"
+      },
+      "load_average_15min": {
+        "name": "Genomsnittlig belastning (15 min)"
+      },
       "docker_container_total": {
         "name": "Docker-containrar totalt"
       },

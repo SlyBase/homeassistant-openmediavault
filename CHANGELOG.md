@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- New diagnostic sensors `Load average (1 min)`, `Load average (5 min)`, `Load average (15 min)` on the system device, sourced from the existing `loadAverage` data already collected by the coordinator.
+
 ## [2.4.0] - 2026-06-02
 
 ### Added

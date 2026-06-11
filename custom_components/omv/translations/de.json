@@ -63,6 +63,15 @@
       "available_package_updates": {
         "name": "Verfügbare Paket-Updates"
       },
+      "load_average_1min": {
+        "name": "Systemlast (1 Min)"
+      },
+      "load_average_5min": {
+        "name": "Systemlast (5 Min)"
+      },
+      "load_average_15min": {
+        "name": "Systemlast (15 Min)"
+      },
       "gpu_load": {
         "name": "GPU-Auslastung"
       },
