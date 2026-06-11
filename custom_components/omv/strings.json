@@ -221,6 +221,9 @@
         },
         "apply_config_failed": {
             "message": "Failed to apply OMV configuration changes. Check the OMV logs."
+        },
+        "container_command_failed": {
+            "message": "Failed to {command} container '{resource}'. Check the OMV logs."
         }
     },
     "issues": {

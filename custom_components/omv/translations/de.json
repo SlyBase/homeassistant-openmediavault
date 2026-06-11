@@ -227,6 +227,9 @@
     },
     "apply_config_failed": {
       "message": "Konfigurationsänderungen konnten nicht angewendet werden. Bitte die OMV-Logs prüfen."
+    },
+    "container_command_failed": {
+      "message": "Container '{resource}' konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
     }
   },
   "issues": {

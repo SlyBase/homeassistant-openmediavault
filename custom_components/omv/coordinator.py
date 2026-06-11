@@ -110,16 +110,29 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.api.base_url,
         )
 
-    async def async_execute_compose_command(self, params: dict[str, Any]) -> Any:
-        """Execute a compose command and surface background-task output in logs."""
+    async def _async_call_compose_service(self, method: str, params: dict[str, Any]) -> Any:
+        """Call a Compose RPC method, falling back between the 'Compose' and 'compose' service names.
+
+        Args:
+            method: The Compose RPC method to call (e.g. "doCommand", "doContainerCommand").
+            params: The parameters to pass to the RPC call.
+
+        Returns:
+            The raw RPC response, with background-task output resolved for logging.
+
+        Raises:
+            OMVApiError: When neither the 'Compose' nor 'compose' service accepts the call.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
         response: Any = None
         last_error: OMVApiError | OMVConnectionError | None = None
         for service in ("Compose", "compose"):
             try:
-                response = await self.api.async_call(service, "doCommand", params)
+                response = await self.api.async_call(service, method, params)
                 _LOGGER.debug(
-                    "Compose command %s.doCommand params=%s response=%s",
+                    "Compose command %s.%s params=%s response=%s",
                     service,
+                    method,
                     params,
                     response,
                 )
@@ -127,8 +140,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             except (OMVApiError, OMVConnectionError) as err:
                 last_error = err
                 _LOGGER.debug(
-                    "Compose command %s.doCommand failed params=%s error=%s",
+                    "Compose command %s.%s failed params=%s error=%s",
                     service,
+                    method,
                     params,
                     err,
                 )
@@ -148,6 +162,40 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
 
         return response
+
+    async def async_execute_compose_command(self, params: dict[str, Any]) -> Any:
+        """Execute a compose project command and surface background-task output in logs.
+
+        Args:
+            params: The parameters for the Compose 'doCommand' RPC (e.g. project uuid/command).
+
+        Returns:
+            The raw RPC response.
+
+        Raises:
+            OMVApiError: When neither the 'Compose' nor 'compose' service accepts the call.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        return await self._async_call_compose_service("doCommand", params)
+
+    async def async_execute_container_command(self, container_id: str, command: str) -> Any:
+        """Execute a per-container compose command and surface background-task output in logs.
+
+        Args:
+            container_id: The Docker container id or name to target.
+            command: The container command to run (e.g. "start", "stop", "restart").
+
+        Returns:
+            The raw RPC response.
+
+        Raises:
+            OMVApiError: When neither the 'Compose' nor 'compose' service accepts the call.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        return await self._async_call_compose_service(
+            "doContainerCommand",
+            {"id": container_id, "command": command, "command2": ""},
+        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
