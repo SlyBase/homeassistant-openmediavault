@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.omv.button import (
     OMVApplyConfigButton,
@@ -13,9 +14,11 @@ from custom_components.omv.button import (
     OMVContainerRestartButton,
     OMVRebootButton,
     OMVShutdownButton,
+    OMVVmRestartButton,
     async_setup_entry,
     get_expected_button_unique_ids,
 )
+from custom_components.omv.exceptions import OMVApiError
 
 
 @pytest.mark.asyncio
@@ -28,7 +31,7 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 24
+    assert len(added) == 25
     assert added[3].unique_id.endswith("01-compose_up-paperless")
     assert added[4].unique_id.endswith("02-compose_down-paperless")
     assert added[5].unique_id.endswith("03-compose_start-paperless")
@@ -37,8 +40,10 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
     assert added[18].unique_id.endswith("98-compose_image_prune")
     assert added[19].unique_id.endswith("99-compose_container_prune")
     assert added[3]._attr_suggested_object_id == "nas_01_compose_paperless_up"
-    assert added[-1].unique_id.endswith("container_restart-ctr-db")
-    assert added[-1]._attr_suggested_object_id == "nas_container_db_restart"
+    assert added[-2].unique_id.endswith("container_restart-ctr-db")
+    assert added[-2]._attr_suggested_object_id == "nas_container_db_restart"
+    assert added[-1].unique_id.endswith("vm_restart-vm-uuid-1234")
+    assert added[-1]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
 
 
 @pytest.mark.asyncio
@@ -52,7 +57,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 22
+    assert len(added) == 23
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -304,3 +309,58 @@ def test_get_expected_button_unique_ids_includes_apply_config(
     unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
 
     assert f"{config_entry.entry_id}-apply_config" in unique_ids
+
+
+def test_get_expected_button_unique_ids_includes_vm_restart(
+    coordinator,
+    config_entry,
+) -> None:
+    """Test get_expected_button_unique_ids includes one restart button per VM."""
+    unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
+
+    assert f"{config_entry.entry_id}-vm_restart-vm-uuid-1234" in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_vm_restart_button_calls_kvm_do_command_and_refresh(coordinator) -> None:
+    """Test the VM restart button issues Kvm.doCommand reboot and refreshes."""
+    coordinator.api.async_call = AsyncMock()
+    coordinator.async_request_refresh = AsyncMock()
+    vm = next(v for v in coordinator.data["kvm"] if v["vm_key"] == "vm-uuid-1234")
+    button = OMVVmRestartButton(coordinator, vm)
+
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with(
+        "Kvm",
+        "doCommand",
+        {
+            "command": "reboot",
+            "name": "homeassistant",
+            "virttype": "vm",
+            "vncport": "n/a",
+            "spiceport": "n/a",
+            "hostport": "n/a",
+            "hostport2": "n/a",
+        },
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_vm_restart_button_raises_translated_error_on_api_failure(coordinator) -> None:
+    """Test a failing Kvm.doCommand reboot raises a translated HomeAssistantError."""
+    coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("RPC failed"))
+    coordinator.async_request_refresh = AsyncMock()
+    vm = next(v for v in coordinator.data["kvm"] if v["vm_key"] == "vm-uuid-1234")
+    button = OMVVmRestartButton(coordinator, vm)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "vm_command_failed"
+    assert exc_info.value.translation_placeholders == {
+        "resource": "homeassistant",
+        "command": "reboot",
+    }
+    coordinator.async_request_refresh.assert_awaited_once()

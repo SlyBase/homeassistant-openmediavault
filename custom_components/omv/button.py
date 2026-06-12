@@ -10,8 +10,16 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .coordinator import OMVDataUpdateCoordinator
-from .entity import OMVEntity, build_host_object_id, get_compose_project_device_info, get_container_device_info
+from .entity import (
+    OMVEntity,
+    build_host_object_id,
+    get_compose_project_device_info,
+    get_container_device_info,
+    get_vm_device_info,
+)
+from .exceptions import OMVApiError, OMVConnectionError
 
 _COMPOSE_PROJECT_ACTIONS: tuple[tuple[int, str, str, str], ...] = (
     (1, "compose_up", "up -d", "mdi:arrow-up-bold-box-outline"),
@@ -91,6 +99,12 @@ def get_expected_button_unique_ids(
         container_key = str(container.get("container_key") or "")
         if container_key:
             unique_ids.add(f"{entry.entry_id}-container_restart-{container_key}")
+    for vm in coordinator.data.get("kvm", []):
+        if not isinstance(vm, dict):
+            continue
+        vm_key = str(vm.get("vm_key") or "")
+        if vm_key:
+            unique_ids.add(f"{entry.entry_id}-vm_restart-{vm_key}")
     return unique_ids
 
 
@@ -125,6 +139,11 @@ async def async_setup_entry(
         if not isinstance(container, dict) or not str(container.get("container_key") or ""):
             continue
         entities.append(OMVContainerRestartButton(coordinator, container))
+
+    for vm in coordinator.data.get("kvm", []):
+        if not isinstance(vm, dict) or not str(vm.get("vm_key") or ""):
+            continue
+        entities.append(OMVVmRestartButton(coordinator, vm))
 
     async_add_entities(entities)
 
@@ -304,3 +323,52 @@ class OMVContainerRestartButton(OMVEntity, ButtonEntity):
         """Restart this container via Compose.doContainerCommand."""
         await self.coordinator.async_execute_container_command(self._container_id, "restart")
         await self.coordinator.async_request_refresh()
+
+
+class OMVVmRestartButton(OMVEntity, ButtonEntity):
+    """Button to reboot one KVM virtual machine."""
+
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_translation_key = "vm_restart"
+    _attr_icon = "mdi:restart"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, vm: dict[str, Any]) -> None:
+        """Initialize the VM restart button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            vm: The normalized KVM virtual machine record.
+        """
+        self._vm_key = str(vm.get("vm_key") or "")
+        self._vm = dict(vm)
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "vm",
+            vm.get("name") or self._vm_key,
+            "restart",
+        )
+        super().__init__(
+            coordinator,
+            f"vm_restart-{self._vm_key}",
+            device_info=get_vm_device_info(coordinator, vm),
+        )
+
+    async def async_press(self) -> None:
+        """Reboot this VM via Kvm.doCommand.
+
+        Raises:
+            HomeAssistantError: When the Kvm.doCommand RPC call fails.
+        """
+        try:
+            await self.coordinator.async_execute_vm_command(self._vm, "reboot")
+        except (OMVApiError, OMVConnectionError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="vm_command_failed",
+                translation_placeholders={
+                    "resource": str(self._vm.get("name") or self._vm_key),
+                    "command": "reboot",
+                },
+            ) from err
+        finally:
+            await self.coordinator.async_request_refresh()

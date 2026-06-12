@@ -222,6 +222,9 @@
             },
             "container_restart": {
                 "name": "Restart"
+            },
+            "vm_restart": {
+                "name": "Restart"
             }
         }
     },
@@ -234,6 +237,9 @@
         },
         "container_command_failed": {
             "message": "Failed to {command} container '{resource}'. Check the OMV logs."
+        },
+        "vm_command_failed": {
+            "message": "Failed to {command} VM '{resource}'. Check the OMV logs."
         }
     },
     "issues": {

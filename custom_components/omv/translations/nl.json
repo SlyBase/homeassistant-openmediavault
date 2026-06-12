@@ -216,6 +216,9 @@
       },
       "container_restart": {
         "name": "Herstarten"
+      },
+      "vm_restart": {
+        "name": "Herstarten"
       }
     }
   }

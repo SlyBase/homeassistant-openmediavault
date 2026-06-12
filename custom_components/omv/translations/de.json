@@ -228,6 +228,9 @@
       },
       "container_restart": {
         "name": "Neustart"
+      },
+      "vm_restart": {
+        "name": "Neustart"
       }
     }
   },
@@ -240,6 +243,9 @@
     },
     "container_command_failed": {
       "message": "Container '{resource}' konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
+    },
+    "vm_command_failed": {
+      "message": "VM '{resource}' konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
     }
   },
   "issues": {

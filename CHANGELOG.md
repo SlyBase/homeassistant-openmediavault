@@ -12,6 +12,7 @@
 - New read-only KVM virtual machine entities: a `state` sensor (with `memory`/`vcpu`/`autostart`/`uuid` attributes when available) and a `running` binary sensor, one per VM, each attached to a dedicated VM device. Selectable via the new `selected_vms` option; degrades to no entities when the `openmediavault-kvm` plugin is absent.
 - Live RPC compatibility probe now covers the Tier 2 endpoints `Nut.getStats`, `Rsync.getList`, `Cron.getList` (with the required `type: ["userdefined"]` array), `zfs.listDatasets` and `zfs.getAllSnapshots` (with all four tree params), each as optional non-destructive calls, plus a regression test for the new probe coverage.
 - New coordinator method `async_execute_vm_command` wrapping `Kvm.doCommand` with the full parameter set (`name`, `virttype`, port fields) required by the `openmediavault-kvm` plugin, as groundwork for VM control entities.
+- New per-VM control entities: a start/stop switch (`poweron`/graceful `poweroff` via `Kvm.doCommand`) and a `Restart` button (`reboot`), attached to the existing VM device. Errors surface as translated `vm_command_failed` messages; the destructive `force` command is intentionally not exposed.
 
 ### Fixed
 

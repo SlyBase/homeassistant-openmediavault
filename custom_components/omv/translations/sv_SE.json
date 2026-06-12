@@ -216,6 +216,9 @@
       },
       "container_restart": {
         "name": "Starta om"
+      },
+      "vm_restart": {
+        "name": "Starta om"
       }
     }
   }
