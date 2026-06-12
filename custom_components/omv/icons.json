@@ -1,0 +1,8 @@
+{
+  "services": {
+    "container_command": "mdi:docker",
+    "compose_command": "mdi:docker",
+    "apply_config": "mdi:check-network",
+    "run_rsync_job": "mdi:sync"
+  }
+}

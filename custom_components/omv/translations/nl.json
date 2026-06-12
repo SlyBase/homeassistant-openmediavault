@@ -263,5 +263,67 @@
         "name": "Scrub {name}"
       }
     }
+  },
+  "services": {
+    "container_command": {
+      "name": "Containercommando",
+      "description": "Voert een commando uit op een Docker-container die wordt beheerd door de OMV-compose-plugin.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instantie",
+          "description": "Configuratie-item als doel. Optioneel wanneer slechts één OMV-instantie is geconfigureerd."
+        },
+        "container": {
+          "name": "Container",
+          "description": "Containernaam of -id."
+        },
+        "command": {
+          "name": "Commando",
+          "description": "Uit te voeren commando op de container."
+        }
+      }
+    },
+    "compose_command": {
+      "name": "Compose-projectcommando",
+      "description": "Voert een commando uit op een Docker-compose-project dat wordt beheerd door de OMV-compose-plugin.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instantie",
+          "description": "Configuratie-item als doel. Optioneel wanneer slechts één OMV-instantie is geconfigureerd."
+        },
+        "project": {
+          "name": "Project",
+          "description": "Naam of uuid van het compose-project."
+        },
+        "command": {
+          "name": "Commando",
+          "description": "Uit te voeren commando op het project."
+        }
+      }
+    },
+    "apply_config": {
+      "name": "Configuratie toepassen",
+      "description": "Past openstaande OpenMediaVault-configuratiewijzigingen toe.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instantie",
+          "description": "Configuratie-item als doel. Optioneel wanneer slechts één OMV-instantie is geconfigureerd."
+        }
+      }
+    },
+    "run_rsync_job": {
+      "name": "Rsync-taak uitvoeren",
+      "description": "Start een geconfigureerde OpenMediaVault-rsync-taak (fire-and-forget).",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instantie",
+          "description": "Configuratie-item als doel. Optioneel wanneer slechts één OMV-instantie is geconfigureerd."
+        },
+        "job": {
+          "name": "Taak",
+          "description": "Naam of uuid van de rsync-taak."
+        }
+      }
+    }
   }
 }

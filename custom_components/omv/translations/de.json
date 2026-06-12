@@ -296,6 +296,21 @@
     },
     "zfs_scrub_failed": {
       "message": "Scrub für Pool '{name}' konnte nicht gestartet werden. Prüfe die OMV-Logs."
+    },
+    "compose_command_failed": {
+      "message": "Befehl '{command}' für Compose-Projekt '{resource}' fehlgeschlagen. Prüfe die OMV-Logs."
+    },
+    "service_entry_not_found": {
+      "message": "Kein geladener OpenMediaVault-Konfigurationseintrag passt zu diesem Service-Aufruf."
+    },
+    "service_entry_ambiguous": {
+      "message": "Mehrere OpenMediaVault-Konfigurationseinträge sind geladen. Gib 'config_entry_id' an."
+    },
+    "service_project_not_found": {
+      "message": "Compose-Projekt '{project}' wurde auf dem OMV-Host nicht gefunden."
+    },
+    "service_job_not_found": {
+      "message": "Rsync-Job '{job}' wurde auf dem OMV-Host nicht gefunden."
     }
   },
   "issues": {
@@ -310,6 +325,68 @@
         },
         "abort": {
           "config_dirty": "Neustart abgebrochen: {title} hat ausstehende Konfigurationsänderungen ({modules}). Bitte zuerst die Konfiguration anwenden."
+        }
+      }
+    }
+  },
+  "services": {
+    "container_command": {
+      "name": "Container-Befehl",
+      "description": "Führt einen Befehl auf einem Docker-Container aus, der vom OMV-Compose-Plugin verwaltet wird.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-Instanz",
+          "description": "Ziel-Konfigurationseintrag. Optional, wenn nur eine OMV-Instanz konfiguriert ist."
+        },
+        "container": {
+          "name": "Container",
+          "description": "Container-Name oder -ID."
+        },
+        "command": {
+          "name": "Befehl",
+          "description": "Auf dem Container auszuführender Befehl."
+        }
+      }
+    },
+    "compose_command": {
+      "name": "Compose-Projekt-Befehl",
+      "description": "Führt einen Befehl auf einem Docker-Compose-Projekt aus, das vom OMV-Compose-Plugin verwaltet wird.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-Instanz",
+          "description": "Ziel-Konfigurationseintrag. Optional, wenn nur eine OMV-Instanz konfiguriert ist."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Compose-Projektname oder UUID."
+        },
+        "command": {
+          "name": "Befehl",
+          "description": "Auf dem Projekt auszuführender Befehl."
+        }
+      }
+    },
+    "apply_config": {
+      "name": "Konfiguration anwenden",
+      "description": "Wendet ausstehende OpenMediaVault-Konfigurationsänderungen an.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-Instanz",
+          "description": "Ziel-Konfigurationseintrag. Optional, wenn nur eine OMV-Instanz konfiguriert ist."
+        }
+      }
+    },
+    "run_rsync_job": {
+      "name": "Rsync-Job ausführen",
+      "description": "Startet einen konfigurierten OpenMediaVault-Rsync-Job (Fire-and-Forget).",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-Instanz",
+          "description": "Ziel-Konfigurationseintrag. Optional, wenn nur eine OMV-Instanz konfiguriert ist."
+        },
+        "job": {
+          "name": "Job",
+          "description": "Rsync-Job-Name oder UUID."
         }
       }
     }

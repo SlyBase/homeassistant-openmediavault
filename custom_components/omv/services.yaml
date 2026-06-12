@@ -1,0 +1,68 @@
+container_command:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: omv
+    container:
+      required: true
+      example: nginx
+      selector:
+        text:
+    command:
+      required: true
+      example: restart
+      selector:
+        select:
+          options:
+            - start
+            - stop
+            - restart
+            - pause
+            - unpause
+
+compose_command:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: omv
+    project:
+      required: true
+      example: paperless
+      selector:
+        text:
+    command:
+      required: true
+      example: pull
+      selector:
+        select:
+          options:
+            - "up -d"
+            - down
+            - start
+            - stop
+            - pull
+
+apply_config:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: omv
+
+run_rsync_job:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: omv
+    job:
+      required: true
+      example: Backup media
+      selector:
+        text:

@@ -149,7 +149,8 @@ The Tier 2 live probe run (2026-06-12) was **skipped** — `OMV_PASSWORD` was no
 ## Integration Domain & Platforms
 
 - Domain: `omv`
-- Platforms: `sensor`, `binary_sensor`, `button`
+- Platforms: `sensor`, `binary_sensor`, `button`, `switch`, `update`
+- Custom services (registered domain-globally in `services.py` from `async_setup_entry`, idempotent, never deregistered on unload): `container_command`, `compose_command`, `apply_config`, `run_rsync_job`. Optional `config_entry_id` auto-resolves when exactly one entry is loaded; container/project/job inputs are matched against coordinator data by key/name/id — unknown projects/jobs raise `ServiceValidationError`, unknown containers pass through verbatim.
 - Minimum HA: 2025.5
 - Python: ≥ 3.13.2
 

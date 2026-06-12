@@ -263,5 +263,67 @@
         "name": "Executar scrub em {name}"
       }
     }
+  },
+  "services": {
+    "container_command": {
+      "name": "Comando de contêiner",
+      "description": "Executa um comando em um contêiner Docker gerenciado pelo plugin compose do OMV.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instância OMV",
+          "description": "Entrada de configuração de destino. Opcional quando apenas uma instância OMV está configurada."
+        },
+        "container": {
+          "name": "Contêiner",
+          "description": "Nome ou id do contêiner."
+        },
+        "command": {
+          "name": "Comando",
+          "description": "Comando a executar no contêiner."
+        }
+      }
+    },
+    "compose_command": {
+      "name": "Comando de projeto compose",
+      "description": "Executa um comando em um projeto Docker compose gerenciado pelo plugin compose do OMV.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instância OMV",
+          "description": "Entrada de configuração de destino. Opcional quando apenas uma instância OMV está configurada."
+        },
+        "project": {
+          "name": "Projeto",
+          "description": "Nome ou uuid do projeto compose."
+        },
+        "command": {
+          "name": "Comando",
+          "description": "Comando a executar no projeto."
+        }
+      }
+    },
+    "apply_config": {
+      "name": "Aplicar configuração",
+      "description": "Aplica alterações de configuração pendentes do OpenMediaVault.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instância OMV",
+          "description": "Entrada de configuração de destino. Opcional quando apenas uma instância OMV está configurada."
+        }
+      }
+    },
+    "run_rsync_job": {
+      "name": "Executar trabalho rsync",
+      "description": "Inicia um trabalho rsync configurado do OpenMediaVault (fire-and-forget).",
+      "fields": {
+        "config_entry_id": {
+          "name": "Instância OMV",
+          "description": "Entrada de configuração de destino. Opcional quando apenas uma instância OMV está configurada."
+        },
+        "job": {
+          "name": "Trabalho",
+          "description": "Nome ou uuid do trabalho rsync."
+        }
+      }
+    }
   }
 }

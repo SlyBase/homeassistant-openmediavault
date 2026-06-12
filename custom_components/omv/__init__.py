@@ -29,6 +29,7 @@ from .coordinator import OMVDataUpdateCoordinator
 from .exceptions import OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
 from .repairs import async_delete_reboot_repair_issue, async_sync_reboot_repair_issue
+from .services import async_setup_services
 
 type OMVConfigEntry = ConfigEntry[OMVDataUpdateCoordinator]
 
@@ -135,6 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     _register_registry_cleanup_listener(hass, entry, coordinator)
     _register_reboot_repair_listener(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    async_setup_services(hass)
     return True
 
 

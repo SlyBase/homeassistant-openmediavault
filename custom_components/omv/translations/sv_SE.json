@@ -263,5 +263,67 @@
         "name": "Scrubba {name}"
       }
     }
+  },
+  "services": {
+    "container_command": {
+      "name": "Containerkommando",
+      "description": "Kör ett kommando på en Docker-container som hanteras av OMV:s compose-plugin.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instans",
+          "description": "Konfigurationspost som mål. Valfritt när endast en OMV-instans är konfigurerad."
+        },
+        "container": {
+          "name": "Container",
+          "description": "Containerns namn eller id."
+        },
+        "command": {
+          "name": "Kommando",
+          "description": "Kommando att köra på containern."
+        }
+      }
+    },
+    "compose_command": {
+      "name": "Compose-projektkommando",
+      "description": "Kör ett kommando på ett Docker-compose-projekt som hanteras av OMV:s compose-plugin.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instans",
+          "description": "Konfigurationspost som mål. Valfritt när endast en OMV-instans är konfigurerad."
+        },
+        "project": {
+          "name": "Projekt",
+          "description": "Compose-projektets namn eller uuid."
+        },
+        "command": {
+          "name": "Kommando",
+          "description": "Kommando att köra på projektet."
+        }
+      }
+    },
+    "apply_config": {
+      "name": "Tillämpa konfiguration",
+      "description": "Tillämpar väntande OpenMediaVault-konfigurationsändringar.",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instans",
+          "description": "Konfigurationspost som mål. Valfritt när endast en OMV-instans är konfigurerad."
+        }
+      }
+    },
+    "run_rsync_job": {
+      "name": "Kör rsync-jobb",
+      "description": "Startar ett konfigurerat OpenMediaVault-rsync-jobb (fire-and-forget).",
+      "fields": {
+        "config_entry_id": {
+          "name": "OMV-instans",
+          "description": "Konfigurationspost som mål. Valfritt när endast en OMV-instans är konfigurerad."
+        },
+        "job": {
+          "name": "Jobb",
+          "description": "Rsync-jobbets namn eller uuid."
+        }
+      }
+    }
   }
 }
