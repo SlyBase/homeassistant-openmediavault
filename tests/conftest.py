@@ -155,6 +155,7 @@ def sample_data() -> dict[str, Any]:
                 "mtu": 1500,
                 "link": True,
                 "wol": False,
+                "mac": "aa:bb:cc:dd:ee:ff",
                 "rx": 128.0,
                 "tx": 64.0,
             }

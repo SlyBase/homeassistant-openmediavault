@@ -275,6 +275,12 @@
       },
       "zfs_scrub": {
         "name": "Scrub {name}"
+      },
+      "standby": {
+        "name": "Standby"
+      },
+      "wake_on_lan": {
+        "name": "Wake on LAN {interface}"
       }
     }
   },
@@ -314,6 +320,9 @@
     },
     "service_job_not_found": {
       "message": "Rsync job '{job}' was not found on the OMV host."
+    },
+    "wol_failed": {
+      "message": "Failed to send the Wake-on-LAN magic packet for '{interface}'."
     }
   },
   "issues": {

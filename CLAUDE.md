@@ -69,7 +69,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | `disk` | Physical disks + synthesised RAID/md* records |
 | `fs` | Filesystems mapped to disks (uuid, mount, size, used) |
 | `service` | OMV service status records |
-| `network` | Network interfaces with precomputed TX/RX Mbps rates |
+| `network` | Network interfaces with precomputed TX/RX Mbps rates, `wol` flag and lowercased `mac` (from raw `ether`); WoL buttons send the magic packet from the HA host via the stdlib-only `wol.py` (OMV API is down in standby) |
 | `smart` | SMART records (raw data) |
 | `compose` | Docker containers |
 | `compose_projects` | Compose projects with container counts |

@@ -1594,6 +1594,32 @@ async def test_network_rates_are_calculated_from_previous_counters(hass, config_
 
 
 @pytest.mark.asyncio
+async def test_normalize_network_maps_ether_to_lowercase_mac(hass, config_entry) -> None:
+    """Test the raw `ether` field becomes a lowercased `mac` field."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    records = coordinator._normalize_network(
+        [
+            {
+                "uuid": "net-1",
+                "devicename": "eth0",
+                "type": "ethernet",
+                "ether": "AA:BB:CC:DD:EE:FF",
+                "wol": True,
+            },
+            {"uuid": "net-2", "devicename": "veth0", "type": "ethernet"},
+        ]
+    )
+
+    assert records[0]["mac"] == "aa:bb:cc:dd:ee:ff"
+    assert records[0]["wol"] is True
+    assert records[1]["mac"] == ""
+
+
+@pytest.mark.asyncio
 async def test_smart_skips_getattributes_for_hotpluggable_disk(hass, config_entry) -> None:
     """SMART getAttributes must not be called for hotpluggable (USB) disks."""
     config_entry.add_to_hass(hass)

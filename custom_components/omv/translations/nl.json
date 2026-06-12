@@ -261,6 +261,12 @@
       },
       "zfs_scrub": {
         "name": "Scrub {name}"
+      },
+      "standby": {
+        "name": "Stand-by"
+      },
+      "wake_on_lan": {
+        "name": "Wake-on-LAN {interface}"
       }
     }
   },

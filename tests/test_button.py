@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
@@ -16,7 +16,9 @@ from custom_components.omv.button import (
     OMVRebootButton,
     OMVRsyncRunButton,
     OMVShutdownButton,
+    OMVStandbyButton,
     OMVVmRestartButton,
+    OMVWolButton,
     OMVZfsScrubButton,
     async_setup_entry,
     get_expected_button_unique_ids,
@@ -35,15 +37,16 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 28
-    assert added[3].unique_id.endswith("01-compose_up-paperless")
-    assert added[4].unique_id.endswith("02-compose_down-paperless")
-    assert added[5].unique_id.endswith("03-compose_start-paperless")
-    assert added[6].unique_id.endswith("04-compose_stop-paperless")
-    assert added[7].unique_id.endswith("05-compose_pull-paperless")
-    assert added[18].unique_id.endswith("98-compose_image_prune")
-    assert added[19].unique_id.endswith("99-compose_container_prune")
-    assert added[3]._attr_suggested_object_id == "nas_01_compose_paperless_up"
+    assert len(added) == 29
+    assert added[2].unique_id.endswith("standby")
+    assert added[4].unique_id.endswith("01-compose_up-paperless")
+    assert added[5].unique_id.endswith("02-compose_down-paperless")
+    assert added[6].unique_id.endswith("03-compose_start-paperless")
+    assert added[7].unique_id.endswith("04-compose_stop-paperless")
+    assert added[8].unique_id.endswith("05-compose_pull-paperless")
+    assert added[19].unique_id.endswith("98-compose_image_prune")
+    assert added[20].unique_id.endswith("99-compose_container_prune")
+    assert added[4]._attr_suggested_object_id == "nas_01_compose_paperless_up"
     assert added[-5].unique_id.endswith("container_restart-ctr-db")
     assert added[-5]._attr_suggested_object_id == "nas_container_db_restart"
     assert added[-4].unique_id.endswith("vm_restart-vm-uuid-1234")
@@ -66,7 +69,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 26
+    assert len(added) == 27
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -538,3 +541,116 @@ async def test_get_expected_button_unique_ids_includes_zfs_scrub(coordinator, co
     unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
 
     assert f"{config_entry.entry_id}-zfs_scrub-tank" in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_standby_button_calls_standby(coordinator) -> None:
+    """Test standby button RPC call."""
+    coordinator.api.async_call = AsyncMock()
+    button = OMVStandbyButton(coordinator)
+
+    assert button._attr_suggested_object_id == "nas_standby"
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with("System", "standby")
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_omits_wol_button_without_wol(coordinator, config_entry) -> None:
+    """Test no WoL button is created when no interface has WoL enabled."""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any(isinstance(entity, OMVWolButton) for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_adds_wol_button_for_wol_interface(coordinator, config_entry) -> None:
+    """Test a WoL button is created per WoL-capable interface with a MAC."""
+    coordinator.data["network"][0]["wol"] = True
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    wol_buttons = [entity for entity in added if isinstance(entity, OMVWolButton)]
+    assert len(wol_buttons) == 1
+    assert wol_buttons[0].unique_id.endswith("wol-net-1")
+    assert wol_buttons[0]._attr_suggested_object_id == "nas_wol_eth0"
+    assert wol_buttons[0]._attr_translation_placeholders == {"interface": "eth0"}
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_omits_wol_button_without_mac(coordinator, config_entry) -> None:
+    """Test no WoL button when the interface has WoL but no MAC (virtual NIC)."""
+    coordinator.data["network"][0]["wol"] = True
+    coordinator.data["network"][0]["mac"] = ""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any(isinstance(entity, OMVWolButton) for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_wol_button_sends_magic_packet(coordinator) -> None:
+    """Test pressing the WoL button sends the magic packet with the fixture MAC."""
+    coordinator.data["network"][0]["wol"] = True
+    button = OMVWolButton(coordinator, coordinator.data["network"][0])
+
+    with patch("custom_components.omv.button.async_send_magic_packet") as mock_send:
+        await button.async_press()
+
+    mock_send.assert_awaited_once_with(coordinator.hass, "aa:bb:cc:dd:ee:ff")
+
+
+@pytest.mark.asyncio
+async def test_wol_button_refreshes_mac_from_coordinator_data(coordinator) -> None:
+    """Test the button uses the current coordinator MAC, not the cached one."""
+    coordinator.data["network"][0]["wol"] = True
+    button = OMVWolButton(coordinator, coordinator.data["network"][0])
+    coordinator.data["network"][0]["mac"] = "11:22:33:44:55:66"
+
+    with patch("custom_components.omv.button.async_send_magic_packet") as mock_send:
+        await button.async_press()
+
+    mock_send.assert_awaited_once_with(coordinator.hass, "11:22:33:44:55:66")
+
+
+@pytest.mark.asyncio
+async def test_wol_button_raises_translated_error_on_failure(coordinator) -> None:
+    """Test WoL send failures surface as translated HomeAssistantError."""
+    coordinator.data["network"][0]["wol"] = True
+    button = OMVWolButton(coordinator, coordinator.data["network"][0])
+
+    with (
+        patch(
+            "custom_components.omv.button.async_send_magic_packet",
+            side_effect=OSError("network down"),
+        ),
+        pytest.raises(HomeAssistantError) as err,
+    ):
+        await button.async_press()
+
+    assert err.value.translation_key == "wol_failed"
+    assert err.value.translation_placeholders == {"interface": "eth0"}
+
+
+def test_get_expected_button_unique_ids_includes_standby_and_wol(coordinator, config_entry) -> None:
+    """Test the registry whitelist covers standby always and WoL conditionally."""
+    unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
+    assert f"{config_entry.entry_id}-standby" in unique_ids
+    assert f"{config_entry.entry_id}-wol-net-1" not in unique_ids
+
+    coordinator.data["network"][0]["wol"] = True
+    unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
+    assert f"{config_entry.entry_id}-wol-net-1" in unique_ids

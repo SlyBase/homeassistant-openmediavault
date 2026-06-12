@@ -261,6 +261,12 @@
       },
       "zfs_scrub": {
         "name": "Scrubba {name}"
+      },
+      "standby": {
+        "name": "Vänteläge"
+      },
+      "wake_on_lan": {
+        "name": "Wake-on-LAN {interface}"
       }
     }
   },

@@ -1246,6 +1246,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "mtu": int(self._coerce_float(record.get("mtu"))),
                 "link": self._coerce_bool(record.get("link")),
                 "wol": self._coerce_bool(record.get("wol")),
+                "mac": str(record.get("ether") or "").lower(),
                 "rx": rx_rate,
                 "tx": tx_rate,
             }

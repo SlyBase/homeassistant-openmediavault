@@ -21,6 +21,7 @@ from .entity import (
     get_vm_device_info,
 )
 from .exceptions import OMVApiError, OMVConnectionError
+from .wol import async_send_magic_packet
 
 _COMPOSE_PROJECT_ACTIONS: tuple[tuple[int, str, str, str], ...] = (
     (1, "compose_up", "up -d", "mdi:arrow-up-bold-box-outline"),
@@ -81,6 +82,7 @@ def get_expected_button_unique_ids(
     unique_ids = {
         f"{entry.entry_id}-reboot",
         f"{entry.entry_id}-shutdown",
+        f"{entry.entry_id}-standby",
         f"{entry.entry_id}-apply_config",
     }
     for project in coordinator.data.get("compose_projects", []):
@@ -127,6 +129,11 @@ def get_expected_button_unique_ids(
         pool_name = str(pool.get("name") or "")
         if pool_name:
             unique_ids.add(f"{entry.entry_id}-zfs_scrub-{pool_name}")
+    for iface in coordinator.data.get("network", []):
+        if not isinstance(iface, dict):
+            continue
+        if iface.get("wol") and str(iface.get("mac") or ""):
+            unique_ids.add(f"{entry.entry_id}-wol-{iface.get('uuid')}")
     return unique_ids
 
 
@@ -140,6 +147,7 @@ async def async_setup_entry(
     entities: list[ButtonEntity] = [
         OMVRebootButton(coordinator),
         OMVShutdownButton(coordinator),
+        OMVStandbyButton(coordinator),
         OMVApplyConfigButton(coordinator),
     ]
 
@@ -184,6 +192,12 @@ async def async_setup_entry(
         if not isinstance(pool, dict) or not str(pool.get("name") or ""):
             continue
         entities.append(OMVZfsScrubButton(coordinator, pool))
+
+    for iface in coordinator.data.get("network", []):
+        if not isinstance(iface, dict):
+            continue
+        if iface.get("wol") and str(iface.get("mac") or ""):
+            entities.append(OMVWolButton(coordinator, iface))
 
     async_add_entities(entities)
 
@@ -263,6 +277,21 @@ class OMVShutdownButton(OMVEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Trigger a shutdown on the OMV host."""
         await self.coordinator.api.async_call("System", "shutdown")
+
+
+class OMVStandbyButton(OMVEntity, ButtonEntity):
+    """Button to put the OMV host into standby."""
+
+    _attr_translation_key = "standby"
+    _attr_icon = "mdi:power-sleep"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator) -> None:
+        super().__init__(coordinator, "standby")
+        self._attr_suggested_object_id = build_host_object_id(coordinator, "standby")
+
+    async def async_press(self) -> None:
+        """Put the OMV host into standby via System.standby."""
+        await self.coordinator.api.async_call("System", "standby")
 
 
 class OMVComposeProjectButton(OMVEntity, ButtonEntity):
@@ -541,3 +570,55 @@ class OMVZfsScrubButton(OMVEntity, ButtonEntity):
             ) from err
         finally:
             await self.coordinator.async_request_refresh()
+
+
+class OMVWolButton(OMVEntity, ButtonEntity):
+    """Button to wake the OMV host via a locally sent Wake-on-LAN packet.
+
+    The magic packet is sent from the Home Assistant host because the OMV
+    API is down while the NAS is in standby. Availability relies on the
+    coordinator's cached-data fallback: updates keep "succeeding" with the
+    last known data while OMV is offline, so the button stays pressable
+    with the cached MAC address.
+    """
+
+    _attr_translation_key = "wake_on_lan"
+    _attr_icon = "mdi:lan-pending"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, iface: dict[str, Any]) -> None:
+        """Initialize the Wake-on-LAN button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            iface: The normalized network interface record (needs ``uuid``,
+                ``devicename``, ``mac``).
+        """
+        self._interface_uuid = str(iface.get("uuid") or "")
+        self._devicename = str(iface.get("devicename") or self._interface_uuid)
+        self._mac = str(iface.get("mac") or "")
+        self._attr_translation_placeholders = {"interface": self._devicename}
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "wol",
+            self._devicename,
+        )
+        super().__init__(coordinator, f"wol-{self._interface_uuid}")
+
+    async def async_press(self) -> None:
+        """Send the Wake-on-LAN magic packet from the HA host.
+
+        Raises:
+            HomeAssistantError: When the MAC is invalid or sending fails.
+        """
+        for iface in self.coordinator.data.get("network", []):
+            if str(iface.get("uuid") or "") == self._interface_uuid and iface.get("mac"):
+                self._mac = str(iface["mac"])
+                break
+        try:
+            await async_send_magic_packet(self.coordinator.hass, self._mac)
+        except (ValueError, OSError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="wol_failed",
+                translation_placeholders={"interface": self._devicename},
+            ) from err
