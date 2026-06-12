@@ -14,6 +14,7 @@
 - New coordinator method `async_execute_vm_command` wrapping `Kvm.doCommand` with the full parameter set (`name`, `virttype`, port fields) required by the `openmediavault-kvm` plugin, as groundwork for VM control entities.
 - New per-VM control entities: a start/stop switch (`poweron`/graceful `poweroff` via `Kvm.doCommand`) and a `Restart` button (`reboot`), attached to the existing VM device. Errors surface as translated `vm_command_failed` messages; the destructive `force` command is intentionally not exposed.
 - New UPS monitoring via the `openmediavault-nut` plugin (`Nut.getStats`): `UPS battery charge`, `UPS battery runtime` and `UPS load` sensors plus a `UPS on battery` binary sensor on the hub device. The plain-string `upsc` response is parsed into a new `nut` coordinator key; entities are created only when UPS data is available, so installations without the plugin (or with the NUT service disabled) get no eternally-unknown entities.
+- New rsync job entities: a diagnostic `enabled` binary sensor per job (with `type`, `mode`, `srcname`, `destname`, `schedule` and `uuid` attributes) and a `Run` button that fires `Rsync.execute` fire-and-forget (jobs can run for hours, so the background output is never polled). Jobs are fetched via `Rsync.getList` into a new `rsync` coordinator key; disabled jobs still get a run button because OMV allows manual execution.
 
 ### Fixed
 

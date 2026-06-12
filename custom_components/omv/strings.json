@@ -194,6 +194,9 @@
             },
             "ups_on_battery": {
                 "name": "UPS on battery"
+            },
+            "rsync_job_enabled": {
+                "name": "rsync {resource} enabled"
             }
         },
         "update": {
@@ -237,6 +240,9 @@
             },
             "vm_restart": {
                 "name": "Restart"
+            },
+            "rsync_run": {
+                "name": "Run rsync {name}"
             }
         }
     },
@@ -252,6 +258,9 @@
         },
         "vm_command_failed": {
             "message": "Failed to {command} VM '{resource}'. Check the OMV logs."
+        },
+        "rsync_execute_failed": {
+            "message": "Failed to start rsync job '{name}'. Check the OMV logs."
         }
     },
     "issues": {

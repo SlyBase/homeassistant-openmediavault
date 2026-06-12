@@ -105,6 +105,12 @@ def get_expected_button_unique_ids(
         vm_key = str(vm.get("vm_key") or "")
         if vm_key:
             unique_ids.add(f"{entry.entry_id}-vm_restart-{vm_key}")
+    for job in coordinator.data.get("rsync", []):
+        if not isinstance(job, dict):
+            continue
+        rsync_key = str(job.get("rsync_key") or "")
+        if rsync_key:
+            unique_ids.add(f"{entry.entry_id}-rsync_run-{rsync_key}")
     return unique_ids
 
 
@@ -144,6 +150,11 @@ async def async_setup_entry(
         if not isinstance(vm, dict) or not str(vm.get("vm_key") or ""):
             continue
         entities.append(OMVVmRestartButton(coordinator, vm))
+
+    for job in coordinator.data.get("rsync", []):
+        if not isinstance(job, dict) or not str(job.get("rsync_key") or ""):
+            continue
+        entities.append(OMVRsyncRunButton(coordinator, job))
 
     async_add_entities(entities)
 
@@ -369,6 +380,48 @@ class OMVVmRestartButton(OMVEntity, ButtonEntity):
                     "resource": str(self._vm.get("name") or self._vm_key),
                     "command": "reboot",
                 },
+            ) from err
+        finally:
+            await self.coordinator.async_request_refresh()
+
+
+class OMVRsyncRunButton(OMVEntity, ButtonEntity):
+    """Button to start one OMV rsync job."""
+
+    _attr_translation_key = "rsync_run"
+    _attr_icon = "mdi:sync"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, job: dict[str, Any]) -> None:
+        """Initialize the rsync run button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            job: The normalized rsync job record.
+        """
+        self._rsync_key = str(job.get("rsync_key") or "")
+        self._job_name = str(job.get("name") or self._rsync_key)
+        self._attr_translation_placeholders = {"name": self._job_name}
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "rsync",
+            self._job_name,
+            "run",
+        )
+        super().__init__(coordinator, f"rsync_run-{self._rsync_key}")
+
+    async def async_press(self) -> None:
+        """Start this rsync job via Rsync.execute (fire-and-forget).
+
+        Raises:
+            HomeAssistantError: When the Rsync.execute RPC call fails.
+        """
+        try:
+            await self.coordinator.async_execute_rsync_job(self._rsync_key)
+        except (OMVApiError, OMVConnectionError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="rsync_execute_failed",
+                translation_placeholders={"name": self._job_name},
             ) from err
         finally:
             await self.coordinator.async_request_refresh()

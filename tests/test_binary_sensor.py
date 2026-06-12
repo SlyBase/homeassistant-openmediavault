@@ -8,6 +8,7 @@ from custom_components.omv.binary_sensor import OMVBinarySensor, async_setup_ent
 from custom_components.omv.binary_sensor_types import (
     DISK_BAD_SECTORS_BINARY_SENSOR,
     DISK_CRC_ERRORS_BINARY_SENSOR,
+    RSYNC_JOB_ENABLED_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
     UPS_ON_BATTERY_BINARY_SENSOR,
@@ -30,6 +31,8 @@ async def test_async_setup_entry_adds_binary_sensors(coordinator, config_entry) 
     assert any(entity.unique_id.endswith("service-compose") for entity in added)
     assert any(entity.unique_id.endswith("vm_running-vm-uuid-1234") for entity in added)
     assert any(entity.unique_id.endswith("ups_on_battery") for entity in added)
+    assert any(entity.unique_id.endswith("rsync_job_enabled-rsync-uuid-0001") for entity in added)
+    assert any(entity.unique_id.endswith("rsync_job_enabled-rsync-uuid-0002") for entity in added)
 
 
 @pytest.mark.asyncio
@@ -55,6 +58,46 @@ async def test_ups_on_battery_binary_sensor_state_and_hub_device(coordinator) ->
     assert sensor.extra_state_attributes == {"status": "OL", "model": "Eaton 5E"}
     assert sensor.device_info["identifiers"] == {(DOMAIN, coordinator.config_entry.entry_id)}
     assert sensor._attr_suggested_object_id == "nas_ups_on_battery"
+
+
+@pytest.mark.asyncio
+async def test_rsync_job_enabled_binary_sensor_state_and_attrs(coordinator) -> None:
+    """Test the rsync job sensor reads enabled and exposes job attributes on the hub."""
+    sensor = OMVBinarySensor(coordinator, RSYNC_JOB_ENABLED_BINARY_SENSOR, item_key="rsync-uuid-0001")
+
+    assert sensor.is_on is True
+    assert sensor.extra_state_attributes == {
+        "type": "local",
+        "mode": "push",
+        "srcname": "/srv/dev-disk-by-uuid-1/media",
+        "destname": "/srv/dev-disk-by-uuid-2/backup",
+        "schedule": "0 3 * * *",
+        "uuid": "rsync-uuid-0001",
+    }
+    assert sensor.device_info["identifiers"] == {(DOMAIN, coordinator.config_entry.entry_id)}
+    assert sensor._attr_suggested_object_id == "nas_rsync_backup_media_enabled"
+
+
+@pytest.mark.asyncio
+async def test_rsync_job_enabled_binary_sensor_disabled_job(coordinator) -> None:
+    """Test a disabled rsync job reports off."""
+    sensor = OMVBinarySensor(coordinator, RSYNC_JOB_ENABLED_BINARY_SENSOR, item_key="rsync-uuid-0002")
+
+    assert sensor.is_on is False
+
+
+@pytest.mark.asyncio
+async def test_rsync_binary_sensors_absent_without_jobs(coordinator, config_entry) -> None:
+    """Test no rsync binary sensors are created when no jobs exist."""
+    coordinator.data["rsync"] = []
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any("rsync_job_enabled" in entity.unique_id for entity in added)
 
 
 @pytest.mark.asyncio

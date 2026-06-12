@@ -80,6 +80,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | `raid` | RAID arrays |
 | `tempmon` | Temperature sensors from `openmediavault-tempmon` plugin (empty list when plugin absent) |
 | `nut` | UPS metrics parsed from the `Nut.getStats` plain-string `upsc` output (`battery_charge`, `battery_runtime`, `load`, `status`, `on_battery`, `model`, `raw`; empty dict when plugin absent or NUT service disabled) |
+| `rsync` | Rsync jobs from `Rsync.getList` (`rsync_key`=uuid, `name` from comment with "src → dest" fallback, `enabled`, `type`, `mode`, `srcname`, `destname`, `schedule`; always passed through unfiltered) |
 
 ### API Client Gotchas
 

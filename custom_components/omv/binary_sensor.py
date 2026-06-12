@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .binary_sensor_types import (
     DISK_BAD_SECTORS_BINARY_SENSOR,
     DISK_CRC_ERRORS_BINARY_SENSOR,
+    RSYNC_JOB_ENABLED_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
     UPS_ON_BATTERY_BINARY_SENSOR,
@@ -46,6 +47,8 @@ def _binary_sensor_suggested_object_id(
     if description.data_path == "kvm":
         metric = description.key.removeprefix("vm_")
         return build_host_object_id(coordinator, "vm", data.get("name") or item_key, metric)
+    if description.data_path == "rsync":
+        return build_host_object_id(coordinator, "rsync", data.get("name") or item_key, "enabled")
     return build_host_object_id(coordinator, description.key, item_key)
 
 
@@ -81,6 +84,13 @@ def get_expected_binary_sensor_unique_ids(
     nut_data = coordinator.data.get("nut", {})
     if isinstance(nut_data, dict) and nut_data:
         unique_ids.add(f"{entry_id}-{UPS_ON_BATTERY_BINARY_SENSOR.key}")
+
+    for job in coordinator.data.get("rsync", []):
+        if not isinstance(job, dict):
+            continue
+        item_key = str(job.get("rsync_key") or "")
+        if item_key:
+            unique_ids.add(f"{entry_id}-{RSYNC_JOB_ENABLED_BINARY_SENSOR.key}-{item_key}")
 
     return unique_ids
 
@@ -132,6 +142,14 @@ async def async_setup_entry(
     nut_data = coordinator.data.get("nut", {})
     if isinstance(nut_data, dict) and nut_data:
         entities.append(OMVBinarySensor(coordinator, UPS_ON_BATTERY_BINARY_SENSOR))
+
+    for job in coordinator.data.get("rsync", []):
+        if not isinstance(job, dict):
+            continue
+        item_key = str(job.get("rsync_key") or "")
+        if not item_key:
+            continue
+        entities.append(OMVBinarySensor(coordinator, RSYNC_JOB_ENABLED_BINARY_SENSOR, item_key=item_key))
 
     async_add_entities(entities)
 

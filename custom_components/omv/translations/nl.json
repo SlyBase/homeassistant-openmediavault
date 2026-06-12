@@ -191,6 +191,9 @@
       },
       "ups_on_battery": {
         "name": "UPS op batterij"
+      },
+      "rsync_job_enabled": {
+        "name": "rsync {resource} ingeschakeld"
       }
     },
     "update": {
@@ -231,6 +234,9 @@
       },
       "vm_restart": {
         "name": "Herstarten"
+      },
+      "rsync_run": {
+        "name": "rsync {name} uitvoeren"
       }
     }
   }

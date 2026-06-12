@@ -94,6 +94,26 @@ UPS_ON_BATTERY_BINARY_SENSOR = OMVBinarySensorDescription(
     },
 )
 
+RSYNC_JOB_ENABLED_BINARY_SENSOR = OMVBinarySensorDescription(
+    key="rsync_job_enabled",
+    translation_key="rsync_job_enabled",
+    icon="mdi:sync",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    data_path="rsync",
+    is_collection=True,
+    collection_key="rsync_key",
+    name_key="name",
+    value_fn=lambda data: bool(data.get("enabled", False)),
+    extra_attrs_fn=lambda data: {
+        "type": data.get("type"),
+        "mode": data.get("mode"),
+        "srcname": data.get("srcname"),
+        "destname": data.get("destname"),
+        "schedule": data.get("schedule"),
+        "uuid": data.get("uuid"),
+    },
+)
+
 DISK_BAD_SECTORS_BINARY_SENSOR = OMVBinarySensorDescription(
     key="disk_bad_sectors",
     translation_key="disk_bad_sectors",

@@ -173,6 +173,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
                 ],
             },
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -276,6 +277,7 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
             ("Kvm", "getVmList"): {"data": []},
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -790,6 +792,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -833,6 +836,7 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1179,6 +1183,7 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
                 "total": 1,
             },
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1248,6 +1253,7 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
                 }
             ],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1516,6 +1522,7 @@ async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1965,6 +1972,7 @@ async def test_tempmon_sensors_normalized(hass, config_entry) -> None:
             },
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2013,6 +2021,7 @@ async def test_tempmon_absent_when_plugin_not_installed(hass, config_entry) -> N
             ("Kvm", "getVmList"): {"data": []},
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2061,6 +2070,7 @@ async def test_tempmon_script_error_returns_none_temperature(hass, config_entry)
             },
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2116,6 +2126,7 @@ async def test_kvm_vms_normalized(hass, config_entry) -> None:
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2171,6 +2182,7 @@ async def test_kvm_absent_when_plugin_not_installed(hass, config_entry) -> None:
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2391,3 +2403,89 @@ async def test_filter_data_passes_nut_through(hass, config_entry) -> None:
     filtered = coordinator.filter_data_by_selection({"nut": nut}, {})
 
     assert filtered["nut"] == nut
+
+
+@pytest.mark.asyncio
+async def test_normalize_rsync_builds_records_with_name_fallbacks(hass, config_entry) -> None:
+    """Rsync records must carry a stable key, name fallbacks and a schedule string."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    jobs = coordinator._normalize_rsync(
+        [
+            {
+                "uuid": "uuid-with-comment",
+                "enable": True,
+                "comment": "Backup media",
+                "type": "local",
+                "mode": "push",
+                "srcname": "/srv/media",
+                "destname": "/srv/backup",
+                "minute": "0",
+                "hour": "3",
+                "dayofmonth": "*",
+                "month": "*",
+                "dayofweek": "*",
+            },
+            {
+                "uuid": "uuid-no-comment",
+                "enable": False,
+                "comment": "",
+                "type": "remote",
+                "mode": "pull",
+                "srcname": "host:/data",
+                "destname": "/srv/mirror",
+                "minute": "30",
+                "hour": "4",
+                "dayofmonth": "*",
+                "month": "*",
+                "dayofweek": "0",
+            },
+            {"uuid": "", "comment": "no uuid -> dropped"},
+        ]
+    )
+
+    assert len(jobs) == 2
+    assert jobs[0]["rsync_key"] == "uuid-with-comment"
+    assert jobs[0]["name"] == "Backup media"
+    assert jobs[0]["enabled"] is True
+    assert jobs[0]["schedule"] == "0 3 * * *"
+    assert jobs[1]["name"] == "host:/data → /srv/mirror"
+    assert jobs[1]["enabled"] is False
+    assert jobs[1]["mode"] == "pull"
+    assert jobs[1]["schedule"] == "30 4 * * 0"
+
+
+@pytest.mark.asyncio
+async def test_normalize_rsync_handles_absent_rpc(hass, config_entry) -> None:
+    """An absent Rsync RPC ([] response) must yield an empty job list."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    assert coordinator._normalize_rsync([]) == []
+    assert coordinator._normalize_rsync(None) == []
+
+
+@pytest.mark.asyncio
+async def test_async_execute_rsync_job_calls_rsync_execute(hass, config_entry) -> None:
+    """The rsync job helper must call Rsync.execute with the job uuid."""
+    api = Mock()
+    api.async_call = AsyncMock(return_value="/tmp/bgstatusXYZ")
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    result = await coordinator.async_execute_rsync_job("rsync-uuid-0001")
+
+    api.async_call.assert_awaited_once_with("Rsync", "execute", {"uuid": "rsync-uuid-0001"})
+    assert result == "/tmp/bgstatusXYZ"
+
+
+@pytest.mark.asyncio
+async def test_filter_data_passes_rsync_through(hass, config_entry) -> None:
+    """filter_data_by_selection must pass rsync jobs through unfiltered."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    jobs = [{"rsync_key": "rsync-uuid-0001", "name": "Backup media", "enabled": True}]
+    filtered = coordinator.filter_data_by_selection({"rsync": jobs}, {})
+
+    assert filtered["rsync"] == jobs

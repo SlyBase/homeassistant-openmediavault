@@ -233,6 +233,27 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("Kvm.doCommand params=%s response=%s", params, response)
         return response
 
+    async def async_execute_rsync_job(self, uuid: str) -> Any:
+        """Start one rsync job via Rsync.execute (fire-and-forget).
+
+        ``Rsync.execute`` returns an execBgProc background filename. Jobs can
+        run for hours, so the background output is intentionally never
+        polled.
+
+        Args:
+            uuid: The rsync job uuid from ``coordinator.data["rsync"]``.
+
+        Returns:
+            The raw RPC response (the background output filename).
+
+        Raises:
+            OMVApiError: When the Rsync RPC rejects the call or is absent.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        response = await self.api.async_call("Rsync", "execute", {"uuid": uuid})
+        _LOGGER.debug("Rsync.execute uuid=%s background file=%s", uuid, response)
+        return response
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
         try:
@@ -326,6 +347,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "raid": raids,
                 "gpu": gpu,
                 "nut": self._normalize_nut(await self._fetch_optional("Nut", "getStats")),
+                "rsync": self._normalize_rsync(
+                    await self._fetch_optional("Rsync", "getList", {"start": 0, "limit": -1})
+                ),
                 "upgradedList": upgraded_pkgs,
             }
 
@@ -602,6 +626,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         filtered["tempmon"] = list(data.get("tempmon", []))
         filtered["gpu"] = data.get("gpu", {})
         filtered["nut"] = data.get("nut", {})
+        filtered["rsync"] = list(data.get("rsync", []))
         filtered["upgradedList"] = list(data.get("upgradedList", []))
         return filtered
 
@@ -1622,6 +1647,50 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "model": str(stats.get("device.model") or stats.get("ups.model") or ""),
             "raw": stats,
         }
+
+    def _normalize_rsync(self, response: Any) -> list[dict[str, Any]]:
+        """Normalize Rsync.getList job records.
+
+        Args:
+            response: Raw response from Rsync.getList (list of job records,
+                or ``[]`` when the RPC is unavailable).
+
+        Returns:
+            List of rsync job dicts with a stable ``rsync_key`` (the job
+            uuid), a display ``name`` (comment, falling back to
+            "src → dest", falling back to the uuid), ``enabled``, ``type``,
+            ``mode``, ``srcname``, ``destname`` and the cron ``schedule``
+            string.
+        """
+        jobs: list[dict[str, Any]] = []
+        for record in self._records_from_response(response):
+            uuid = str(record.get("uuid") or "")
+            if not uuid:
+                continue
+            srcname = str(record.get("srcname") or "")
+            destname = str(record.get("destname") or "")
+            name = str(record.get("comment") or "").strip()
+            if not name and srcname and destname:
+                name = f"{srcname} → {destname}"
+            if not name:
+                name = uuid
+            schedule = " ".join(
+                str(record.get(field, "*")) for field in ("minute", "hour", "dayofmonth", "month", "dayofweek")
+            )
+            jobs.append(
+                {
+                    "rsync_key": uuid,
+                    "uuid": uuid,
+                    "name": name,
+                    "enabled": self._coerce_bool(record.get("enable")),
+                    "type": str(record.get("type") or ""),
+                    "mode": str(record.get("mode") or ""),
+                    "srcname": srcname,
+                    "destname": destname,
+                    "schedule": schedule,
+                }
+            )
+        return jobs
 
     def _normalize_compose(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Docker/Compose containers and extract project relationships."""

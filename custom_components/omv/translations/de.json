@@ -200,6 +200,9 @@
       },
       "ups_on_battery": {
         "name": "USV im Batteriebetrieb"
+      },
+      "rsync_job_enabled": {
+        "name": "rsync {resource} aktiviert"
       }
     },
     "update": {
@@ -243,6 +246,9 @@
       },
       "vm_restart": {
         "name": "Neustart"
+      },
+      "rsync_run": {
+        "name": "rsync {name} starten"
       }
     }
   },
@@ -258,6 +264,9 @@
     },
     "vm_command_failed": {
       "message": "VM '{resource}' konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
+    },
+    "rsync_execute_failed": {
+      "message": "Rsync-Auftrag '{name}' konnte nicht gestartet werden. Prüfe die OMV-Logs."
     }
   },
   "issues": {

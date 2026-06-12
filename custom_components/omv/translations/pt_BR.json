@@ -191,6 +191,9 @@
       },
       "ups_on_battery": {
         "name": "Nobreak na bateria"
+      },
+      "rsync_job_enabled": {
+        "name": "rsync {resource} habilitado"
       }
     },
     "update": {
@@ -231,6 +234,9 @@
       },
       "vm_restart": {
         "name": "Reiniciar"
+      },
+      "rsync_run": {
+        "name": "Executar rsync {name}"
       }
     }
   }

@@ -455,6 +455,30 @@ def sample_data() -> dict[str, Any]:
                 "device.model": "Eaton 5E",
             },
         },
+        "rsync": [
+            {
+                "rsync_key": "rsync-uuid-0001",
+                "uuid": "rsync-uuid-0001",
+                "name": "Backup media",
+                "enabled": True,
+                "type": "local",
+                "mode": "push",
+                "srcname": "/srv/dev-disk-by-uuid-1/media",
+                "destname": "/srv/dev-disk-by-uuid-2/backup",
+                "schedule": "0 3 * * *",
+            },
+            {
+                "rsync_key": "rsync-uuid-0002",
+                "uuid": "rsync-uuid-0002",
+                "name": "/srv/docs → /srv/backup/docs",
+                "enabled": False,
+                "type": "local",
+                "mode": "push",
+                "srcname": "/srv/docs",
+                "destname": "/srv/backup/docs",
+                "schedule": "30 4 * * 0",
+            },
+        ],
         "upgradedList": [],
         "zfs": [
             {

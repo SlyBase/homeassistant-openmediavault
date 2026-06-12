@@ -13,6 +13,7 @@ from custom_components.omv.button import (
     OMVComposeSystemButton,
     OMVContainerRestartButton,
     OMVRebootButton,
+    OMVRsyncRunButton,
     OMVShutdownButton,
     OMVVmRestartButton,
     async_setup_entry,
@@ -31,7 +32,7 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 25
+    assert len(added) == 27
     assert added[3].unique_id.endswith("01-compose_up-paperless")
     assert added[4].unique_id.endswith("02-compose_down-paperless")
     assert added[5].unique_id.endswith("03-compose_start-paperless")
@@ -40,10 +41,13 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
     assert added[18].unique_id.endswith("98-compose_image_prune")
     assert added[19].unique_id.endswith("99-compose_container_prune")
     assert added[3]._attr_suggested_object_id == "nas_01_compose_paperless_up"
-    assert added[-2].unique_id.endswith("container_restart-ctr-db")
-    assert added[-2]._attr_suggested_object_id == "nas_container_db_restart"
-    assert added[-1].unique_id.endswith("vm_restart-vm-uuid-1234")
-    assert added[-1]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
+    assert added[-4].unique_id.endswith("container_restart-ctr-db")
+    assert added[-4]._attr_suggested_object_id == "nas_container_db_restart"
+    assert added[-3].unique_id.endswith("vm_restart-vm-uuid-1234")
+    assert added[-3]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
+    assert added[-2].unique_id.endswith("rsync_run-rsync-uuid-0001")
+    assert added[-2]._attr_suggested_object_id == "nas_rsync_backup_media_run"
+    assert added[-1].unique_id.endswith("rsync_run-rsync-uuid-0002")
 
 
 @pytest.mark.asyncio
@@ -57,7 +61,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 23
+    assert len(added) == 25
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -363,4 +367,49 @@ async def test_vm_restart_button_raises_translated_error_on_api_failure(coordina
         "resource": "homeassistant",
         "command": "reboot",
     }
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+def test_get_expected_button_unique_ids_includes_rsync_run(
+    coordinator,
+    config_entry,
+) -> None:
+    """Test get_expected_button_unique_ids includes one run button per rsync job."""
+    unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
+
+    assert f"{config_entry.entry_id}-rsync_run-rsync-uuid-0001" in unique_ids
+    assert f"{config_entry.entry_id}-rsync_run-rsync-uuid-0002" in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_rsync_run_button_calls_rsync_execute_and_refresh(coordinator) -> None:
+    """Test the rsync run button fires Rsync.execute and refreshes."""
+    coordinator.api.async_call = AsyncMock(return_value="/tmp/bgstatusXYZ")
+    coordinator.async_request_refresh = AsyncMock()
+    job = next(j for j in coordinator.data["rsync"] if j["rsync_key"] == "rsync-uuid-0001")
+    button = OMVRsyncRunButton(coordinator, job)
+
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with(
+        "Rsync",
+        "execute",
+        {"uuid": "rsync-uuid-0001"},
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_rsync_run_button_raises_translated_error_on_api_failure(coordinator) -> None:
+    """Test a failing Rsync.execute raises a translated HomeAssistantError."""
+    coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("RPC failed"))
+    coordinator.async_request_refresh = AsyncMock()
+    job = next(j for j in coordinator.data["rsync"] if j["rsync_key"] == "rsync-uuid-0001")
+    button = OMVRsyncRunButton(coordinator, job)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "rsync_execute_failed"
+    assert exc_info.value.translation_placeholders == {"name": "Backup media"}
     coordinator.async_request_refresh.assert_awaited_once()
