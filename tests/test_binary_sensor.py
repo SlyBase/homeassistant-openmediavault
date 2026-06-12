@@ -10,6 +10,7 @@ from custom_components.omv.binary_sensor_types import (
     DISK_CRC_ERRORS_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
+    UPS_ON_BATTERY_BINARY_SENSOR,
     VM_RUNNING_BINARY_SENSOR,
 )
 from custom_components.omv.const import DOMAIN
@@ -28,6 +29,32 @@ async def test_async_setup_entry_adds_binary_sensors(coordinator, config_entry) 
     assert any(entity.unique_id.endswith("service-ssh") for entity in added)
     assert any(entity.unique_id.endswith("service-compose") for entity in added)
     assert any(entity.unique_id.endswith("vm_running-vm-uuid-1234") for entity in added)
+    assert any(entity.unique_id.endswith("ups_on_battery") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_ups_on_battery_absent_without_nut_data(coordinator, config_entry) -> None:
+    """Test no UPS binary sensor is created when the nut dict is empty."""
+    coordinator.data["nut"] = {}
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any(entity.unique_id.endswith("ups_on_battery") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_ups_on_battery_binary_sensor_state_and_hub_device(coordinator) -> None:
+    """Test the UPS on-battery sensor reads on_battery and stays on the hub device."""
+    sensor = OMVBinarySensor(coordinator, UPS_ON_BATTERY_BINARY_SENSOR)
+
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes == {"status": "OL", "model": "Eaton 5E"}
+    assert sensor.device_info["identifiers"] == {(DOMAIN, coordinator.config_entry.entry_id)}
+    assert sensor._attr_suggested_object_id == "nas_ups_on_battery"
 
 
 @pytest.mark.asyncio

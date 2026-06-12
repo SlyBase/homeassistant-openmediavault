@@ -15,6 +15,7 @@ from .binary_sensor_types import (
     DISK_CRC_ERRORS_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
+    UPS_ON_BATTERY_BINARY_SENSOR,
     VM_RUNNING_BINARY_SENSOR,
     OMVBinarySensorDescription,
 )
@@ -77,6 +78,10 @@ def get_expected_binary_sensor_unique_ids(
         if item_key:
             unique_ids.add(f"{entry_id}-{VM_RUNNING_BINARY_SENSOR.key}-{item_key}")
 
+    nut_data = coordinator.data.get("nut", {})
+    if isinstance(nut_data, dict) and nut_data:
+        unique_ids.add(f"{entry_id}-{UPS_ON_BATTERY_BINARY_SENSOR.key}")
+
     return unique_ids
 
 
@@ -123,6 +128,10 @@ async def async_setup_entry(
                 device_info=get_vm_device_info(coordinator, vm),
             )
         )
+
+    nut_data = coordinator.data.get("nut", {})
+    if isinstance(nut_data, dict) and nut_data:
+        entities.append(OMVBinarySensor(coordinator, UPS_ON_BATTERY_BINARY_SENSOR))
 
     async_add_entities(entities)
 

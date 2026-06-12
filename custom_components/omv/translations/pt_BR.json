@@ -159,6 +159,15 @@
       },
       "vm_state": {
         "name": "estado de {resource}"
+      },
+      "ups_battery_charge": {
+        "name": "Carga da bateria do nobreak"
+      },
+      "ups_battery_runtime": {
+        "name": "Autonomia da bateria do nobreak"
+      },
+      "ups_load": {
+        "name": "Carga do nobreak"
       }
     },
     "binary_sensor": {
@@ -179,6 +188,9 @@
       },
       "vm_running": {
         "name": "{resource} em execucao"
+      },
+      "ups_on_battery": {
+        "name": "Nobreak na bateria"
       }
     },
     "update": {

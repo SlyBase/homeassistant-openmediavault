@@ -79,6 +79,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | `zfs` | ZFS pool status |
 | `raid` | RAID arrays |
 | `tempmon` | Temperature sensors from `openmediavault-tempmon` plugin (empty list when plugin absent) |
+| `nut` | UPS metrics parsed from the `Nut.getStats` plain-string `upsc` output (`battery_charge`, `battery_runtime`, `load`, `status`, `on_battery`, `model`, `raw`; empty dict when plugin absent or NUT service disabled) |
 
 ### API Client Gotchas
 

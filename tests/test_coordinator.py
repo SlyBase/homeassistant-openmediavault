@@ -172,6 +172,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
                     }
                 ],
             },
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -274,6 +275,7 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
             ("zfs", "listPools"): [],
             ("Kvm", "getVmList"): {"data": []},
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -787,6 +789,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
             ("Kvm", "getVmList"): {"data": []},
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -829,6 +832,7 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
             ("Kvm", "getVmList"): {"data": []},
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -1174,6 +1178,7 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
                 ],
                 "total": 1,
             },
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -1242,6 +1247,7 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
                     "capacity": 50,
                 }
             ],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -1509,6 +1515,7 @@ async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
             ("Kvm", "getVmList"): {"data": []},
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -1957,6 +1964,7 @@ async def test_tempmon_sensors_normalized(hass, config_entry) -> None:
                 "total": 2,
             },
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -2004,6 +2012,7 @@ async def test_tempmon_absent_when_plugin_not_installed(hass, config_entry) -> N
             ("Compose", "getVolumesBg"): {"data": []},
             ("Kvm", "getVmList"): {"data": []},
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -2051,6 +2060,7 @@ async def test_tempmon_script_error_returns_none_temperature(hass, config_entry)
                 "total": 1,
             },
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -2105,6 +2115,7 @@ async def test_kvm_vms_normalized(hass, config_entry) -> None:
             },
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -2159,6 +2170,7 @@ async def test_kvm_absent_when_plugin_not_installed(hass, config_entry) -> None:
             ("Compose", "getVolumesBg"): {"data": []},
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
         }
         return responses[(service, method)]
 
@@ -2323,3 +2335,59 @@ async def test_async_execute_vm_command_calls_kvm_do_command(hass, config_entry)
             "hostport2": "n/a",
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_normalize_nut_parses_upsc_output(hass, config_entry) -> None:
+    """Raw upsc output must yield charge, runtime, load and online status."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    nut = coordinator._normalize_nut(
+        "battery.charge: 100\nbattery.runtime: 1320\ndevice.model: Eaton 5E\nups.load: 23\nups.status: OL\n"
+    )
+
+    assert nut["battery_charge"] == 100.0
+    assert nut["battery_runtime"] == 1320.0
+    assert nut["load"] == 23.0
+    assert nut["status"] == "OL"
+    assert nut["on_battery"] is False
+    assert nut["model"] == "Eaton 5E"
+    assert nut["raw"]["ups.status"] == "OL"
+
+
+@pytest.mark.asyncio
+async def test_normalize_nut_detects_on_battery(hass, config_entry) -> None:
+    """An 'OB DISCHRG' ups.status must flag on_battery."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    nut = coordinator._normalize_nut("battery.charge: 87\nups.status: OB DISCHRG\nups.load: 31\n")
+
+    assert nut["on_battery"] is True
+    assert nut["status"] == "OB DISCHRG"
+    assert nut["battery_charge"] == 87.0
+
+
+@pytest.mark.asyncio
+async def test_normalize_nut_treats_disabled_and_missing_as_empty(hass, config_entry) -> None:
+    """Localized 'Service disabled' strings and absent RPCs yield an empty dict."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    assert coordinator._normalize_nut("Service disabled") == {}
+    assert coordinator._normalize_nut("Dienst deaktiviert") == {}
+    assert coordinator._normalize_nut([]) == {}
+    assert coordinator._normalize_nut(None) == {}
+
+
+@pytest.mark.asyncio
+async def test_filter_data_passes_nut_through(hass, config_entry) -> None:
+    """filter_data_by_selection must pass the nut dict through unchanged."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    nut = {"battery_charge": 100.0, "status": "OL", "on_battery": False}
+    filtered = coordinator.filter_data_by_selection({"nut": nut}, {})
+
+    assert filtered["nut"] == nut

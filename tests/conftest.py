@@ -440,6 +440,21 @@ def sample_data() -> dict[str, Any]:
                 "vcpu": 2.0,
             },
         ],
+        "nut": {
+            "battery_charge": 100.0,
+            "battery_runtime": 1320.0,
+            "load": 23.0,
+            "status": "OL",
+            "on_battery": False,
+            "model": "Eaton 5E",
+            "raw": {
+                "battery.charge": "100",
+                "battery.runtime": "1320",
+                "ups.load": "23",
+                "ups.status": "OL",
+                "device.model": "Eaton 5E",
+            },
+        },
         "upgradedList": [],
         "zfs": [
             {

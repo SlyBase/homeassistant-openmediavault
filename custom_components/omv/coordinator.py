@@ -325,6 +325,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "zfs": zfs_pools,
                 "raid": raids,
                 "gpu": gpu,
+                "nut": self._normalize_nut(await self._fetch_optional("Nut", "getStats")),
                 "upgradedList": upgraded_pkgs,
             }
 
@@ -600,6 +601,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         filtered["tempmon"] = list(data.get("tempmon", []))
         filtered["gpu"] = data.get("gpu", {})
+        filtered["nut"] = data.get("nut", {})
         filtered["upgradedList"] = list(data.get("upgradedList", []))
         return filtered
 
@@ -1579,6 +1581,47 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             )
         return result
+
+    def _normalize_nut(self, response: Any) -> dict[str, Any]:
+        """Parse the Nut.getStats plain-string response into UPS metrics.
+
+        ``Nut.getStats`` (openmediavault-nut) returns a plain string: either
+        raw ``upsc`` output (``key: value`` lines such as ``battery.charge``)
+        or a gettext-localized "Service disabled" message. Because the
+        disabled message text depends on the server locale, any response
+        without at least one parsable dotted ``key: value`` line is treated
+        as disabled.
+
+        Args:
+            response: Raw response from Nut.getStats (string when the plugin
+                is installed, ``[]`` when the RPC is unavailable).
+
+        Returns:
+            Dict with battery_charge, battery_runtime, load, status,
+            on_battery, model, and the raw key/value map — or an empty dict
+            when the UPS service is absent or disabled.
+        """
+        if not isinstance(response, str):
+            return {}
+        stats: dict[str, str] = {}
+        for line in response.splitlines():
+            key, sep, value = line.partition(":")
+            key = key.strip()
+            if not sep or "." not in key:
+                continue
+            stats[key] = value.strip()
+        if not stats:
+            return {}
+        status = str(stats.get("ups.status") or "")
+        return {
+            "battery_charge": self._coerce_optional_float(stats.get("battery.charge")),
+            "battery_runtime": self._coerce_optional_float(stats.get("battery.runtime")),
+            "load": self._coerce_optional_float(stats.get("ups.load")),
+            "status": status,
+            "on_battery": "OB" in status.split(),
+            "model": str(stats.get("device.model") or stats.get("ups.model") or ""),
+            "raw": stats,
+        }
 
     def _normalize_compose(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Docker/Compose containers and extract project relationships."""

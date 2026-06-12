@@ -162,6 +162,15 @@
             },
             "vm_state": {
                 "name": "{resource} state"
+            },
+            "ups_battery_charge": {
+                "name": "UPS battery charge"
+            },
+            "ups_battery_runtime": {
+                "name": "UPS battery runtime"
+            },
+            "ups_load": {
+                "name": "UPS load"
             }
         },
         "binary_sensor": {
@@ -182,6 +191,9 @@
             },
             "vm_running": {
                 "name": "{resource} running"
+            },
+            "ups_on_battery": {
+                "name": "UPS on battery"
             }
         },
         "update": {

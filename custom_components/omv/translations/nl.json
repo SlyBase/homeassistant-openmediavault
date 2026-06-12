@@ -159,6 +159,15 @@
       },
       "vm_state": {
         "name": "{resource} status"
+      },
+      "ups_battery_charge": {
+        "name": "UPS-batterijlading"
+      },
+      "ups_battery_runtime": {
+        "name": "UPS-batterijduur"
+      },
+      "ups_load": {
+        "name": "UPS-belasting"
       }
     },
     "binary_sensor": {
@@ -179,6 +188,9 @@
       },
       "vm_running": {
         "name": "{resource} actief"
+      },
+      "ups_on_battery": {
+        "name": "UPS op batterij"
       }
     },
     "update": {

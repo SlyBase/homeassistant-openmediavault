@@ -52,7 +52,41 @@ async def test_async_setup_entry_adds_expected_sensors(coordinator, config_entry
     assert any(entity.unique_id.endswith("filesystem_free_percent-fs-1") for entity in added)
     assert any(entity.unique_id.endswith("zfs_pool-tank") for entity in added)
     assert any(entity.unique_id.endswith("vm_state-vm-uuid-1234") for entity in added)
+    assert any(entity.unique_id.endswith("ups_battery_charge") for entity in added)
+    assert any(entity.unique_id.endswith("ups_battery_runtime") for entity in added)
+    assert any(entity.unique_id.endswith("ups_load") for entity in added)
     assert not any(entity.unique_id.endswith("disk_used_size-sdb") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_ups_sensors_absent_without_nut_data(coordinator, config_entry) -> None:
+    """Test no UPS sensors are created when the nut dict is empty."""
+    coordinator.data["nut"] = {}
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any(entity.unique_id.endswith("ups_battery_charge") for entity in added)
+    assert not any(entity.unique_id.endswith("ups_battery_runtime") for entity in added)
+    assert not any(entity.unique_id.endswith("ups_load") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_ups_battery_charge_sensor_exposes_value_and_attrs(coordinator, config_entry) -> None:
+    """Test the UPS battery charge sensor reads value and status/model attributes."""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    sensor = next(e for e in added if e.unique_id.endswith("ups_battery_charge"))
+    assert sensor.native_value == 100.0
+    assert sensor.extra_state_attributes == {"status": "OL", "model": "Eaton 5E"}
 
 
 @pytest.mark.asyncio

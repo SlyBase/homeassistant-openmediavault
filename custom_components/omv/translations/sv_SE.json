@@ -159,6 +159,15 @@
       },
       "vm_state": {
         "name": "{resource} tillstand"
+      },
+      "ups_battery_charge": {
+        "name": "UPS-batteriladdning"
+      },
+      "ups_battery_runtime": {
+        "name": "UPS-batteritid"
+      },
+      "ups_load": {
+        "name": "UPS-belastning"
       }
     },
     "binary_sensor": {
@@ -179,6 +188,9 @@
       },
       "vm_running": {
         "name": "{resource} kor"
+      },
+      "ups_on_battery": {
+        "name": "UPS pa batteri"
       }
     },
     "update": {

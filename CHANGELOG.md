@@ -13,6 +13,7 @@
 - Live RPC compatibility probe now covers the Tier 2 endpoints `Nut.getStats`, `Rsync.getList`, `Cron.getList` (with the required `type: ["userdefined"]` array), `zfs.listDatasets` and `zfs.getAllSnapshots` (with all four tree params), each as optional non-destructive calls, plus a regression test for the new probe coverage.
 - New coordinator method `async_execute_vm_command` wrapping `Kvm.doCommand` with the full parameter set (`name`, `virttype`, port fields) required by the `openmediavault-kvm` plugin, as groundwork for VM control entities.
 - New per-VM control entities: a start/stop switch (`poweron`/graceful `poweroff` via `Kvm.doCommand`) and a `Restart` button (`reboot`), attached to the existing VM device. Errors surface as translated `vm_command_failed` messages; the destructive `force` command is intentionally not exposed.
+- New UPS monitoring via the `openmediavault-nut` plugin (`Nut.getStats`): `UPS battery charge`, `UPS battery runtime` and `UPS load` sensors plus a `UPS on battery` binary sensor on the hub device. The plain-string `upsc` response is parsed into a new `nut` coordinator key; entities are created only when UPS data is available, so installations without the plugin (or with the NUT service disabled) get no eternally-unknown entities.
 
 ### Fixed
 

@@ -168,6 +168,15 @@
       },
       "vm_state": {
         "name": "{resource} Zustand"
+      },
+      "ups_battery_charge": {
+        "name": "USV-Batterieladung"
+      },
+      "ups_battery_runtime": {
+        "name": "USV-Batterielaufzeit"
+      },
+      "ups_load": {
+        "name": "USV-Last"
       }
     },
     "binary_sensor": {
@@ -188,6 +197,9 @@
       },
       "vm_running": {
         "name": "{resource} läuft"
+      },
+      "ups_on_battery": {
+        "name": "USV im Batteriebetrieb"
       }
     },
     "update": {

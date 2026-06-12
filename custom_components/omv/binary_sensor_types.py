@@ -82,6 +82,18 @@ VM_RUNNING_BINARY_SENSOR = OMVBinarySensorDescription(
     },
 )
 
+UPS_ON_BATTERY_BINARY_SENSOR = OMVBinarySensorDescription(
+    key="ups_on_battery",
+    translation_key="ups_on_battery",
+    icon="mdi:power-plug-off",
+    data_path="nut",
+    value_fn=lambda data: bool(data.get("on_battery")),
+    extra_attrs_fn=lambda data: {
+        "status": data.get("status"),
+        "model": data.get("model"),
+    },
+)
+
 DISK_BAD_SECTORS_BINARY_SENSOR = OMVBinarySensorDescription(
     key="disk_bad_sectors",
     translation_key="disk_bad_sectors",

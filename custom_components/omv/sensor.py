@@ -45,6 +45,7 @@ from .sensor_types import (
     RAID_SENSOR,
     SYSTEM_SENSORS,
     TEMPMON_SENSORS,
+    UPS_SENSORS,
     VM_SENSORS,
     ZFS_POOL_SENSOR,
     OMVSensorDescription,
@@ -227,6 +228,12 @@ def get_expected_sensor_registry_state(
             if _should_add_description(description, gpu_data):
                 unique_ids.add(f"{entry_id}-{description.key}")
 
+    nut_data = coordinator.data.get("nut", {})
+    if isinstance(nut_data, dict):
+        for description in UPS_SENSORS:
+            if _should_add_description(description, nut_data):
+                unique_ids.add(f"{entry_id}-{description.key}")
+
     compose_summary = coordinator.data.get("compose_summary", {})
     if isinstance(compose_summary, dict):
         for description in COMPOSE_SENSORS:
@@ -357,6 +364,14 @@ async def async_setup_entry(
             OMVSensor(coordinator, description)
             for description in GPU_SENSORS
             if _should_add_description(description, gpu_data)
+        )
+
+    nut_data = coordinator.data.get("nut", {})
+    if isinstance(nut_data, dict):
+        entities.extend(
+            OMVSensor(coordinator, description)
+            for description in UPS_SENSORS
+            if _should_add_description(description, nut_data)
         )
 
     compose_summary = coordinator.data.get("compose_summary", {})

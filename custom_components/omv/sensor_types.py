@@ -18,6 +18,7 @@ from homeassistant.const import (
     UnitOfFrequency,
     UnitOfInformation,
     UnitOfTemperature,
+    UnitOfTime,
 )
 
 
@@ -199,6 +200,41 @@ GPU_SENSORS: tuple[OMVSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         data_path="gpu",
         value_fn=lambda data: data.get("cur_freq"),
+    ),
+)
+
+UPS_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="ups_battery_charge",
+        translation_key="ups_battery_charge",
+        native_unit_of_measurement=PERCENTAGE,
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="nut",
+        value_fn=lambda data: data.get("battery_charge"),
+        extra_attrs_fn=lambda data: {
+            "status": data.get("status"),
+            "model": data.get("model"),
+        },
+    ),
+    OMVSensorDescription(
+        key="ups_battery_runtime",
+        translation_key="ups_battery_runtime",
+        native_unit_of_measurement=UnitOfTime.SECONDS,
+        suggested_unit_of_measurement=UnitOfTime.MINUTES,
+        device_class=SensorDeviceClass.DURATION,
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="nut",
+        value_fn=lambda data: data.get("battery_runtime"),
+    ),
+    OMVSensorDescription(
+        key="ups_load",
+        translation_key="ups_load",
+        native_unit_of_measurement=PERCENTAGE,
+        icon="mdi:flash",
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="nut",
+        value_fn=lambda data: data.get("load"),
     ),
 )
 
