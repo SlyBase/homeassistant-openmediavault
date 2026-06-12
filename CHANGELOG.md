@@ -11,6 +11,11 @@
 - New per-container `Restart` button, calling `Compose.doContainerCommand` with `restart` and refreshing the coordinator afterwards.
 - New read-only KVM virtual machine entities: a `state` sensor (with `memory`/`vcpu`/`autostart`/`uuid` attributes when available) and a `running` binary sensor, one per VM, each attached to a dedicated VM device. Selectable via the new `selected_vms` option; degrades to no entities when the `openmediavault-kvm` plugin is absent.
 - Live RPC compatibility probe now covers the Tier 2 endpoints `Nut.getStats`, `Rsync.getList`, `Cron.getList` (with the required `type: ["userdefined"]` array), `zfs.listDatasets` and `zfs.getAllSnapshots` (with all four tree params), each as optional non-destructive calls, plus a regression test for the new probe coverage.
+- New coordinator method `async_execute_vm_command` wrapping `Kvm.doCommand` with the full parameter set (`name`, `virttype`, port fields) required by the `openmediavault-kvm` plugin, as groundwork for VM control entities.
+
+### Fixed
+
+- `_normalize_kvm` now understands the real `Kvm.getVmList` payload of the `openmediavault-kvm` plugin (`vmname` instead of `uuid`/`name`, `mem` in bytes converted to MiB, `cpu` as vCPU count, virsh states like `shut off`). Previously every VM record from the real plugin was dropped because no `uuid`/`name` key existed. Legacy-shaped records keep working.
 
 ## [2.4.0] - 2026-06-02
 

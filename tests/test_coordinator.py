@@ -2217,3 +2217,109 @@ async def test_filter_data_by_selection_filters_vms(hass, config_entry) -> None:
     filtered = coordinator.filter_data_by_selection(data, {CONF_SELECTED_VMS: ["vm-uuid-1"]})
 
     assert [vm["vm_key"] for vm in filtered["kvm"]] == ["vm-uuid-1"]
+
+
+@pytest.mark.asyncio
+async def test_normalize_kvm_handles_real_plugin_payload(hass, config_entry) -> None:
+    """The real openmediavault-kvm payload (vmname/mem/cpu) must normalize."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    vms = coordinator._normalize_kvm(
+        [
+            {
+                "vmname": "homeassistant",
+                "virttype": "vm",
+                "mem": 2147483648,
+                "cpu": 2,
+                "state": "shut off",
+                "autostart": True,
+                "vncport": "n/a",
+                "spiceport": "5901",
+                "arch": "x86_64",
+            }
+        ]
+    )
+
+    assert len(vms) == 1
+    vm = vms[0]
+    assert vm["vm_key"] == "homeassistant"
+    assert vm["name"] == "homeassistant"
+    assert vm["state"] == "shut_off"
+    assert vm["running"] is False
+    assert vm["autostart"] is True
+    assert vm["virttype"] == "vm"
+    assert vm["vncport"] == "n/a"
+    assert vm["spiceport"] == "5901"
+    assert vm["memory"] == 2048
+    assert vm["vcpu"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_normalize_kvm_handles_legacy_payload(hass, config_entry) -> None:
+    """Legacy-shaped records (uuid/name/memory/vcpu) keep normalizing."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    vms = coordinator._normalize_kvm(
+        [
+            {
+                "uuid": "vm-uuid-1234",
+                "name": "homeassistant",
+                "state": "running",
+                "autostart": False,
+                "memory": 2048.0,
+                "vcpu": 2.0,
+            }
+        ]
+    )
+
+    assert len(vms) == 1
+    vm = vms[0]
+    assert vm["vm_key"] == "vm-uuid-1234"
+    assert vm["name"] == "homeassistant"
+    assert vm["running"] is True
+    assert vm["virttype"] == "vm"
+    assert vm["vncport"] == "n/a"
+    assert vm["memory"] == 2048.0
+    assert vm["vcpu"] == 2.0
+
+
+@pytest.mark.asyncio
+async def test_normalize_kvm_skips_records_without_any_name(hass, config_entry) -> None:
+    """Records lacking vmname, uuid and name are dropped."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    assert coordinator._normalize_kvm([{"state": "running"}]) == []
+
+
+@pytest.mark.asyncio
+async def test_async_execute_vm_command_calls_kvm_do_command(hass, config_entry) -> None:
+    """The VM command helper must send the exact Kvm.doCommand param dict."""
+    api = Mock()
+    api.async_call = AsyncMock(return_value=None)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    vm = {
+        "vm_key": "homeassistant",
+        "name": "homeassistant",
+        "virttype": "vm",
+        "vncport": "n/a",
+        "spiceport": "5901",
+    }
+    await coordinator.async_execute_vm_command(vm, "poweron")
+
+    api.async_call.assert_awaited_once_with(
+        "Kvm",
+        "doCommand",
+        {
+            "command": "poweron",
+            "name": "homeassistant",
+            "virttype": "vm",
+            "vncport": "n/a",
+            "spiceport": "5901",
+            "hostport": "n/a",
+            "hostport2": "n/a",
+        },
+    )

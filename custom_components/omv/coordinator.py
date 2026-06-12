@@ -198,6 +198,41 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             {"id": container_id, "command": command, "command2": ""},
         )
 
+    async def async_execute_vm_command(self, vm: dict[str, Any], command: str) -> Any:
+        """Execute a KVM/LXC guest command via the openmediavault-kvm plugin.
+
+        ``Kvm.doCommand`` requires the VM name plus ``virttype`` and the
+        port fields from the normalized VM record; ``"n/a"`` is what the
+        plugin itself reports when no port is assigned and is safe to pass
+        back.
+
+        Args:
+            vm: A normalized VM record from ``coordinator.data["kvm"]``
+                (needs ``name``/``vm_key``, ``virttype``, ``vncport``,
+                ``spiceport``).
+            command: The guest command (e.g. "poweron", "poweroff",
+                "reboot").
+
+        Returns:
+            The raw RPC response.
+
+        Raises:
+            OMVApiError: When the Kvm RPC rejects the call or is absent.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        params = {
+            "command": command,
+            "name": str(vm.get("name") or vm.get("vm_key") or ""),
+            "virttype": str(vm.get("virttype") or "vm"),
+            "vncport": str(vm.get("vncport") or "n/a"),
+            "spiceport": str(vm.get("spiceport") or "n/a"),
+            "hostport": "n/a",
+            "hostport2": "n/a",
+        }
+        response = await self.api.async_call("Kvm", "doCommand", params)
+        _LOGGER.debug("Kvm.doCommand params=%s response=%s", params, response)
+        return response
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
         try:
@@ -1463,6 +1498,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _normalize_kvm(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Kvm.getVmList records into stable VM entries.
 
+        The real ``openmediavault-kvm`` payload (see the plugin source,
+        ``usr/share/openmediavault/engined/rpc/kvm.inc``) carries ``vmname``
+        instead of ``name``/``uuid``, ``mem`` in bytes, ``cpu`` as the vCPU
+        count, a virsh ``state`` such as ``"shut off"``, plus ``virttype``
+        (``"vm"``/``"lxc"``) and ``vncport``/``spiceport`` strings that
+        ``Kvm.doCommand`` expects back. Legacy-shaped records
+        (``uuid``/``name``/``memory``/``vcpu``) keep working as fallbacks.
+
         Args:
             response: Raw response from ``Kvm.getVmList``. The
                 ``openmediavault-kvm`` plugin may not be installed, in which
@@ -1470,30 +1513,40 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 returns ``[]``.
 
         Returns:
-            List of VM dicts with ``vm_key``, ``uuid``, ``name``, ``state``
-            (lower-cased, spaces replaced with underscores), ``running``,
-            and ``autostart``. The optional ``memory``/``vcpu`` fields are
-            included only when present in the source payload, since their
-            field names and units are not confirmed for this RPC.
+            List of VM dicts with ``vm_key`` (the libvirt VM name — unique
+            per host), ``uuid``, ``name``, ``state`` (lower-cased, spaces
+            replaced with underscores), ``running``, ``autostart``,
+            ``virttype``, and ``vncport``/``spiceport``. The optional
+            ``memory`` (MiB)/``vcpu`` fields are included only when present
+            in the source payload.
         """
         vms: list[dict[str, Any]] = []
         for record in self._records_from_response(response):
-            vm_key = str(record.get("uuid") or record.get("name") or "")
+            vm_key = str(record.get("vmname") or record.get("uuid") or record.get("name") or "")
             if not vm_key:
                 continue
             state = str(record.get("state") or "").strip().lower().replace(" ", "_")
             vm: dict[str, Any] = {
                 "vm_key": vm_key,
                 "uuid": str(record.get("uuid") or ""),
-                "name": str(record.get("name") or vm_key),
+                "name": str(record.get("vmname") or record.get("name") or vm_key),
                 "state": state or "unknown",
                 "running": state == "running",
                 "autostart": self._coerce_bool(record.get("autostart")),
+                "virttype": str(record.get("virttype") or "vm"),
+                "vncport": str(record.get("vncport") or "n/a"),
+                "spiceport": str(record.get("spiceport") or "n/a"),
             }
-            memory = self._coerce_optional_float(record.get("memory"))
-            if memory is not None:
-                vm["memory"] = memory
-            vcpu = self._coerce_optional_float(record.get("vcpu"))
+            mem_bytes = self._coerce_optional_float(record.get("mem"))
+            if mem_bytes is not None:
+                vm["memory"] = round(mem_bytes / 1024 / 1024)
+            else:
+                memory = self._coerce_optional_float(record.get("memory"))
+                if memory is not None:
+                    vm["memory"] = memory
+            vcpu = self._coerce_optional_float(
+                record.get("cpu") if record.get("cpu") is not None else record.get("vcpu")
+            )
             if vcpu is not None:
                 vm["vcpu"] = vcpu
             vms.append(vm)
