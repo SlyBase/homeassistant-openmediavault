@@ -157,6 +157,15 @@
       "zfs_pool": {
         "name": "{resource} ZFS-pool"
       },
+      "zfs_pool_last_scrub": {
+        "name": "{resource} senaste scrub"
+      },
+      "zfs_pool_dataset_count": {
+        "name": "{resource} dataset"
+      },
+      "zfs_pool_snapshot_count": {
+        "name": "{resource} ögonblicksbilder"
+      },
       "disk_smart_status": {
         "name": "SMART-status"
       },
@@ -171,6 +180,9 @@
       },
       "ups_load": {
         "name": "UPS-belastning"
+      },
+      "zfs_dataset_used": {
+        "name": "{resource} använt"
       }
     },
     "binary_sensor": {
@@ -197,6 +209,9 @@
       },
       "rsync_job_enabled": {
         "name": "rsync {resource} aktiverad"
+      },
+      "zfs_pool_scrub_active": {
+        "name": "{resource} scrub aktiv"
       }
     },
     "update": {
@@ -243,6 +258,9 @@
       },
       "cron_run": {
         "name": "Kör cron {name}"
+      },
+      "zfs_scrub": {
+        "name": "Scrubba {name}"
       }
     }
   }

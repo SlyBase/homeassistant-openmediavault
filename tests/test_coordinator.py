@@ -175,6 +175,8 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -280,6 +282,8 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -796,6 +800,8 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -841,6 +847,8 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -1189,6 +1197,8 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -1260,6 +1270,8 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -1530,6 +1542,8 @@ async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -1981,6 +1995,8 @@ async def test_tempmon_sensors_normalized(hass, config_entry) -> None:
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -2031,6 +2047,8 @@ async def test_tempmon_absent_when_plugin_not_installed(hass, config_entry) -> N
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -2081,6 +2099,8 @@ async def test_tempmon_script_error_returns_none_temperature(hass, config_entry)
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -2138,6 +2158,8 @@ async def test_kvm_vms_normalized(hass, config_entry) -> None:
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -2195,6 +2217,8 @@ async def test_kvm_absent_when_plugin_not_installed(hass, config_entry) -> None:
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
             ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
         }
         return responses[(service, method)]
 
@@ -2600,3 +2624,103 @@ async def test_filter_data_passes_cron_through(hass, config_entry) -> None:
     filtered = coordinator.filter_data_by_selection({"cron": jobs}, {"selected_cron_jobs": ["cron-uuid-0001"]})
 
     assert filtered["cron"] == jobs
+
+
+@pytest.mark.asyncio
+async def test_normalize_zfs_datasets_uses_path_keys_and_filters_types(hass, config_entry) -> None:
+    """Dataset keys must be plain paths; non-Filesystem/Volume records are dropped."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    datasets = coordinator._normalize_zfs_datasets(
+        [
+            {
+                "id": "root/pool-tank/poolfs-tank-media",
+                "name": "media",
+                "path": "tank/media",
+                "type": "Filesystem",
+                "used": str(420 * 1024**3),
+                "available": str(580 * 1024**3),
+                "mountpoint": "/srv/tank/media",
+                "compression": "lz4",
+                "encryption": "off",
+            },
+            {
+                "id": "root/pool-tank/vol-tank-swap",
+                "name": "swap",
+                "path": "tank/swap",
+                "type": "Volume",
+                "used": str(8 * 1024**3),
+                "available": str(580 * 1024**3),
+                "mountpoint": "",
+                "compression": "off",
+                "encryption": "on",
+            },
+            {"id": "root/pool-tank", "name": "tank", "path": "tank", "type": "Pool"},
+            {"id": "snap", "name": "s1", "path": "tank/media@s1", "type": "Snapshot"},
+            {"name": "", "path": "", "type": "Filesystem"},
+        ]
+    )
+
+    assert [d["dataset_key"] for d in datasets] == ["tank/media", "tank/swap"]
+    assert datasets[0]["pool"] == "tank"
+    assert datasets[0]["used_gb"] == pytest.approx(451.0, abs=1.0)
+    assert datasets[0]["encrypted"] is False
+    assert datasets[1]["type"] == "Volume"
+    assert datasets[1]["encrypted"] is True
+    assert datasets[1]["mountpoint"] == ""
+
+
+@pytest.mark.asyncio
+async def test_normalize_zfs_snapshots_aggregates_per_pool(hass, config_entry) -> None:
+    """Snapshots aggregate to per-pool counts, including root-dataset snapshots."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    counts = coordinator._normalize_zfs_snapshots(
+        [
+            {"type": "Snapshot", "path": "tank/media@daily-1"},
+            {"type": "Snapshot", "path": "tank/media@daily-2"},
+            {"type": "Snapshot", "path": "tank@first"},
+            {"type": "Snapshot", "path": "backup/docs@weekly"},
+            {"type": "Filesystem", "path": "tank/media"},
+            {"type": "Snapshot", "path": ""},
+        ]
+    )
+
+    assert counts == {"tank": 3, "backup": 1}
+    assert coordinator._normalize_zfs_snapshots([]) == {}
+
+
+@pytest.mark.asyncio
+async def test_async_scrub_zfs_pool_uses_plain_pool_name(hass, config_entry) -> None:
+    """The scrub helper must call zfs.scrubPool with the plain pool name."""
+    api = Mock()
+    api.async_call = AsyncMock(return_value=None)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    await coordinator.async_scrub_zfs_pool("tank")
+
+    api.async_call.assert_awaited_once_with("zfs", "scrubPool", {"name": "tank"})
+
+
+@pytest.mark.asyncio
+async def test_filter_data_zfs_datasets_follow_pool_selection(hass, config_entry) -> None:
+    """Datasets survive only when their owning pool survives the zfs filter."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    data = {
+        "zfs": [{"name": "tank"}, {"name": "backup"}],
+        "zfs_datasets": [
+            {"dataset_key": "tank/media", "pool": "tank"},
+            {"dataset_key": "backup/docs", "pool": "backup"},
+        ],
+    }
+
+    filtered = coordinator.filter_data_by_selection(data, {"selected_zfs_pools": ["tank"]})
+    assert [p["name"] for p in filtered["zfs"]] == ["tank"]
+    assert [d["dataset_key"] for d in filtered["zfs_datasets"]] == ["tank/media"]
+
+    unfiltered = coordinator.filter_data_by_selection(data, {})
+    assert len(unfiltered["zfs_datasets"]) == 2

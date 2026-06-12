@@ -114,6 +114,22 @@ RSYNC_JOB_ENABLED_BINARY_SENSOR = OMVBinarySensorDescription(
     },
 )
 
+ZFS_POOL_SCRUB_ACTIVE_BINARY_SENSOR = OMVBinarySensorDescription(
+    key="zfs_pool_scrub_active",
+    translation_key="zfs_pool_scrub_active",
+    device_class=BinarySensorDeviceClass.RUNNING,
+    icon="mdi:database-search",
+    data_path="zfs",
+    is_collection=True,
+    collection_key="name",
+    name_key="name",
+    value_fn=lambda data: bool(data.get("scrubactive")),
+    extra_attrs_fn=lambda data: {
+        "scrubstate": data.get("scrubstate"),
+        "lastscrub": data.get("lastscrub"),
+    },
+)
+
 DISK_BAD_SECTORS_BINARY_SENSOR = OMVBinarySensorDescription(
     key="disk_bad_sectors",
     translation_key="disk_bad_sectors",

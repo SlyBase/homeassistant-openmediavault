@@ -159,6 +159,18 @@
             "zfs_pool": {
                 "name": "{resource} ZFS pool"
             },
+            "zfs_pool_last_scrub": {
+                "name": "{resource} last scrub"
+            },
+            "zfs_pool_dataset_count": {
+                "name": "{resource} datasets"
+            },
+            "zfs_pool_snapshot_count": {
+                "name": "{resource} snapshots"
+            },
+            "zfs_dataset_used": {
+                "name": "{resource} used"
+            },
             "tempmon_temperature": {
                 "name": "{resource} temperature"
             },
@@ -199,6 +211,9 @@
             },
             "rsync_job_enabled": {
                 "name": "rsync {resource} enabled"
+            },
+            "zfs_pool_scrub_active": {
+                "name": "{resource} scrub active"
             }
         },
         "update": {
@@ -248,6 +263,9 @@
             },
             "cron_run": {
                 "name": "Run cron {name}"
+            },
+            "zfs_scrub": {
+                "name": "Scrub {name}"
             }
         }
     },
@@ -269,6 +287,9 @@
         },
         "cron_execute_failed": {
             "message": "Failed to run cron job '{name}'. Check the OMV logs."
+        },
+        "zfs_scrub_failed": {
+            "message": "Failed to start scrub on pool '{name}'. Check the OMV logs."
         }
     },
     "issues": {

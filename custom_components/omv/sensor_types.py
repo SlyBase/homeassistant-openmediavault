@@ -735,6 +735,66 @@ ZFS_POOL_SENSOR = OMVSensorDescription(
     },
 )
 
+ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="zfs_pool_last_scrub",
+        translation_key="zfs_pool_last_scrub",
+        icon="mdi:history",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        data_path="zfs",
+        is_collection=True,
+        collection_key="name",
+        name_key="name",
+        value_fn=lambda data: data.get("lastscrub"),
+        extra_attrs_fn=lambda data: {"scrubstate": data.get("scrubstate")},
+    ),
+    OMVSensorDescription(
+        key="zfs_pool_dataset_count",
+        translation_key="zfs_pool_dataset_count",
+        icon="mdi:database",
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="zfs",
+        is_collection=True,
+        collection_key="name",
+        name_key="name",
+        value_fn=lambda data: data.get("dataset_count"),
+    ),
+    OMVSensorDescription(
+        key="zfs_pool_snapshot_count",
+        translation_key="zfs_pool_snapshot_count",
+        icon="mdi:camera-burst",
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="zfs",
+        is_collection=True,
+        collection_key="name",
+        name_key="name",
+        value_fn=lambda data: data.get("snapshot_count"),
+    ),
+)
+
+ZFS_DATASET_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="zfs_dataset_used",
+        translation_key="zfs_dataset_used",
+        native_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        icon="mdi:database",
+        state_class=SensorStateClass.MEASUREMENT,
+        data_path="zfs_datasets",
+        is_collection=True,
+        collection_key="dataset_key",
+        name_key="path",
+        value_fn=lambda data: data.get("used_gb"),
+        extra_attrs_fn=lambda data: {
+            "mountpoint": data.get("mountpoint"),
+            "pool": data.get("pool"),
+            "type": data.get("type"),
+            "compression": data.get("compression"),
+            "available_gb": data.get("available_gb"),
+        },
+    ),
+)
+
 TEMPMON_SENSORS: tuple[OMVSensorDescription, ...] = (
     OMVSensorDescription(
         key="tempmon_temperature",

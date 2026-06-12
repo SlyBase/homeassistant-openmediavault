@@ -13,6 +13,7 @@ from custom_components.omv.binary_sensor_types import (
     SYSTEM_BINARY_SENSORS,
     UPS_ON_BATTERY_BINARY_SENSOR,
     VM_RUNNING_BINARY_SENSOR,
+    ZFS_POOL_SCRUB_ACTIVE_BINARY_SENSOR,
 )
 from custom_components.omv.const import DOMAIN
 
@@ -215,3 +216,33 @@ async def test_virtual_disk_has_no_smart_health_binary_sensors(coordinator, conf
 
     assert not any(entity.unique_id.endswith("disk_bad_sectors-sda") for entity in added)
     assert not any(entity.unique_id.endswith("disk_crc_errors-sda") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_zfs_pool_scrub_active_binary_sensor_state_and_device(coordinator) -> None:
+    """Test the scrub-active binary sensor reads pool data and the pool device."""
+    sensor = OMVBinarySensor(coordinator, ZFS_POOL_SCRUB_ACTIVE_BINARY_SENSOR, item_key="tank")
+
+    assert sensor.is_on is False
+    assert sensor.extra_state_attributes["scrubstate"] == "completed"
+    assert sensor.extra_state_attributes["lastscrub"] == "Sun Jun  8 03:00:42 2026"
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    assert sensor._attr_suggested_object_id == "nas_zfs_tank_scrub_active"
+    assert sensor._attr_translation_placeholders == {"resource": "tank"}
+
+
+@pytest.mark.asyncio
+async def test_zfs_pool_scrub_active_setup_and_expected_ids(coordinator, config_entry) -> None:
+    """Test setup creates one scrub sensor per pool and the whitelist covers it."""
+    from custom_components.omv.binary_sensor import get_expected_binary_sensor_unique_ids
+
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert any(entity.unique_id.endswith("zfs_pool_scrub_active-tank") for entity in added)
+    entry_id = coordinator.config_entry.entry_id
+    assert f"{entry_id}-zfs_pool_scrub_active-tank" in get_expected_binary_sensor_unique_ids(coordinator)

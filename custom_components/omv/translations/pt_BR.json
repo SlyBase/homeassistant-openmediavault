@@ -157,6 +157,15 @@
       "zfs_pool": {
         "name": "pool ZFS {resource}"
       },
+      "zfs_pool_last_scrub": {
+        "name": "{resource} último scrub"
+      },
+      "zfs_pool_dataset_count": {
+        "name": "{resource} datasets"
+      },
+      "zfs_pool_snapshot_count": {
+        "name": "{resource} snapshots"
+      },
       "disk_smart_status": {
         "name": "Status SMART"
       },
@@ -171,6 +180,9 @@
       },
       "ups_load": {
         "name": "Carga do nobreak"
+      },
+      "zfs_dataset_used": {
+        "name": "{resource} usado"
       }
     },
     "binary_sensor": {
@@ -197,6 +209,9 @@
       },
       "rsync_job_enabled": {
         "name": "rsync {resource} habilitado"
+      },
+      "zfs_pool_scrub_active": {
+        "name": "{resource} scrub ativo"
       }
     },
     "update": {
@@ -243,6 +258,9 @@
       },
       "cron_run": {
         "name": "Executar cron {name}"
+      },
+      "zfs_scrub": {
+        "name": "Executar scrub em {name}"
       }
     }
   }

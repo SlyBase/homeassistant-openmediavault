@@ -21,6 +21,7 @@ from .entity import (
     get_hub_device_info,
     get_storage_device_info,
     get_vm_device_info,
+    get_zfs_dataset_device_info,
 )
 from .sensor_types import (
     COMPOSE_PROJECT_SENSORS,
@@ -47,6 +48,8 @@ from .sensor_types import (
     TEMPMON_SENSORS,
     UPS_SENSORS,
     VM_SENSORS,
+    ZFS_DATASET_SENSORS,
+    ZFS_POOL_EXTRA_SENSORS,
     ZFS_POOL_SENSOR,
     OMVSensorDescription,
 )
@@ -72,6 +75,7 @@ _COLLECTION_SENSORS: tuple[OMVSensorDescription, ...] = (
     NETWORK_RX_SENSOR,
     RAID_SENSOR,
     ZFS_POOL_SENSOR,
+    *ZFS_POOL_EXTRA_SENSORS,
 )
 
 
@@ -90,6 +94,8 @@ def _sensor_metric_slug(description: OMVSensorDescription) -> str:
         "container_",
         "docker_",
         "vm_",
+        "zfs_pool_",
+        "zfs_dataset_",
     ):
         if description.key.startswith(prefix):
             return description.key.removeprefix(prefix)
@@ -139,6 +145,13 @@ def _sensor_suggested_object_id(
             coordinator,
             "vm",
             data.get("name") or item_key,
+            metric,
+        )
+    if description.data_path == "zfs_datasets":
+        return build_host_object_id(
+            coordinator,
+            "zfs_dataset",
+            data.get("path") or item_key,
             metric,
         )
     return build_host_object_id(coordinator, description.data_path, item_key, metric)
@@ -341,6 +354,19 @@ def get_expected_sensor_registry_state(
                 device_identifiers,
             )
 
+    for description in ZFS_DATASET_SENSORS:
+        for dataset in coordinator.data.get("zfs_datasets", []):
+            if not isinstance(dataset, dict):
+                continue
+            item_key = str(dataset.get("dataset_key") or "")
+            if not item_key or not _should_add_description(description, dataset):
+                continue
+            unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
+            _collect_device_identifiers(
+                get_zfs_dataset_device_info(coordinator, dataset),
+                device_identifiers,
+            )
+
     return unique_ids, device_identifiers
 
 
@@ -534,6 +560,22 @@ async def async_setup_entry(
                 )
             )
 
+    for description in ZFS_DATASET_SENSORS:
+        for dataset in coordinator.data.get("zfs_datasets", []):
+            if not isinstance(dataset, dict):
+                continue
+            item_key = str(dataset.get("dataset_key") or "")
+            if not item_key or not _should_add_description(description, dataset):
+                continue
+            entities.append(
+                OMVSensor(
+                    coordinator,
+                    description,
+                    item_key=item_key,
+                    device_info=get_zfs_dataset_device_info(coordinator, dataset),
+                )
+            )
+
     async_add_entities(entities)
 
 
@@ -571,6 +613,8 @@ class OMVSensor(OMVEntity, SensorEntity):
                     device_info = get_container_device_info(coordinator, item)
                 elif description.data_path == "kvm":
                     device_info = get_vm_device_info(coordinator, item)
+                elif description.data_path == "zfs_datasets":
+                    device_info = get_zfs_dataset_device_info(coordinator, item)
                 else:
                     device_info = get_storage_device_info(coordinator, item)
         super().__init__(coordinator, uid, device_info=device_info)

@@ -17,6 +17,7 @@ from .entity import (
     build_host_object_id,
     get_compose_project_device_info,
     get_container_device_info,
+    get_storage_device_info,
     get_vm_device_info,
 )
 from .exceptions import OMVApiError, OMVConnectionError
@@ -120,6 +121,12 @@ def get_expected_button_unique_ids(
         cron_key = str(job.get("cron_key") or "")
         if cron_key and cron_key in selected_cron:
             unique_ids.add(f"{entry.entry_id}-cron_run-{cron_key}")
+    for pool in coordinator.data.get("zfs", []):
+        if not isinstance(pool, dict):
+            continue
+        pool_name = str(pool.get("name") or "")
+        if pool_name:
+            unique_ids.add(f"{entry.entry_id}-zfs_scrub-{pool_name}")
     return unique_ids
 
 
@@ -172,6 +179,11 @@ async def async_setup_entry(
         if str(job.get("cron_key") or "") not in selected_cron:
             continue
         entities.append(OMVCronRunButton(coordinator, job))
+
+    for pool in coordinator.data.get("zfs", []):
+        if not isinstance(pool, dict) or not str(pool.get("name") or ""):
+            continue
+        entities.append(OMVZfsScrubButton(coordinator, pool))
 
     async_add_entities(entities)
 
@@ -481,6 +493,51 @@ class OMVCronRunButton(OMVEntity, ButtonEntity):
                 translation_domain=DOMAIN,
                 translation_key="cron_execute_failed",
                 translation_placeholders={"name": self._job_name},
+            ) from err
+        finally:
+            await self.coordinator.async_request_refresh()
+
+
+class OMVZfsScrubButton(OMVEntity, ButtonEntity):
+    """Button to start a scrub on one ZFS pool."""
+
+    _attr_translation_key = "zfs_scrub"
+    _attr_icon = "mdi:database-search"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, pool: dict[str, Any]) -> None:
+        """Initialize the ZFS scrub button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            pool: The normalized ZFS pool record.
+        """
+        self._pool_name = str(pool.get("name") or "")
+        self._attr_translation_placeholders = {"name": self._pool_name}
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "zfs",
+            self._pool_name,
+            "scrub",
+        )
+        super().__init__(
+            coordinator,
+            f"zfs_scrub-{self._pool_name}",
+            device_info=get_storage_device_info(coordinator, pool),
+        )
+
+    async def async_press(self) -> None:
+        """Start a scrub on this pool via zfs.scrubPool.
+
+        Raises:
+            HomeAssistantError: When the zfs.scrubPool RPC call fails.
+        """
+        try:
+            await self.coordinator.async_scrub_zfs_pool(self._pool_name)
+        except (OMVApiError, OMVConnectionError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="zfs_scrub_failed",
+                translation_placeholders={"name": self._pool_name},
             ) from err
         finally:
             await self.coordinator.async_request_refresh()

@@ -511,7 +511,38 @@ def sample_data() -> dict[str, Any]:
                 "capacity": 50.0,
                 "mountpoint": "/srv/tank",
                 "disk_key": "sdc",
+                "lastscrub": "Sun Jun  8 03:00:42 2026",
+                "scrubactive": False,
+                "scrubstate": "completed",
+                "dataset_count": 2,
+                "snapshot_count": 5,
             }
+        ],
+        "zfs_datasets": [
+            {
+                "dataset_key": "tank/media",
+                "name": "media",
+                "path": "tank/media",
+                "pool": "tank",
+                "used_gb": 420.5,
+                "available_gb": 579.5,
+                "mountpoint": "/srv/tank/media",
+                "type": "Filesystem",
+                "compression": "lz4",
+                "encrypted": False,
+            },
+            {
+                "dataset_key": "tank/docs",
+                "name": "docs",
+                "path": "tank/docs",
+                "pool": "tank",
+                "used_gb": 12.3,
+                "available_gb": 579.5,
+                "mountpoint": "/srv/tank/docs",
+                "type": "Filesystem",
+                "compression": "lz4",
+                "encrypted": False,
+            },
         ],
         "raid": [
             {

@@ -26,6 +26,8 @@ from custom_components.omv.sensor_types import (
     RAID_SENSOR,
     SYSTEM_SENSORS,
     VM_SENSORS,
+    ZFS_DATASET_SENSORS,
+    ZFS_POOL_EXTRA_SENSORS,
     ZFS_POOL_SENSOR,
 )
 
@@ -513,3 +515,65 @@ async def test_virtual_disk_has_no_temperature_or_smart_entity(coordinator, conf
     assert not any(entity.unique_id.endswith("disk-sda") for entity in added)
     assert not any(entity.unique_id.endswith("disk_smart_status-sda") for entity in added)
     assert any(entity.unique_id.endswith("disk_used_size-sda") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_adds_zfs_pool_and_dataset_sensors(coordinator, config_entry) -> None:
+    """Test ZFS pool extra sensors and dataset sensors are created."""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert any(entity.unique_id.endswith("zfs_pool_last_scrub-tank") for entity in added)
+    assert any(entity.unique_id.endswith("zfs_pool_dataset_count-tank") for entity in added)
+    assert any(entity.unique_id.endswith("zfs_pool_snapshot_count-tank") for entity in added)
+    assert any(entity.unique_id.endswith("zfs_dataset_used-tank/media") for entity in added)
+    assert any(entity.unique_id.endswith("zfs_dataset_used-tank/docs") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_zfs_pool_extra_sensors_expose_scrub_and_counts(coordinator) -> None:
+    """Test pool-level scrub/count sensors read the enriched pool record."""
+    last_scrub = OMVSensor(coordinator, ZFS_POOL_EXTRA_SENSORS[0], item_key="tank")
+    dataset_count = OMVSensor(coordinator, ZFS_POOL_EXTRA_SENSORS[1], item_key="tank")
+    snapshot_count = OMVSensor(coordinator, ZFS_POOL_EXTRA_SENSORS[2], item_key="tank")
+
+    assert last_scrub.native_value == "Sun Jun  8 03:00:42 2026"
+    assert last_scrub.entity_category is EntityCategory.DIAGNOSTIC
+    assert last_scrub.extra_state_attributes["scrubstate"] == "completed"
+    assert last_scrub._attr_suggested_object_id == "nas_zfs_tank_last_scrub"
+    assert dataset_count.native_value == 2
+    assert snapshot_count.native_value == 5
+
+
+@pytest.mark.asyncio
+async def test_zfs_dataset_sensor_uses_pool_device(coordinator) -> None:
+    """Test dataset sensors expose usage and attach to the pool's disk device."""
+    sensor = OMVSensor(coordinator, ZFS_DATASET_SENSORS[0], item_key="tank/media")
+
+    assert sensor.native_value == 420.5
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    assert sensor.extra_state_attributes["pool"] == "tank"
+    assert sensor.extra_state_attributes["mountpoint"] == "/srv/tank/media"
+    assert sensor.extra_state_attributes["compression"] == "lz4"
+    assert sensor.extra_state_attributes["available_gb"] == 579.5
+    assert sensor._attr_translation_placeholders == {"resource": "tank/media"}
+    assert sensor._attr_suggested_object_id == "nas_zfs_dataset_tank_media_used"
+
+
+@pytest.mark.asyncio
+async def test_expected_sensor_registry_state_includes_zfs_entities(coordinator) -> None:
+    """Test the registry cleanup whitelist covers the new ZFS sensors."""
+    from custom_components.omv.sensor import get_expected_sensor_registry_state
+
+    unique_ids, _ = get_expected_sensor_registry_state(coordinator)
+    entry_id = coordinator.config_entry.entry_id
+
+    assert f"{entry_id}-zfs_pool_last_scrub-tank" in unique_ids
+    assert f"{entry_id}-zfs_pool_dataset_count-tank" in unique_ids
+    assert f"{entry_id}-zfs_pool_snapshot_count-tank" in unique_ids
+    assert f"{entry_id}-zfs_dataset_used-tank/media" in unique_ids
+    assert f"{entry_id}-zfs_dataset_used-tank/docs" in unique_ids

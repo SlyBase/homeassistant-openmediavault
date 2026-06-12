@@ -18,6 +18,7 @@ from .binary_sensor_types import (
     SYSTEM_BINARY_SENSORS,
     UPS_ON_BATTERY_BINARY_SENSOR,
     VM_RUNNING_BINARY_SENSOR,
+    ZFS_POOL_SCRUB_ACTIVE_BINARY_SENSOR,
     OMVBinarySensorDescription,
 )
 from .coordinator import OMVDataUpdateCoordinator
@@ -26,6 +27,7 @@ from .entity import (
     build_host_object_id,
     disk_is_smart_eligible,
     get_disk_device_info,
+    get_storage_device_info,
     get_vm_device_info,
 )
 
@@ -49,6 +51,8 @@ def _binary_sensor_suggested_object_id(
         return build_host_object_id(coordinator, "vm", data.get("name") or item_key, metric)
     if description.data_path == "rsync":
         return build_host_object_id(coordinator, "rsync", data.get("name") or item_key, "enabled")
+    if description.data_path == "zfs":
+        return build_host_object_id(coordinator, "zfs", data.get("name") or item_key, "scrub_active")
     return build_host_object_id(coordinator, description.key, item_key)
 
 
@@ -91,6 +95,13 @@ def get_expected_binary_sensor_unique_ids(
         item_key = str(job.get("rsync_key") or "")
         if item_key:
             unique_ids.add(f"{entry_id}-{RSYNC_JOB_ENABLED_BINARY_SENSOR.key}-{item_key}")
+
+    for pool in coordinator.data.get("zfs", []):
+        if not isinstance(pool, dict):
+            continue
+        item_key = str(pool.get("name") or "")
+        if item_key:
+            unique_ids.add(f"{entry_id}-{ZFS_POOL_SCRUB_ACTIVE_BINARY_SENSOR.key}-{item_key}")
 
     return unique_ids
 
@@ -151,6 +162,21 @@ async def async_setup_entry(
             continue
         entities.append(OMVBinarySensor(coordinator, RSYNC_JOB_ENABLED_BINARY_SENSOR, item_key=item_key))
 
+    for pool in coordinator.data.get("zfs", []):
+        if not isinstance(pool, dict):
+            continue
+        item_key = str(pool.get("name") or "")
+        if not item_key:
+            continue
+        entities.append(
+            OMVBinarySensor(
+                coordinator,
+                ZFS_POOL_SCRUB_ACTIVE_BINARY_SENSOR,
+                item_key=item_key,
+                device_info=get_storage_device_info(coordinator, pool),
+            )
+        )
+
     async_add_entities(entities)
 
 
@@ -189,6 +215,17 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
             )
             if vm is not None:
                 device_info = get_vm_device_info(coordinator, vm)
+        elif device_info is None and item_key and description.data_path == "zfs":
+            pool = next(
+                (
+                    item
+                    for item in coordinator.data.get("zfs", [])
+                    if isinstance(item, dict) and str(item.get(description.collection_key or "") or "") == item_key
+                ),
+                None,
+            )
+            if pool is not None:
+                device_info = get_storage_device_info(coordinator, pool)
         super().__init__(coordinator, uid, device_info=device_info)
         self.entity_description = description
         self._item_key = item_key

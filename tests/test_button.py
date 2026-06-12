@@ -17,6 +17,7 @@ from custom_components.omv.button import (
     OMVRsyncRunButton,
     OMVShutdownButton,
     OMVVmRestartButton,
+    OMVZfsScrubButton,
     async_setup_entry,
     get_expected_button_unique_ids,
 )
@@ -34,7 +35,7 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 27
+    assert len(added) == 28
     assert added[3].unique_id.endswith("01-compose_up-paperless")
     assert added[4].unique_id.endswith("02-compose_down-paperless")
     assert added[5].unique_id.endswith("03-compose_start-paperless")
@@ -43,13 +44,15 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
     assert added[18].unique_id.endswith("98-compose_image_prune")
     assert added[19].unique_id.endswith("99-compose_container_prune")
     assert added[3]._attr_suggested_object_id == "nas_01_compose_paperless_up"
-    assert added[-4].unique_id.endswith("container_restart-ctr-db")
-    assert added[-4]._attr_suggested_object_id == "nas_container_db_restart"
-    assert added[-3].unique_id.endswith("vm_restart-vm-uuid-1234")
-    assert added[-3]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
-    assert added[-2].unique_id.endswith("rsync_run-rsync-uuid-0001")
-    assert added[-2]._attr_suggested_object_id == "nas_rsync_backup_media_run"
-    assert added[-1].unique_id.endswith("rsync_run-rsync-uuid-0002")
+    assert added[-5].unique_id.endswith("container_restart-ctr-db")
+    assert added[-5]._attr_suggested_object_id == "nas_container_db_restart"
+    assert added[-4].unique_id.endswith("vm_restart-vm-uuid-1234")
+    assert added[-4]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
+    assert added[-3].unique_id.endswith("rsync_run-rsync-uuid-0001")
+    assert added[-3]._attr_suggested_object_id == "nas_rsync_backup_media_run"
+    assert added[-2].unique_id.endswith("rsync_run-rsync-uuid-0002")
+    assert added[-1].unique_id.endswith("zfs_scrub-tank")
+    assert added[-1]._attr_suggested_object_id == "nas_zfs_tank_scrub"
 
 
 @pytest.mark.asyncio
@@ -63,7 +66,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 25
+    assert len(added) == 26
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -499,3 +502,39 @@ async def test_cron_run_button_raises_translated_error_on_api_failure(coordinato
     assert exc_info.value.translation_key == "cron_execute_failed"
     assert exc_info.value.translation_placeholders == {"name": "Nightly cleanup"}
     coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_zfs_scrub_button_calls_scrub_and_refresh(coordinator) -> None:
+    """Test the scrub button calls zfs.scrubPool with the plain pool name."""
+    coordinator.api.async_call = AsyncMock(return_value=None)
+    coordinator.async_request_refresh = AsyncMock()
+    button = OMVZfsScrubButton(coordinator, coordinator.data["zfs"][0])
+
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with("zfs", "scrubPool", {"name": "tank"})
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_zfs_scrub_button_raises_translated_error_on_api_failure(coordinator) -> None:
+    """Test scrub failures surface as translated HomeAssistantError."""
+    coordinator.async_scrub_zfs_pool = AsyncMock(side_effect=OMVApiError("boom"))
+    coordinator.async_request_refresh = AsyncMock()
+    button = OMVZfsScrubButton(coordinator, coordinator.data["zfs"][0])
+
+    with pytest.raises(HomeAssistantError) as err:
+        await button.async_press()
+
+    assert err.value.translation_key == "zfs_scrub_failed"
+    assert err.value.translation_placeholders == {"name": "tank"}
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_expected_button_unique_ids_includes_zfs_scrub(coordinator, config_entry) -> None:
+    """Test the registry cleanup whitelist covers scrub buttons per pool."""
+    unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
+
+    assert f"{config_entry.entry_id}-zfs_scrub-tank" in unique_ids

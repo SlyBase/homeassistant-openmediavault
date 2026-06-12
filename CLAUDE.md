@@ -76,7 +76,8 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | `compose_volumes` | Container volumes (size only when present in payload) |
 | `compose_summary` | Aggregated container counts |
 | `kvm` | KVM virtual machines |
-| `zfs` | ZFS pool status |
+| `zfs` | ZFS pool status, enriched with `scrubactive`/`scrubstate`/`lastscrub` (pass-through from `listPools`) and computed `dataset_count`/`snapshot_count` |
+| `zfs_datasets` | ZFS datasets from `zfs.listDatasets` (`dataset_key`= plain full path like `tank/media`, NEVER the OMV8 tree id; `pool` = first path segment; `used_gb`/`available_gb`; only `Filesystem`/`Volume` types). Fetched only when pools exist; filtered by the pool selection. Snapshots are aggregated per pool via `zfs.getAllSnapshots` — no per-snapshot entities |
 | `raid` | RAID arrays |
 | `tempmon` | Temperature sensors from `openmediavault-tempmon` plugin (empty list when plugin absent) |
 | `nut` | UPS metrics parsed from the `Nut.getStats` plain-string `upsc` output (`battery_charge`, `battery_runtime`, `load`, `status`, `on_battery`, `model`, `raw`; empty dict when plugin absent or NUT service disabled) |

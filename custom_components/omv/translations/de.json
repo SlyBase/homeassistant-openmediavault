@@ -165,6 +165,15 @@
       "zfs_pool": {
         "name": "{resource} ZFS-Pool"
       },
+      "zfs_pool_last_scrub": {
+        "name": "{resource} letzter Scrub"
+      },
+      "zfs_pool_dataset_count": {
+        "name": "{resource} Datasets"
+      },
+      "zfs_pool_snapshot_count": {
+        "name": "{resource} Snapshots"
+      },
       "disk_smart_status": {
         "name": "SMART Status"
       },
@@ -179,6 +188,9 @@
       },
       "ups_load": {
         "name": "USV-Last"
+      },
+      "zfs_dataset_used": {
+        "name": "{resource} belegt"
       }
     },
     "binary_sensor": {
@@ -205,6 +217,9 @@
       },
       "rsync_job_enabled": {
         "name": "rsync {resource} aktiviert"
+      },
+      "zfs_pool_scrub_active": {
+        "name": "{resource} Scrub aktiv"
       }
     },
     "update": {
@@ -254,6 +269,9 @@
       },
       "cron_run": {
         "name": "Cron {name} ausführen"
+      },
+      "zfs_scrub": {
+        "name": "Scrub {name}"
       }
     }
   },
@@ -275,6 +293,9 @@
     },
     "cron_execute_failed": {
       "message": "Cron-Job '{name}' konnte nicht ausgeführt werden. Prüfe die OMV-Logs."
+    },
+    "zfs_scrub_failed": {
+      "message": "Scrub für Pool '{name}' konnte nicht gestartet werden. Prüfe die OMV-Logs."
     }
   },
   "issues": {

@@ -269,6 +269,24 @@ def get_storage_device_info(
     return get_hub_device_info(coordinator)
 
 
+def get_zfs_dataset_device_info(
+    coordinator: OMVDataUpdateCoordinator,
+    dataset: dict[str, Any],
+) -> DeviceInfo:
+    """Return device info for a ZFS dataset entity.
+
+    Datasets attach to the device of their owning pool (looked up by the
+    dataset's ``pool`` field in ``coordinator.data["zfs"]``); when the pool
+    record is gone the hub device is used as fallback.
+    """
+    pool_name = str(dataset.get("pool") or "")
+    if pool_name:
+        for pool in coordinator.data.get("zfs", []):
+            if str(pool.get("name") or "") == pool_name:
+                return get_storage_device_info(coordinator, pool)
+    return get_hub_device_info(coordinator)
+
+
 def get_compose_project_device_info(
     coordinator: OMVDataUpdateCoordinator,
     project: dict[str, Any],

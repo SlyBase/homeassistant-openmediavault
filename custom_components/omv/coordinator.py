@@ -34,6 +34,9 @@ from .omv_api import OMVAPI
 _LOGGER = logging.getLogger(__name__)
 _HWINFO_REFRESH_MULTIPLIER = 1
 _COMPOSE_LIST_PARAMS = {"start": 0, "limit": 999}
+# zfs.listDatasets/getAllSnapshots index start/limit/sortfield/sortdir
+# directly without validation — all four params must always be passed.
+_ZFS_TREE_PARAMS = {"start": 0, "limit": -1, "sortfield": None, "sortdir": None}
 _COMPOSE_BG_VOLUME_PARAMS = {
     "start": 0,
     "limit": -1,
@@ -276,6 +279,26 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("Cron.execute uuid=%s background file=%s", uuid, response)
         return response
 
+    async def async_scrub_zfs_pool(self, name: str) -> Any:
+        """Start a scrub on one ZFS pool via zfs.scrubPool.
+
+        ``zfs.scrubPool`` expects the plain pool name (e.g. ``"tank"``),
+        NOT the OMV8 tree id ``root/pool-<Name>``.
+
+        Args:
+            name: The plain pool name from ``coordinator.data["zfs"]``.
+
+        Returns:
+            The raw RPC response.
+
+        Raises:
+            OMVApiError: When the zfs RPC rejects the call or is absent.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        response = await self.api.async_call("zfs", "scrubPool", {"name": name})
+        _LOGGER.debug("zfs.scrubPool name=%s response=%s", name, response)
+        return response
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
         try:
@@ -339,6 +362,25 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             self._apply_storage_metrics(disks, filesystems, zfs_pools)
 
+            # Dataset/snapshot RPCs only exist with the zfs plugin — gate on
+            # pools so installations without ZFS pay no extra RPC round-trips.
+            zfs_datasets: list[dict[str, Any]] = []
+            if zfs_pools:
+                zfs_datasets = self._normalize_zfs_datasets(
+                    await self._fetch_optional("zfs", "listDatasets", _ZFS_TREE_PARAMS)
+                )
+                snapshot_counts = self._normalize_zfs_snapshots(
+                    await self._fetch_optional("zfs", "getAllSnapshots", _ZFS_TREE_PARAMS)
+                )
+                dataset_counts: dict[str, int] = {}
+                for dataset in zfs_datasets:
+                    pool_name = str(dataset.get("pool") or "")
+                    dataset_counts[pool_name] = dataset_counts.get(pool_name, 0) + 1
+                for pool in zfs_pools:
+                    pool_name = str(pool.get("name") or "")
+                    pool["dataset_count"] = dataset_counts.get(pool_name, 0)
+                    pool["snapshot_count"] = snapshot_counts.get(pool_name, 0)
+
             smart_records = await self._async_get_smart(disks)
 
             gpu = await self._async_get_gpu_info()
@@ -366,6 +408,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._fetch_optional("TempMon", "getSensorsList", {"start": 0, "limit": 100})
                 ),
                 "zfs": zfs_pools,
+                "zfs_datasets": zfs_datasets,
                 "raid": raids,
                 "gpu": gpu,
                 "nut": self._normalize_nut(await self._fetch_optional("Nut", "getStats")),
@@ -600,6 +643,13 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data.get("zfs", []),
             selected_zfs,
             lambda item: str(item.get("name") or ""),
+        )
+        # Datasets follow the pool selection: a dataset survives only when
+        # its owning pool survives the CONF_SELECTED_ZFS_POOLS filter.
+        filtered["zfs_datasets"] = self._filter_collection(
+            data.get("zfs_datasets", []),
+            selected_zfs,
+            lambda item: str(item.get("pool") or ""),
         )
 
         selected_projects = self._selected_values(options, CONF_SELECTED_COMPOSE_PROJECTS)
@@ -1565,6 +1615,77 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             pools.append(pool)
         return pools
+
+    def _normalize_zfs_datasets(self, response: Any) -> list[dict[str, Any]]:
+        """Normalize zfs.listDatasets records into stable dataset entries.
+
+        Only ``Filesystem`` and ``Volume`` objects are kept — the tree
+        response can also carry pools and snapshots. The stable key is the
+        full dataset ``path`` (e.g. ``tank/media``), never the OMV8 tree
+        ``id`` (``root/pool-…`` style), which differs between OMV 7 and 8.
+
+        Args:
+            response: Raw response from ``zfs.listDatasets``. The plugin may
+                be absent, in which case ``_fetch_optional`` yields an empty
+                response and this returns ``[]``.
+
+        Returns:
+            List of dataset dicts with ``dataset_key`` (= full path),
+            ``name``, ``path``, ``pool`` (first path segment), ``used_gb``/
+            ``available_gb`` (GB), ``mountpoint``, ``type``, ``compression``
+            and ``encrypted``.
+        """
+        datasets: list[dict[str, Any]] = []
+        for record in self._records_from_response(response):
+            dataset_type = str(record.get("type") or "")
+            if dataset_type not in ("Filesystem", "Volume"):
+                continue
+            path = str(record.get("path") or record.get("name") or "")
+            if not path:
+                continue
+            datasets.append(
+                {
+                    "dataset_key": path,
+                    "name": str(record.get("name") or path),
+                    "path": path,
+                    "pool": path.split("/")[0],
+                    "used_gb": self._coerce_storage_gb(record.get("used")),
+                    "available_gb": self._coerce_storage_gb(record.get("available")),
+                    "mountpoint": str(record.get("mountpoint") or ""),
+                    "type": dataset_type,
+                    "compression": str(record.get("compression") or ""),
+                    "encrypted": self._coerce_bool(record.get("encryption")),
+                }
+            )
+        return datasets
+
+    def _normalize_zfs_snapshots(self, response: Any) -> dict[str, int]:
+        """Aggregate zfs.getAllSnapshots records into per-pool counts.
+
+        Snapshot inventories can hold thousands of entries, so they are
+        never exposed as individual entities — only a count per pool.
+
+        Args:
+            response: Raw response from ``zfs.getAllSnapshots``. The plugin
+                may be absent, in which case ``_fetch_optional`` yields an
+                empty response and this returns ``{}``.
+
+        Returns:
+            Mapping of plain pool name to snapshot count. Root-dataset
+            snapshots like ``tank@first`` count towards pool ``tank``.
+        """
+        counts: dict[str, int] = {}
+        for record in self._records_from_response(response):
+            if str(record.get("type") or "") != "Snapshot":
+                continue
+            path = str(record.get("path") or record.get("name") or "")
+            if not path:
+                continue
+            pool = path.split("/")[0].split("@")[0]
+            if not pool:
+                continue
+            counts[pool] = counts.get(pool, 0) + 1
+        return counts
 
     def _normalize_kvm(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Kvm.getVmList records into stable VM entries.
