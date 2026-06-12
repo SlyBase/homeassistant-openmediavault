@@ -164,6 +164,11 @@ def get_filesystem_device_identifier(coordinator: OMVDataUpdateCoordinator, fs_u
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:filesystem:{fs_uuid}")
 
 
+def get_vm_device_identifier(coordinator: OMVDataUpdateCoordinator, vm_key: str) -> tuple[str, str]:
+    """Return the stable device registry identifier tuple for a KVM virtual machine."""
+    return (DOMAIN, f"{coordinator.config_entry.entry_id}:vm:{vm_key}")
+
+
 def disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
     """Return True if a disk should receive SMART-derived entities."""
     return not (
@@ -306,6 +311,23 @@ def get_container_device_info(
         manufacturer="Docker",
         model=_normalized_device_value(container.get("image")) or "Docker Container",
         sw_version=_normalized_device_value(container.get("version")),
+        configuration_url=coordinator.api.base_url,
+    )
+
+
+def get_vm_device_info(
+    coordinator: OMVDataUpdateCoordinator,
+    vm: dict[str, Any],
+) -> DeviceInfo:
+    """Return device info for a KVM virtual machine entity."""
+    vm_key = str(vm.get("vm_key") or vm.get("name") or "")
+    display_name = _normalized_device_value(vm.get("name")) or vm_key
+    return DeviceInfo(
+        identifiers={get_vm_device_identifier(coordinator, vm_key)},
+        via_device=(DOMAIN, coordinator.config_entry.entry_id),
+        name=f"VM {display_name}",
+        manufacturer="QEMU/KVM",
+        model="Virtual Machine",
         configuration_url=coordinator.api.base_url,
     )
 

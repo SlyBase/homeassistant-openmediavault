@@ -277,6 +277,17 @@ def _container_attrs(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _vm_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    """Return common KVM virtual machine attributes."""
+    return {
+        "vm_key": data.get("vm_key"),
+        "uuid": data.get("uuid"),
+        "autostart": data.get("autostart"),
+        "memory": data.get("memory"),
+        "vcpu": data.get("vcpu"),
+    }
+
+
 def _container_volume_attrs(data: dict[str, Any]) -> dict[str, Any]:
     """Return common Docker container volume attributes."""
     return {
@@ -404,6 +415,21 @@ CONTAINER_VOLUME_SENSORS: tuple[OMVSensorDescription, ...] = (
         name_key="display_name",
         value_fn=lambda data: data.get("size_gb"),
         extra_attrs_fn=_container_volume_attrs,
+    ),
+)
+
+
+VM_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="vm_state",
+        translation_key="vm_state",
+        icon="mdi:server",
+        data_path="kvm",
+        is_collection=True,
+        collection_key="vm_key",
+        name_key="name",
+        value_fn=lambda data: data.get("state"),
+        extra_attrs_fn=_vm_attrs,
     ),
 )
 

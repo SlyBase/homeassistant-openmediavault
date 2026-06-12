@@ -425,7 +425,18 @@ def sample_data() -> dict[str, Any]:
                 "version": "16.4",
             },
         ],
-        "kvm": [],
+        "kvm": [
+            {
+                "vm_key": "vm-uuid-1234",
+                "uuid": "vm-uuid-1234",
+                "name": "homeassistant",
+                "state": "running",
+                "running": True,
+                "autostart": True,
+                "memory": 2048.0,
+                "vcpu": 2.0,
+            },
+        ],
         "upgradedList": [],
         "zfs": [
             {

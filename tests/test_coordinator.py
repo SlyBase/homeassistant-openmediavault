@@ -18,6 +18,7 @@ from custom_components.omv.const import (
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
+    CONF_SELECTED_VMS,
     CONF_SELECTED_ZFS_POOLS,
     DOMAIN,
 )
@@ -2061,3 +2062,158 @@ async def test_tempmon_script_error_returns_none_temperature(hass, config_entry)
 
     assert len(data["tempmon"]) == 1
     assert data["tempmon"][0]["temperature"] is None
+
+
+@pytest.mark.asyncio
+async def test_kvm_vms_normalized(hass, config_entry) -> None:
+    """Test that Kvm.getVmList records are normalized into coordinator data."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        responses = {
+            ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 55.0},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): {"data": []},
+            ("Kvm", "getVmList"): {
+                "data": [
+                    {
+                        "uuid": "vm-uuid-1",
+                        "name": "homeassistant",
+                        "state": "Running",
+                        "autostart": 1,
+                        "memory": "2048",
+                        "vcpu": "2",
+                    },
+                    {
+                        "uuid": "",
+                        "name": "scratch-vm",
+                        "state": "Shut off",
+                        "autostart": 0,
+                    },
+                ],
+                "total": 2,
+            },
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+            ("zfs", "listPools"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    vms = data["kvm"]
+    assert len(vms) == 2
+
+    running = next(vm for vm in vms if vm["vm_key"] == "vm-uuid-1")
+    assert running["uuid"] == "vm-uuid-1"
+    assert running["name"] == "homeassistant"
+    assert running["state"] == "running"
+    assert running["running"] is True
+    assert running["autostart"] is True
+    assert running["memory"] == 2048.0
+    assert running["vcpu"] == 2.0
+
+    stopped = next(vm for vm in vms if vm["vm_key"] == "scratch-vm")
+    assert stopped["uuid"] == ""
+    assert stopped["state"] == "shut_off"
+    assert stopped["running"] is False
+    assert stopped["autostart"] is False
+    assert "memory" not in stopped
+    assert "vcpu" not in stopped
+
+
+@pytest.mark.asyncio
+async def test_kvm_absent_when_plugin_not_installed(hass, config_entry) -> None:
+    """Test that coordinator.data['kvm'] is empty when the KVM plugin is not installed."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        if (service, method) == ("Kvm", "getVmList"):
+            raise OMVApiError("RPC service Kvm not found")
+        responses = {
+            ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 55.0},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+            ("zfs", "listPools"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert data["kvm"] == []
+
+
+def test_build_inventory_includes_vms() -> None:
+    """Test that build_inventory exposes normalized VMs for the options flow."""
+    inventory = OMVDataUpdateCoordinator.build_inventory(
+        {
+            "kvm": [
+                {"vm_key": "vm-uuid-1", "name": "homeassistant"},
+                {"vm_key": "vm-uuid-2", "name": "scratch-vm"},
+            ],
+        }
+    )
+
+    assert [item["value"] for item in inventory[CONF_SELECTED_VMS]] == ["vm-uuid-1", "vm-uuid-2"]
+    assert [item["label"] for item in inventory[CONF_SELECTED_VMS]] == ["homeassistant", "scratch-vm"]
+
+
+@pytest.mark.asyncio
+async def test_filter_data_by_selection_filters_vms(hass, config_entry) -> None:
+    """Test that filter_data_by_selection honors CONF_SELECTED_VMS."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.168.1.10:80"
+    api.async_call = AsyncMock()
+
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    data = {
+        "hwinfo": {},
+        "disk": [],
+        "fs": [],
+        "service": [],
+        "network": [],
+        "raid": [],
+        "zfs": [],
+        "smart": [],
+        "compose": [],
+        "compose_projects": [],
+        "compose_volumes": [],
+        "kvm": [
+            {"vm_key": "vm-uuid-1", "name": "homeassistant"},
+            {"vm_key": "vm-uuid-2", "name": "scratch-vm"},
+        ],
+    }
+
+    filtered = coordinator.filter_data_by_selection(data, {CONF_SELECTED_VMS: ["vm-uuid-1"]})
+
+    assert [vm["vm_key"] for vm in filtered["kvm"]] == ["vm-uuid-1"]

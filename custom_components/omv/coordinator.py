@@ -22,6 +22,7 @@ from .const import (
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
+    CONF_SELECTED_VMS,
     CONF_SELECTED_ZFS_POOLS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
@@ -282,9 +283,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "compose_projects": compose_projects,
                 "compose_summary": self._summarize_compose(compose, services),
                 "compose_volumes": compose_volumes,
-                "kvm": self._normalize_named_collection(
-                    await self._fetch_optional("Kvm", "getVmList", {"start": 0, "limit": 999})
-                ),
+                "kvm": self._normalize_kvm(await self._fetch_optional("Kvm", "getVmList", {"start": 0, "limit": 999})),
                 "tempmon": self._normalize_tempmon(
                     await self._fetch_optional("TempMon", "getSensorsList", {"start": 0, "limit": 100})
                 ),
@@ -344,6 +343,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             CONF_SELECTED_ZFS_POOLS: [],
             CONF_SELECTED_COMPOSE_PROJECTS: [],
             CONF_SELECTED_CONTAINERS: [],
+            CONF_SELECTED_VMS: [],
         }
 
         for disk in data.get("disk", []):
@@ -428,6 +428,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if image:
                 label = f"{label} ({image})"
             inventory[CONF_SELECTED_CONTAINERS].append({"value": value, "label": label})
+
+        for vm in data.get("kvm", []):
+            if not isinstance(vm, dict):
+                continue
+            value = str(vm.get("vm_key") or "")
+            if not value:
+                continue
+            inventory[CONF_SELECTED_VMS].append({"value": value, "label": str(vm.get("name") or value)})
 
         for key, options in inventory.items():
             unique: dict[str, str] = {}
@@ -549,7 +557,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             compose,
             filtered["service"],
         )
-        filtered["kvm"] = list(data.get("kvm", []))
+        selected_vms = self._selected_values(options, CONF_SELECTED_VMS)
+        filtered["kvm"] = self._filter_collection(
+            data.get("kvm", []),
+            selected_vms,
+            lambda item: str(item.get("vm_key") or ""),
+        )
         filtered["tempmon"] = list(data.get("tempmon", []))
         filtered["gpu"] = data.get("gpu", {})
         filtered["upgradedList"] = list(data.get("upgradedList", []))
@@ -1447,9 +1460,44 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             pools.append(pool)
         return pools
 
-    def _normalize_named_collection(self, response: Any) -> list[dict[str, Any]]:
-        """Normalize plugin collections that already contain flat object data."""
-        return self._records_from_response(response)
+    def _normalize_kvm(self, response: Any) -> list[dict[str, Any]]:
+        """Normalize Kvm.getVmList records into stable VM entries.
+
+        Args:
+            response: Raw response from ``Kvm.getVmList``. The
+                ``openmediavault-kvm`` plugin may not be installed, in which
+                case ``_fetch_optional`` yields an empty response and this
+                returns ``[]``.
+
+        Returns:
+            List of VM dicts with ``vm_key``, ``uuid``, ``name``, ``state``
+            (lower-cased, spaces replaced with underscores), ``running``,
+            and ``autostart``. The optional ``memory``/``vcpu`` fields are
+            included only when present in the source payload, since their
+            field names and units are not confirmed for this RPC.
+        """
+        vms: list[dict[str, Any]] = []
+        for record in self._records_from_response(response):
+            vm_key = str(record.get("uuid") or record.get("name") or "")
+            if not vm_key:
+                continue
+            state = str(record.get("state") or "").strip().lower().replace(" ", "_")
+            vm: dict[str, Any] = {
+                "vm_key": vm_key,
+                "uuid": str(record.get("uuid") or ""),
+                "name": str(record.get("name") or vm_key),
+                "state": state or "unknown",
+                "running": state == "running",
+                "autostart": self._coerce_bool(record.get("autostart")),
+            }
+            memory = self._coerce_optional_float(record.get("memory"))
+            if memory is not None:
+                vm["memory"] = memory
+            vcpu = self._coerce_optional_float(record.get("vcpu"))
+            if vcpu is not None:
+                vm["vcpu"] = vcpu
+            vms.append(vm)
+        return vms
 
     def _normalize_tempmon(self, response: Any) -> list[dict[str, Any]]:
         """Normalize openmediavault-tempmon sensor list into coordinator records.

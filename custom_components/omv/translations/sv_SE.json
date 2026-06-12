@@ -31,7 +31,8 @@
           "selected_raids": "Valda RAID",
           "selected_zfs_pools": "Valda ZFS-pooler",
           "selected_compose_projects": "Valda Compose-projekt",
-          "selected_containers": "Valda containrar"
+          "selected_containers": "Valda containrar",
+          "selected_vms": "Valda VM:ar"
         },
         "data_description": {}
       }
@@ -155,6 +156,9 @@
       },
       "disk_smart_status": {
         "name": "SMART-status"
+      },
+      "vm_state": {
+        "name": "{resource} tillstand"
       }
     },
     "binary_sensor": {
@@ -172,6 +176,9 @@
       },
       "disk_crc_errors": {
         "name": "{resource} CRC-fel"
+      },
+      "vm_running": {
+        "name": "{resource} kor"
       }
     },
     "update": {

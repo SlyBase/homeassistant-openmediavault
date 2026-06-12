@@ -15,10 +15,17 @@ from .binary_sensor_types import (
     DISK_CRC_ERRORS_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
+    VM_RUNNING_BINARY_SENSOR,
     OMVBinarySensorDescription,
 )
 from .coordinator import OMVDataUpdateCoordinator
-from .entity import OMVEntity, build_host_object_id, disk_is_smart_eligible, get_disk_device_info
+from .entity import (
+    OMVEntity,
+    build_host_object_id,
+    disk_is_smart_eligible,
+    get_disk_device_info,
+    get_vm_device_info,
+)
 
 _DISK_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
     DISK_BAD_SECTORS_BINARY_SENSOR,
@@ -30,11 +37,15 @@ def _binary_sensor_suggested_object_id(
     coordinator: OMVDataUpdateCoordinator,
     description: OMVBinarySensorDescription,
     item_key: str | None,
+    data: dict[str, Any],
 ) -> str:
     """Build one host-qualified suggested object ID for a binary sensor."""
-    if item_key:
-        return build_host_object_id(coordinator, description.key, item_key)
-    return build_host_object_id(coordinator, description.key)
+    if not item_key:
+        return build_host_object_id(coordinator, description.key)
+    if description.data_path == "kvm":
+        metric = description.key.removeprefix("vm_")
+        return build_host_object_id(coordinator, "vm", data.get("name") or item_key, metric)
+    return build_host_object_id(coordinator, description.key, item_key)
 
 
 def get_expected_binary_sensor_unique_ids(
@@ -58,6 +69,13 @@ def get_expected_binary_sensor_unique_ids(
         if item_key and disk_is_smart_eligible(disk):
             for description in _DISK_BINARY_SENSORS:
                 unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
+
+    for vm in coordinator.data.get("kvm", []):
+        if not isinstance(vm, dict):
+            continue
+        item_key = str(vm.get("vm_key") or "")
+        if item_key:
+            unique_ids.add(f"{entry_id}-{VM_RUNNING_BINARY_SENSOR.key}-{item_key}")
 
     return unique_ids
 
@@ -91,6 +109,21 @@ async def async_setup_entry(
         for description in _DISK_BINARY_SENSORS:
             entities.append(OMVBinarySensor(coordinator, description, item_key=item_key, device_info=device_info))
 
+    for vm in coordinator.data.get("kvm", []):
+        if not isinstance(vm, dict):
+            continue
+        item_key = str(vm.get("vm_key") or "")
+        if not item_key:
+            continue
+        entities.append(
+            OMVBinarySensor(
+                coordinator,
+                VM_RUNNING_BINARY_SENSOR,
+                item_key=item_key,
+                device_info=get_vm_device_info(coordinator, vm),
+            )
+        )
+
     async_add_entities(entities)
 
 
@@ -118,17 +151,29 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
             )
             if disk is not None:
                 device_info = get_disk_device_info(coordinator, disk)
+        elif device_info is None and item_key and description.data_path == "kvm":
+            vm = next(
+                (
+                    item
+                    for item in coordinator.data.get("kvm", [])
+                    if isinstance(item, dict) and str(item.get(description.collection_key or "") or "") == item_key
+                ),
+                None,
+            )
+            if vm is not None:
+                device_info = get_vm_device_info(coordinator, vm)
         super().__init__(coordinator, uid, device_info=device_info)
         self.entity_description = description
         self._item_key = item_key
+        data = self._get_data() if item_key else {}
         self._attr_suggested_object_id = _binary_sensor_suggested_object_id(
             coordinator,
             description,
             item_key,
+            data,
         )
 
         if item_key:
-            data = self._get_data()
             display_name = str(data.get(description.name_key or "") or item_key)
             if description.translation_key:
                 self._attr_translation_placeholders = {"resource": display_name}

@@ -66,6 +66,22 @@ SERVICE_BINARY_SENSOR = OMVBinarySensorDescription(
     },
 )
 
+VM_RUNNING_BINARY_SENSOR = OMVBinarySensorDescription(
+    key="vm_running",
+    translation_key="vm_running",
+    device_class=BinarySensorDeviceClass.RUNNING,
+    icon="mdi:server",
+    data_path="kvm",
+    is_collection=True,
+    collection_key="vm_key",
+    name_key="name",
+    value_fn=lambda data: bool(data.get("running", False)),
+    extra_attrs_fn=lambda data: {
+        "state": data.get("state"),
+        "autostart": data.get("autostart"),
+    },
+)
+
 DISK_BAD_SECTORS_BINARY_SENSOR = OMVBinarySensorDescription(
     key="disk_bad_sectors",
     translation_key="disk_bad_sectors",

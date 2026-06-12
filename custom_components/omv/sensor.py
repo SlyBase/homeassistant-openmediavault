@@ -20,6 +20,7 @@ from .entity import (
     get_filesystem_device_info,
     get_hub_device_info,
     get_storage_device_info,
+    get_vm_device_info,
 )
 from .sensor_types import (
     COMPOSE_PROJECT_SENSORS,
@@ -44,6 +45,7 @@ from .sensor_types import (
     RAID_SENSOR,
     SYSTEM_SENSORS,
     TEMPMON_SENSORS,
+    VM_SENSORS,
     ZFS_POOL_SENSOR,
     OMVSensorDescription,
 )
@@ -86,6 +88,7 @@ def _sensor_metric_slug(description: OMVSensorDescription) -> str:
         "compose_project_",
         "container_",
         "docker_",
+        "vm_",
     ):
         if description.key.startswith(prefix):
             return description.key.removeprefix(prefix)
@@ -128,6 +131,13 @@ def _sensor_suggested_object_id(
             data.get("container_name") or data.get("container_key") or item_key,
             "volume",
             data.get("display_name") or data.get("name") or item_key,
+            metric,
+        )
+    if description.data_path == "kvm":
+        return build_host_object_id(
+            coordinator,
+            "vm",
+            data.get("name") or item_key,
             metric,
         )
     return build_host_object_id(coordinator, description.data_path, item_key, metric)
@@ -311,6 +321,19 @@ def get_expected_sensor_registry_state(
                 device_identifiers,
             )
 
+    for description in VM_SENSORS:
+        for vm in coordinator.data.get("kvm", []):
+            if not isinstance(vm, dict):
+                continue
+            item_key = str(vm.get("vm_key") or "")
+            if not item_key or not _should_add_description(description, vm):
+                continue
+            unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
+            _collect_device_identifiers(
+                get_vm_device_info(coordinator, vm),
+                device_identifiers,
+            )
+
     return unique_ids, device_identifiers
 
 
@@ -480,6 +503,22 @@ async def async_setup_entry(
                 )
             )
 
+    for description in VM_SENSORS:
+        for vm in coordinator.data.get("kvm", []):
+            if not isinstance(vm, dict):
+                continue
+            item_key = str(vm.get("vm_key") or "")
+            if not item_key or not _should_add_description(description, vm):
+                continue
+            entities.append(
+                OMVSensor(
+                    coordinator,
+                    description,
+                    item_key=item_key,
+                    device_info=get_vm_device_info(coordinator, vm),
+                )
+            )
+
     async_add_entities(entities)
 
 
@@ -515,6 +554,8 @@ class OMVSensor(OMVEntity, SensorEntity):
                     device_info = get_compose_project_device_info(coordinator, item)
                 elif description.data_path in {"compose", "compose_volumes"}:
                     device_info = get_container_device_info(coordinator, item)
+                elif description.data_path == "kvm":
+                    device_info = get_vm_device_info(coordinator, item)
                 else:
                     device_info = get_storage_device_info(coordinator, item)
         super().__init__(coordinator, uid, device_info=device_info)

@@ -31,7 +31,8 @@
           "selected_raids": "RAIDs selecionados",
           "selected_zfs_pools": "Pools ZFS selecionados",
           "selected_compose_projects": "Projetos Compose selecionados",
-          "selected_containers": "Containers selecionados"
+          "selected_containers": "Containers selecionados",
+          "selected_vms": "VMs selecionadas"
         },
         "data_description": {}
       }
@@ -155,6 +156,9 @@
       },
       "disk_smart_status": {
         "name": "Status SMART"
+      },
+      "vm_state": {
+        "name": "estado de {resource}"
       }
     },
     "binary_sensor": {
@@ -172,6 +176,9 @@
       },
       "disk_crc_errors": {
         "name": "erros de CRC {resource}"
+      },
+      "vm_running": {
+        "name": "{resource} em execucao"
       }
     },
     "update": {

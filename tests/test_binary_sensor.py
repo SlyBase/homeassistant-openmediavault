@@ -10,6 +10,7 @@ from custom_components.omv.binary_sensor_types import (
     DISK_CRC_ERRORS_BINARY_SENSOR,
     SERVICE_BINARY_SENSOR,
     SYSTEM_BINARY_SENSORS,
+    VM_RUNNING_BINARY_SENSOR,
 )
 from custom_components.omv.const import DOMAIN
 
@@ -26,6 +27,7 @@ async def test_async_setup_entry_adds_binary_sensors(coordinator, config_entry) 
 
     assert any(entity.unique_id.endswith("service-ssh") for entity in added)
     assert any(entity.unique_id.endswith("service-compose") for entity in added)
+    assert any(entity.unique_id.endswith("vm_running-vm-uuid-1234") for entity in added)
 
 
 @pytest.mark.asyncio
@@ -61,6 +63,17 @@ async def test_compose_service_binary_sensor_includes_container_counts(coordinat
         "container_running": 3,
         "container_not_running": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_vm_running_binary_sensor_state_and_device(coordinator) -> None:
+    """Test VM running binary sensor reflects state and attaches to a VM device."""
+    sensor = OMVBinarySensor(coordinator, VM_RUNNING_BINARY_SENSOR, item_key="vm-uuid-1234")
+
+    assert sensor.is_on is True
+    assert sensor.extra_state_attributes == {"state": "running", "autostart": True}
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:vm:vm-uuid-1234")}
+    assert sensor._attr_suggested_object_id == "nas_vm_homeassistant_running"
 
 
 @pytest.mark.asyncio

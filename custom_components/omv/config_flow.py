@@ -30,6 +30,7 @@ from .const import (
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
+    CONF_SELECTED_VMS,
     CONF_SELECTED_ZFS_POOLS,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
@@ -61,6 +62,7 @@ _RESOURCE_FIELDS: tuple[str, ...] = (
     CONF_SELECTED_ZFS_POOLS,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
+    CONF_SELECTED_VMS,
 )
 
 
@@ -265,6 +267,13 @@ class OMVOptionsFlow(OptionsFlow):
                         inventory[CONF_SELECTED_CONTAINERS],
                     ),
                 ): self._build_multi_select(inventory[CONF_SELECTED_CONTAINERS]),
+                vol.Optional(
+                    CONF_SELECTED_VMS,
+                    default=self._default_selection(
+                        CONF_SELECTED_VMS,
+                        inventory[CONF_SELECTED_VMS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_VMS]),
             }
         )
         return self.async_show_form(

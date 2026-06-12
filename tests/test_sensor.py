@@ -25,6 +25,7 @@ from custom_components.omv.sensor_types import (
     FILESYSTEM_USED_SIZE_SENSOR,
     RAID_SENSOR,
     SYSTEM_SENSORS,
+    VM_SENSORS,
     ZFS_POOL_SENSOR,
 )
 
@@ -50,6 +51,7 @@ async def test_async_setup_entry_adds_expected_sensors(coordinator, config_entry
     assert any(entity.unique_id.endswith("filesystem-fs-1") for entity in added)
     assert any(entity.unique_id.endswith("filesystem_free_percent-fs-1") for entity in added)
     assert any(entity.unique_id.endswith("zfs_pool-tank") for entity in added)
+    assert any(entity.unique_id.endswith("vm_state-vm-uuid-1234") for entity in added)
     assert not any(entity.unique_id.endswith("disk_used_size-sdb") for entity in added)
 
 
@@ -294,6 +296,18 @@ async def test_container_version_sensor_reads_opencontainers_label(coordinator) 
 
     assert version.native_value == coordinator.data["compose"][0]["version"]
     assert version.native_value == "2.15.3"
+
+
+@pytest.mark.asyncio
+async def test_vm_state_sensor_exposes_state_and_device(coordinator) -> None:
+    """Test VM state sensor exposes the normalized state and a dedicated VM device."""
+    sensor = OMVSensor(coordinator, VM_SENSORS[0], item_key="vm-uuid-1234")
+
+    assert sensor.native_value == "running"
+    assert sensor.extra_state_attributes["memory"] == 2048.0
+    assert sensor.extra_state_attributes["vcpu"] == 2.0
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:vm:vm-uuid-1234")}
+    assert sensor.device_info["via_device"] == (DOMAIN, coordinator.config_entry.entry_id)
 
 
 @pytest.mark.asyncio

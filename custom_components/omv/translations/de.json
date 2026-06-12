@@ -32,7 +32,8 @@
           "selected_raids": "Ausgewählte RAIDs",
           "selected_zfs_pools": "Ausgewählte ZFS-Pools",
           "selected_compose_projects": "Ausgewählte Compose-Projekte",
-          "selected_containers": "Ausgewählte Container"
+          "selected_containers": "Ausgewählte Container",
+          "selected_vms": "Ausgewählte VMs"
         },
         "data_description": {
           "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen."
@@ -164,6 +165,9 @@
       },
       "disk_smart_status": {
         "name": "SMART Status"
+      },
+      "vm_state": {
+        "name": "{resource} Zustand"
       }
     },
     "binary_sensor": {
@@ -181,6 +185,9 @@
       },
       "disk_crc_errors": {
         "name": "{resource} CRC-Fehler"
+      },
+      "vm_running": {
+        "name": "{resource} läuft"
       }
     },
     "update": {

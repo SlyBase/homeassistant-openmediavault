@@ -32,7 +32,8 @@
           "selected_raids": "Selected RAIDs",
           "selected_zfs_pools": "Selected ZFS pools",
           "selected_compose_projects": "Selected Compose projects",
-          "selected_containers": "Selected containers"
+          "selected_containers": "Selected containers",
+          "selected_vms": "Selected VMs"
         },
         "data_description": {
           "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS."
@@ -167,6 +168,9 @@
       },
       "tempmon_temperature": {
         "name": "{resource} temperature"
+      },
+      "vm_state": {
+        "name": "{resource} state"
       }
     },
     "binary_sensor": {
@@ -184,6 +188,9 @@
       },
       "disk_crc_errors": {
         "name": "{resource} CRC errors"
+      },
+      "vm_running": {
+        "name": "{resource} running"
       }
     },
     "update": {
