@@ -238,3 +238,60 @@ async def test_probe_target_requests_compose_file_list(monkeypatch) -> None:
         "getFileList",
         {"start": 0, "limit": 999},
     ) in calls
+
+
+@pytest.mark.asyncio
+async def test_probe_target_requests_tier2_endpoints(monkeypatch) -> None:
+    """The live probe should cover the Tier 2 RPCs with their required params."""
+    probe = _load_probe_module()
+    calls: list[tuple[str, str, dict | None]] = []
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.closed = False
+
+        async def async_connect(self):
+            return {"version": "8.3.0-1"}
+
+        async def async_close(self) -> None:
+            self.closed = True
+
+    async def fake_call_endpoint(client, *, service, method, optional, params=None):
+        calls.append((service, method, params))
+        return (
+            probe.EndpointResult(
+                service=service,
+                method=method,
+                optional=optional,
+                status="ok",
+                elapsed_ms=1,
+            ),
+            {"data": []},
+        )
+
+    monkeypatch.setattr(probe, "OMVProbeClient", FakeClient)
+    monkeypatch.setattr(probe, "_call_endpoint", fake_call_endpoint)
+
+    target = probe.parse_target(
+        "omv8=192.168.178.40",
+        port=80,
+        use_ssl=False,
+        verify_ssl=True,
+    )
+    await probe.probe_target(target, username="admin", password="secret")
+
+    zfs_tree_params = {
+        "start": 0,
+        "limit": -1,
+        "sortfield": None,
+        "sortdir": None,
+    }
+    assert ("Nut", "getStats", None) in calls
+    assert ("Rsync", "getList", {"start": 0, "limit": -1}) in calls
+    assert (
+        "Cron",
+        "getList",
+        {"start": 0, "limit": -1, "type": ["userdefined"]},
+    ) in calls
+    assert ("zfs", "listDatasets", zfs_tree_params) in calls
+    assert ("zfs", "getAllSnapshots", zfs_tree_params) in calls

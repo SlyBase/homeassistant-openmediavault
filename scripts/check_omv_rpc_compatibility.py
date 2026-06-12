@@ -26,6 +26,14 @@ _INVALID_LOGIN_MESSAGES = (
 )
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 _COMPOSE_LIST_PARAMS = {"start": 0, "limit": 999}
+# zfs.listDatasets does no param validation but indexes start/limit/sortfield/
+# sortdir directly -- all four keys must always be present.
+_ZFS_TREE_PARAMS: dict[str, Any] = {
+    "start": 0,
+    "limit": -1,
+    "sortfield": None,
+    "sortdir": None,
+}
 
 
 class ProbeError(Exception):
@@ -521,6 +529,50 @@ async def probe_target(
             optional=True,
         )
         endpoint_results.append(zfs_result)
+
+        zfs_datasets_result, _ = await _call_endpoint(
+            client,
+            service="zfs",
+            method="listDatasets",
+            optional=True,
+            params=_ZFS_TREE_PARAMS,
+        )
+        endpoint_results.append(zfs_datasets_result)
+
+        zfs_snapshots_result, _ = await _call_endpoint(
+            client,
+            service="zfs",
+            method="getAllSnapshots",
+            optional=True,
+            params=_ZFS_TREE_PARAMS,
+        )
+        endpoint_results.append(zfs_snapshots_result)
+
+        nut_result, _ = await _call_endpoint(
+            client,
+            service="Nut",
+            method="getStats",
+            optional=True,
+        )
+        endpoint_results.append(nut_result)
+
+        rsync_result, _ = await _call_endpoint(
+            client,
+            service="Rsync",
+            method="getList",
+            optional=True,
+            params={"start": 0, "limit": -1},
+        )
+        endpoint_results.append(rsync_result)
+
+        cron_result, _ = await _call_endpoint(
+            client,
+            service="Cron",
+            method="getList",
+            optional=True,
+            params={"start": 0, "limit": -1, "type": ["userdefined"]},
+        )
+        endpoint_results.append(cron_result)
     except (ProbeAuthError, ProbeConnectionError, ProbeError) as err:
         endpoint_results.append(
             EndpointResult(

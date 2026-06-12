@@ -130,6 +130,18 @@ sample_data    # Complete normalized coordinator.data dict with realistic values
 
 Supported: OMV 7 and 8. Live targets (as of 2026-06-11): OMV7 on `192.168.178.41` (unreachable from dev machine during last probe — not re-verified since 7.7.24-7), OMV8 on `192.168.178.40` (8.3.0-1 "Synchrony"). `compose.getContainerList` confirmed fields: `command, created, execurl, id, image, mounts, name, network, ports, running, state, status`. `Kvm` RPC service is absent on this OMV8 instance (plugin not installed) — `Kvm.getVmList` payload shape for `_normalize_kvm()` (Tier 1, Step 6) could not be verified live; implement defensively with `.get()` defaults so it degrades to an empty list when the plugin/RPC is unavailable.
 
+### Tier 2 RPC facts (source-verified against upstream GitHub, 2026-06-12)
+
+The Tier 2 live probe run (2026-06-12) was **skipped** — `OMV_PASSWORD` was not available in the environment. The probe script covers the endpoints below (`scripts/check_omv_rpc_compatibility.py`); re-run it when credentials are at hand. Until then these facts come from upstream plugin/core sources:
+
+- **`Kvm.doCommand`** (openmediavault-kvm): params `command` (`poweron`/`poweroff`/`force`/`reboot`/`reset`/`pause`/`resume`/`autostartenable`/`autostartdisable`), `name` (VM name), `virttype` (`"vm"`/`"lxc"`), plus string fields `vncport`/`spiceport`/`hostport`/`hostport2` (`"n/a"` is safe). Real `Kvm.getVmList` records carry `vmname` (no `uuid`/`name`), `virttype`, `mem` (bytes), `cpu`, `state` (virsh, e.g. `shut off`), `autostart`, `vncport`/`spiceport`.
+- **`Nut.getStats`** (openmediavault-nut): no params; returns a **plain string** — either localized `"Service disabled"` or raw `upsc` output (`key: value` lines such as `battery.charge`, `battery.runtime`, `ups.status: OL`/`OB DISCHRG`, `ups.load`).
+- **`Rsync.getList`** (core): `{"start": 0, "limit": -1}`; records `uuid`, `enable`, `comment`, `type`, `mode`, `srcname`, `destname`, cron fields. **`Rsync.execute`** `{"uuid": ...}` returns an execBgProc background filename — fire-and-forget, do not poll.
+- **`Cron.getList`** (core): requires `type` as array — `{"start": 0, "limit": -1, "type": ["userdefined"]}`. **`Cron.execute`** `{"uuid": ...}` returns a background filename — fire-and-forget.
+- **`zfs.scrubPool`** (openmediavault-zfs): `{"name": "<plain pool name>"}` — plain name, NOT the OMV8 tree id `root/pool-<Name>`. **`zfs.listDatasets`** does no param validation but indexes `start`/`limit`/`sortfield`/`sortdir` directly — always pass all four (`{"start": 0, "limit": -1, "sortfield": None, "sortdir": None}`). **`zfs.getAllSnapshots`** follows `rpc.common.getlist`.
+- **`System.standby`** (core): exists alongside `reboot`/`shutdown`; callable without params like `System.reboot`.
+- **WoL/MAC**: raw `Network.enumerateDevices` records contain `ether` (MAC) and `wol` on both OMV7 and OMV8 (see `reports/omv-rpc-compatibility.json`).
+
 ## Integration Domain & Platforms
 
 - Domain: `omv`

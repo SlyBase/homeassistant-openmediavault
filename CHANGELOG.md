@@ -10,6 +10,7 @@
 - New `switch` platform: one switch per Docker Compose container to start/stop it via `Compose.doContainerCommand`. Optimistic state with coordinator-backed sync, attached to the existing per-container device, and respects the `selected_containers`/`selected_compose_projects` filters.
 - New per-container `Restart` button, calling `Compose.doContainerCommand` with `restart` and refreshing the coordinator afterwards.
 - New read-only KVM virtual machine entities: a `state` sensor (with `memory`/`vcpu`/`autostart`/`uuid` attributes when available) and a `running` binary sensor, one per VM, each attached to a dedicated VM device. Selectable via the new `selected_vms` option; degrades to no entities when the `openmediavault-kvm` plugin is absent.
+- Live RPC compatibility probe now covers the Tier 2 endpoints `Nut.getStats`, `Rsync.getList`, `Cron.getList` (with the required `type: ["userdefined"]` array), `zfs.listDatasets` and `zfs.getAllSnapshots` (with all four tree params), each as optional non-destructive calls, plus a regression test for the new probe coverage.
 
 ## [2.4.0] - 2026-06-02
 
