@@ -32,9 +32,12 @@
           "selected_zfs_pools": "Pools ZFS selecionados",
           "selected_compose_projects": "Projetos Compose selecionados",
           "selected_containers": "Containers selecionados",
-          "selected_vms": "VMs selecionadas"
+          "selected_vms": "VMs selecionadas",
+          "selected_cron_jobs": "Tarefas cron com botão de acionamento"
         },
-        "data_description": {}
+        "data_description": {
+          "selected_cron_jobs": "Cria um botão para cada tarefa cron definida pelo usuário selecionada. Aviso: pressionar esse botão executa o comando shell arbitrário da tarefa no NAS. Padrão: nenhuma."
+        }
       }
     }
   },
@@ -237,6 +240,9 @@
       },
       "rsync_run": {
         "name": "Executar rsync {name}"
+      },
+      "cron_run": {
+        "name": "Executar cron {name}"
       }
     }
   }

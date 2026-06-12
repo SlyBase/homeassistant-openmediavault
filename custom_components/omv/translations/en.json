@@ -33,10 +33,12 @@
           "selected_zfs_pools": "Selected ZFS pools",
           "selected_compose_projects": "Selected Compose projects",
           "selected_containers": "Selected containers",
-          "selected_vms": "Selected VMs"
+          "selected_vms": "Selected VMs",
+          "selected_cron_jobs": "Cron jobs with trigger button"
         },
         "data_description": {
-          "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS."
+          "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS.",
+          "selected_cron_jobs": "Creates a button for each selected user-defined cron job. Warning: pressing such a button runs the job's arbitrary shell command on the NAS. Default: none."
         }
       }
     }
@@ -252,6 +254,9 @@
       },
       "rsync_run": {
         "name": "Run rsync {name}"
+      },
+      "cron_run": {
+        "name": "Run cron {name}"
       }
     }
   },
@@ -270,6 +275,9 @@
     },
     "rsync_execute_failed": {
       "message": "Failed to start rsync job '{name}'. Check the OMV logs."
+    },
+    "cron_execute_failed": {
+      "message": "Failed to run cron job '{name}'. Check the OMV logs."
     }
   },
   "issues": {

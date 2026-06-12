@@ -12,6 +12,7 @@ from custom_components.omv.button import (
     OMVComposeProjectButton,
     OMVComposeSystemButton,
     OMVContainerRestartButton,
+    OMVCronRunButton,
     OMVRebootButton,
     OMVRsyncRunButton,
     OMVShutdownButton,
@@ -19,6 +20,7 @@ from custom_components.omv.button import (
     async_setup_entry,
     get_expected_button_unique_ids,
 )
+from custom_components.omv.const import CONF_SELECTED_CRON_JOBS
 from custom_components.omv.exceptions import OMVApiError
 
 
@@ -412,4 +414,88 @@ async def test_rsync_run_button_raises_translated_error_on_api_failure(coordinat
 
     assert exc_info.value.translation_key == "rsync_execute_failed"
     assert exc_info.value.translation_placeholders == {"name": "Backup media"}
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_adds_no_cron_buttons_by_default(coordinator, config_entry) -> None:
+    """Test no cron buttons are created when no jobs are selected (opt-in)."""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    assert not any("cron_run" in entity.unique_id for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_adds_cron_buttons_for_selected_jobs(coordinator, config_entry) -> None:
+    """Test cron buttons are created only for jobs selected in the options."""
+    coordinator.hass.config_entries.async_update_entry(
+        config_entry,
+        options={CONF_SELECTED_CRON_JOBS: ["cron-uuid-0001"]},
+    )
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    cron_buttons = [entity for entity in added if "cron_run" in entity.unique_id]
+    assert len(cron_buttons) == 1
+    assert cron_buttons[0].unique_id.endswith("cron_run-cron-uuid-0001")
+    assert cron_buttons[0]._attr_suggested_object_id == "nas_cron_nightly_cleanup_run"
+
+
+def test_get_expected_button_unique_ids_respects_cron_opt_in(
+    coordinator,
+    config_entry,
+) -> None:
+    """Test expected cron button IDs follow the opt-in selection exactly."""
+    default_ids = get_expected_button_unique_ids(config_entry, coordinator)
+    assert not any("cron_run" in unique_id for unique_id in default_ids)
+
+    coordinator.hass.config_entries.async_update_entry(
+        config_entry,
+        options={CONF_SELECTED_CRON_JOBS: ["cron-uuid-0001"]},
+    )
+    selected_ids = get_expected_button_unique_ids(config_entry, coordinator)
+    assert f"{config_entry.entry_id}-cron_run-cron-uuid-0001" in selected_ids
+    assert f"{config_entry.entry_id}-cron_run-cron-uuid-0002" not in selected_ids
+
+
+@pytest.mark.asyncio
+async def test_cron_run_button_calls_cron_execute_and_refresh(coordinator) -> None:
+    """Test the cron run button fires Cron.execute and refreshes."""
+    coordinator.api.async_call = AsyncMock(return_value="/tmp/bgstatusCRON")
+    coordinator.async_request_refresh = AsyncMock()
+    job = next(j for j in coordinator.data["cron"] if j["cron_key"] == "cron-uuid-0001")
+    button = OMVCronRunButton(coordinator, job)
+
+    await button.async_press()
+
+    coordinator.api.async_call.assert_awaited_once_with(
+        "Cron",
+        "execute",
+        {"uuid": "cron-uuid-0001"},
+    )
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cron_run_button_raises_translated_error_on_api_failure(coordinator) -> None:
+    """Test a failing Cron.execute raises a translated HomeAssistantError."""
+    coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("RPC failed"))
+    coordinator.async_request_refresh = AsyncMock()
+    job = next(j for j in coordinator.data["cron"] if j["cron_key"] == "cron-uuid-0001")
+    button = OMVCronRunButton(coordinator, job)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "cron_execute_failed"
+    assert exc_info.value.translation_placeholders == {"name": "Nightly cleanup"}
     coordinator.async_request_refresh.assert_awaited_once()

@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
+    CONF_SELECTED_CRON_JOBS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
     CONF_SELECTED_NETWORK_INTERFACES,
@@ -254,6 +255,27 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("Rsync.execute uuid=%s background file=%s", uuid, response)
         return response
 
+    async def async_execute_cron_job(self, uuid: str) -> Any:
+        """Trigger one user-defined cron job via Cron.execute (fire-and-forget).
+
+        ``Cron.execute`` returns an execBgProc background filename. Cron
+        commands are arbitrary shell commands that may run for a long time,
+        so the background output is intentionally never polled.
+
+        Args:
+            uuid: The cron job uuid from ``coordinator.data["cron"]``.
+
+        Returns:
+            The raw RPC response (the background output filename).
+
+        Raises:
+            OMVApiError: When the Cron RPC rejects the call.
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        response = await self.api.async_call("Cron", "execute", {"uuid": uuid})
+        _LOGGER.debug("Cron.execute uuid=%s background file=%s", uuid, response)
+        return response
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
         try:
@@ -350,6 +372,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "rsync": self._normalize_rsync(
                     await self._fetch_optional("Rsync", "getList", {"start": 0, "limit": -1})
                 ),
+                # Cron.getList requires the 'type' array — omitting it is an RPC error.
+                "cron": self._normalize_cron(
+                    await self._fetch_optional(
+                        "Cron",
+                        "getList",
+                        {"start": 0, "limit": -1, "type": ["userdefined"]},
+                    )
+                ),
                 "upgradedList": upgraded_pkgs,
             }
 
@@ -404,6 +434,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             CONF_SELECTED_COMPOSE_PROJECTS: [],
             CONF_SELECTED_CONTAINERS: [],
             CONF_SELECTED_VMS: [],
+            CONF_SELECTED_CRON_JOBS: [],
         }
 
         for disk in data.get("disk", []):
@@ -496,6 +527,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not value:
                 continue
             inventory[CONF_SELECTED_VMS].append({"value": value, "label": str(vm.get("name") or value)})
+
+        for job in data.get("cron", []):
+            if not isinstance(job, dict):
+                continue
+            value = str(job.get("cron_key") or "")
+            if not value:
+                continue
+            inventory[CONF_SELECTED_CRON_JOBS].append({"value": value, "label": str(job.get("name") or value)})
 
         for key, options in inventory.items():
             unique: dict[str, str] = {}
@@ -627,6 +666,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         filtered["gpu"] = data.get("gpu", {})
         filtered["nut"] = data.get("nut", {})
         filtered["rsync"] = list(data.get("rsync", []))
+        # Cron is intentionally NOT filtered here: the cron selection is an
+        # opt-in for button creation (button.py reads entry.options directly),
+        # not a data filter — the missing-key→select-all semantics of
+        # _selected_values must never apply to it.
+        filtered["cron"] = list(data.get("cron", []))
         filtered["upgradedList"] = list(data.get("upgradedList", []))
         return filtered
 
@@ -1687,6 +1731,46 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "mode": str(record.get("mode") or ""),
                     "srcname": srcname,
                     "destname": destname,
+                    "schedule": schedule,
+                }
+            )
+        return jobs
+
+    def _normalize_cron(self, response: Any) -> list[dict[str, Any]]:
+        """Normalize Cron.getList user-defined job records.
+
+        Args:
+            response: Raw response from Cron.getList (list of job records,
+                or ``[]`` when the RPC fails).
+
+        Returns:
+            List of cron job dicts with a stable ``cron_key`` (the job uuid),
+            a display ``name`` (comment, falling back to a shortened
+            command, falling back to the uuid), ``enabled``, ``command``,
+            ``username`` and the cron ``schedule`` string.
+        """
+        jobs: list[dict[str, Any]] = []
+        for record in self._records_from_response(response):
+            uuid = str(record.get("uuid") or "")
+            if not uuid:
+                continue
+            command = str(record.get("command") or "")
+            name = str(record.get("comment") or "").strip()
+            if not name and command:
+                name = command if len(command) <= 40 else f"{command[:37]}..."
+            if not name:
+                name = uuid
+            schedule = " ".join(
+                str(record.get(field, "*")) for field in ("minute", "hour", "dayofmonth", "month", "dayofweek")
+            )
+            jobs.append(
+                {
+                    "cron_key": uuid,
+                    "uuid": uuid,
+                    "name": name,
+                    "enabled": self._coerce_bool(record.get("enable")),
+                    "command": command,
+                    "username": str(record.get("username") or ""),
                     "schedule": schedule,
                 }
             )

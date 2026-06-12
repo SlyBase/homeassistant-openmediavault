@@ -30,3 +30,5 @@ CONF_SELECTED_ZFS_POOLS = "selected_zfs_pools"
 CONF_SELECTED_CONTAINERS = "selected_containers"
 CONF_SELECTED_COMPOSE_PROJECTS = "selected_compose_projects"
 CONF_SELECTED_VMS = "selected_vms"
+# Opt-in (kein Datenfilter): Cron-Buttons nur für explizit ausgewählte Jobs
+CONF_SELECTED_CRON_JOBS = "selected_cron_jobs"

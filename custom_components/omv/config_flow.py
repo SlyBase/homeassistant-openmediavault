@@ -25,6 +25,7 @@ from .const import (
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
+    CONF_SELECTED_CRON_JOBS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
     CONF_SELECTED_NETWORK_INTERFACES,
@@ -64,6 +65,11 @@ _RESOURCE_FIELDS: tuple[str, ...] = (
     CONF_SELECTED_CONTAINERS,
     CONF_SELECTED_VMS,
 )
+
+# Cron is deliberately NOT a resource field: its selection is an opt-in for
+# button creation (default: none) and must never inherit the select-all
+# default that _default_selection applies to _RESOURCE_FIELDS.
+_OPT_IN_FIELDS: tuple[str, ...] = (CONF_SELECTED_CRON_JOBS,)
 
 
 class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -195,7 +201,7 @@ class OMVOptionsFlow(OptionsFlow):
         """Manage the options flow."""
         if user_input is not None:
             data = dict(user_input)
-            for field in _RESOURCE_FIELDS:
+            for field in (*_RESOURCE_FIELDS, *_OPT_IN_FIELDS):
                 if field not in data and field in self._entry.options:
                     data[field] = list(self._entry.options.get(field, []))
             return self.async_create_entry(data=data)
@@ -274,6 +280,10 @@ class OMVOptionsFlow(OptionsFlow):
                         inventory[CONF_SELECTED_VMS],
                     ),
                 ): self._build_multi_select(inventory[CONF_SELECTED_VMS]),
+                vol.Optional(
+                    CONF_SELECTED_CRON_JOBS,
+                    default=list(self._entry.options.get(CONF_SELECTED_CRON_JOBS, [])),
+                ): self._build_multi_select(inventory[CONF_SELECTED_CRON_JOBS]),
             }
         )
         return self.async_show_form(
@@ -283,7 +293,7 @@ class OMVOptionsFlow(OptionsFlow):
 
     def _get_inventory(self) -> dict[str, list[dict[str, str]]]:
         """Load live inventory and merge it with persisted values."""
-        live_inventory: dict[str, list[dict[str, str]]] = {field: [] for field in _RESOURCE_FIELDS}
+        live_inventory: dict[str, list[dict[str, str]]] = {field: [] for field in (*_RESOURCE_FIELDS, *_OPT_IN_FIELDS)}
 
         coordinator = getattr(self._entry, "runtime_data", None)
         if coordinator is not None:
@@ -299,7 +309,7 @@ class OMVOptionsFlow(OptionsFlow):
                     live_inventory = OMVDataUpdateCoordinator.build_inventory(cached_data)
 
         merged_inventory: dict[str, list[dict[str, str]]] = {}
-        for field in _RESOURCE_FIELDS:
+        for field in (*_RESOURCE_FIELDS, *_OPT_IN_FIELDS):
             persisted_values = self._entry.options.get(field, [])
             persisted_options = [{"value": str(value), "label": str(value)} for value in persisted_values]
             merged_inventory[field] = self._merge_inventory_options(

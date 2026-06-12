@@ -174,6 +174,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
             },
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -278,6 +279,7 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
             ("TempMon", "getSensorsList"): {"data": [], "total": 0},
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -793,6 +795,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -837,6 +840,7 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1184,6 +1188,7 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
             },
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1254,6 +1259,7 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
             ],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1523,6 +1529,7 @@ async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -1973,6 +1980,7 @@ async def test_tempmon_sensors_normalized(hass, config_entry) -> None:
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2022,6 +2030,7 @@ async def test_tempmon_absent_when_plugin_not_installed(hass, config_entry) -> N
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2071,6 +2080,7 @@ async def test_tempmon_script_error_returns_none_temperature(hass, config_entry)
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2127,6 +2137,7 @@ async def test_kvm_vms_normalized(hass, config_entry) -> None:
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2183,6 +2194,7 @@ async def test_kvm_absent_when_plugin_not_installed(hass, config_entry) -> None:
             ("zfs", "listPools"): [],
             ("Nut", "getStats"): "Service disabled",
             ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
         }
         return responses[(service, method)]
 
@@ -2489,3 +2501,102 @@ async def test_filter_data_passes_rsync_through(hass, config_entry) -> None:
     filtered = coordinator.filter_data_by_selection({"rsync": jobs}, {})
 
     assert filtered["rsync"] == jobs
+
+
+@pytest.mark.asyncio
+async def test_normalize_cron_builds_records_with_name_fallbacks(hass, config_entry) -> None:
+    """Cron records must carry a stable key, name fallbacks and a schedule string."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    long_command = "/usr/local/bin/very-long-maintenance-script.sh --all"
+    jobs = coordinator._normalize_cron(
+        [
+            {
+                "uuid": "uuid-with-comment",
+                "enable": True,
+                "comment": "Nightly cleanup",
+                "command": "/usr/local/bin/cleanup.sh",
+                "username": "root",
+                "minute": "0",
+                "hour": "2",
+                "dayofmonth": "*",
+                "month": "*",
+                "dayofweek": "*",
+            },
+            {
+                "uuid": "uuid-long-command",
+                "enable": False,
+                "comment": "",
+                "command": long_command,
+                "username": "root",
+                "minute": "15",
+                "hour": "5",
+                "dayofmonth": "*",
+                "month": "*",
+                "dayofweek": "6",
+            },
+            {
+                "uuid": "uuid-no-comment-no-command",
+                "enable": True,
+                "comment": "",
+                "command": "",
+            },
+            {"uuid": "", "comment": "no uuid -> dropped"},
+        ]
+    )
+
+    assert len(jobs) == 3
+    assert jobs[0]["cron_key"] == "uuid-with-comment"
+    assert jobs[0]["name"] == "Nightly cleanup"
+    assert jobs[0]["enabled"] is True
+    assert jobs[0]["command"] == "/usr/local/bin/cleanup.sh"
+    assert jobs[0]["username"] == "root"
+    assert jobs[0]["schedule"] == "0 2 * * *"
+    assert jobs[1]["name"] == f"{long_command[:37]}..."
+    assert jobs[1]["enabled"] is False
+    assert jobs[1]["schedule"] == "15 5 * * 6"
+    assert jobs[2]["name"] == "uuid-no-comment-no-command"
+    assert jobs[2]["schedule"] == "* * * * *"
+
+
+@pytest.mark.asyncio
+async def test_normalize_cron_handles_absent_rpc(hass, config_entry) -> None:
+    """An absent Cron RPC ([] response) must yield an empty job list."""
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    assert coordinator._normalize_cron([]) == []
+    assert coordinator._normalize_cron(None) == []
+
+
+@pytest.mark.asyncio
+async def test_async_execute_cron_job_calls_cron_execute(hass, config_entry) -> None:
+    """The cron job helper must call Cron.execute with the job uuid."""
+    api = Mock()
+    api.async_call = AsyncMock(return_value="/tmp/bgstatusCRON")
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    result = await coordinator.async_execute_cron_job("cron-uuid-0001")
+
+    api.async_call.assert_awaited_once_with("Cron", "execute", {"uuid": "cron-uuid-0001"})
+    assert result == "/tmp/bgstatusCRON"
+
+
+@pytest.mark.asyncio
+async def test_filter_data_passes_cron_through(hass, config_entry) -> None:
+    """filter_data_by_selection must pass cron jobs through unfiltered.
+
+    The cron selection is an opt-in for button creation, not a data filter —
+    even with other selections present, all jobs must survive.
+    """
+    api = Mock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    jobs = [
+        {"cron_key": "cron-uuid-0001", "name": "Nightly cleanup", "enabled": True},
+        {"cron_key": "cron-uuid-0002", "name": "Weekly task", "enabled": False},
+    ]
+    filtered = coordinator.filter_data_by_selection({"cron": jobs}, {"selected_cron_jobs": ["cron-uuid-0001"]})
+
+    assert filtered["cron"] == jobs

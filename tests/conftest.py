@@ -479,6 +479,26 @@ def sample_data() -> dict[str, Any]:
                 "schedule": "30 4 * * 0",
             },
         ],
+        "cron": [
+            {
+                "cron_key": "cron-uuid-0001",
+                "uuid": "cron-uuid-0001",
+                "name": "Nightly cleanup",
+                "enabled": True,
+                "command": "/usr/local/bin/cleanup.sh",
+                "username": "root",
+                "schedule": "0 2 * * *",
+            },
+            {
+                "cron_key": "cron-uuid-0002",
+                "uuid": "cron-uuid-0002",
+                "name": "/usr/local/bin/very-long-maintenance-...",
+                "enabled": False,
+                "command": "/usr/local/bin/very-long-maintenance-script.sh --all",
+                "username": "root",
+                "schedule": "15 5 * * 6",
+            },
+        ],
         "upgradedList": [],
         "zfs": [
             {

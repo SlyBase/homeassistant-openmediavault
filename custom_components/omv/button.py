@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_SELECTED_CRON_JOBS, DOMAIN
 from .coordinator import OMVDataUpdateCoordinator
 from .entity import (
     OMVEntity,
@@ -111,6 +111,15 @@ def get_expected_button_unique_ids(
         rsync_key = str(job.get("rsync_key") or "")
         if rsync_key:
             unique_ids.add(f"{entry.entry_id}-rsync_run-{rsync_key}")
+    # Cron buttons are opt-in: only explicitly selected jobs get one. A
+    # missing/empty option means none — never select-all.
+    selected_cron = set(entry.options.get(CONF_SELECTED_CRON_JOBS, []))
+    for job in coordinator.data.get("cron", []):
+        if not isinstance(job, dict):
+            continue
+        cron_key = str(job.get("cron_key") or "")
+        if cron_key and cron_key in selected_cron:
+            unique_ids.add(f"{entry.entry_id}-cron_run-{cron_key}")
     return unique_ids
 
 
@@ -155,6 +164,14 @@ async def async_setup_entry(
         if not isinstance(job, dict) or not str(job.get("rsync_key") or ""):
             continue
         entities.append(OMVRsyncRunButton(coordinator, job))
+
+    selected_cron = set(entry.options.get(CONF_SELECTED_CRON_JOBS, []))
+    for job in coordinator.data.get("cron", []):
+        if not isinstance(job, dict):
+            continue
+        if str(job.get("cron_key") or "") not in selected_cron:
+            continue
+        entities.append(OMVCronRunButton(coordinator, job))
 
     async_add_entities(entities)
 
@@ -421,6 +438,48 @@ class OMVRsyncRunButton(OMVEntity, ButtonEntity):
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="rsync_execute_failed",
+                translation_placeholders={"name": self._job_name},
+            ) from err
+        finally:
+            await self.coordinator.async_request_refresh()
+
+
+class OMVCronRunButton(OMVEntity, ButtonEntity):
+    """Button to run one user-defined OMV cron job (opt-in via options)."""
+
+    _attr_translation_key = "cron_run"
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, job: dict[str, Any]) -> None:
+        """Initialize the cron run button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            job: The normalized cron job record.
+        """
+        self._cron_key = str(job.get("cron_key") or "")
+        self._job_name = str(job.get("name") or self._cron_key)
+        self._attr_translation_placeholders = {"name": self._job_name}
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "cron",
+            self._job_name,
+            "run",
+        )
+        super().__init__(coordinator, f"cron_run-{self._cron_key}")
+
+    async def async_press(self) -> None:
+        """Run this cron job via Cron.execute (fire-and-forget).
+
+        Raises:
+            HomeAssistantError: When the Cron.execute RPC call fails.
+        """
+        try:
+            await self.coordinator.async_execute_cron_job(self._cron_key)
+        except (OMVApiError, OMVConnectionError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cron_execute_failed",
                 translation_placeholders={"name": self._job_name},
             ) from err
         finally:

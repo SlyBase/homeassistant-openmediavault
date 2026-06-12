@@ -32,9 +32,12 @@
           "selected_zfs_pools": "Valda ZFS-pooler",
           "selected_compose_projects": "Valda Compose-projekt",
           "selected_containers": "Valda containrar",
-          "selected_vms": "Valda VM:ar"
+          "selected_vms": "Valda VM:ar",
+          "selected_cron_jobs": "Cron-jobb med utlösarknapp"
         },
-        "data_description": {}
+        "data_description": {
+          "selected_cron_jobs": "Skapar en knapp för varje valt användardefinierat cron-jobb. Varning: när knappen trycks körs jobbets godtyckliga skalkommando på NAS:en. Standard: inga."
+        }
       }
     }
   },
@@ -237,6 +240,9 @@
       },
       "rsync_run": {
         "name": "Kör rsync {name}"
+      },
+      "cron_run": {
+        "name": "Kör cron {name}"
       }
     }
   }

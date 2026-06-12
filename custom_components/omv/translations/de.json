@@ -33,10 +33,12 @@
           "selected_zfs_pools": "Ausgewählte ZFS-Pools",
           "selected_compose_projects": "Ausgewählte Compose-Projekte",
           "selected_containers": "Ausgewählte Container",
-          "selected_vms": "Ausgewählte VMs"
+          "selected_vms": "Ausgewählte VMs",
+          "selected_cron_jobs": "Cron-Jobs mit Auslöse-Button"
         },
         "data_description": {
-          "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen."
+          "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen.",
+          "selected_cron_jobs": "Erstellt einen Button für jeden ausgewählten benutzerdefinierten Cron-Job. Achtung: Das Drücken eines solchen Buttons führt das beliebige Shell-Kommando des Jobs auf dem NAS aus. Standard: keine."
         }
       }
     }
@@ -249,6 +251,9 @@
       },
       "rsync_run": {
         "name": "rsync {name} starten"
+      },
+      "cron_run": {
+        "name": "Cron {name} ausführen"
       }
     }
   },
@@ -267,6 +272,9 @@
     },
     "rsync_execute_failed": {
       "message": "Rsync-Auftrag '{name}' konnte nicht gestartet werden. Prüfe die OMV-Logs."
+    },
+    "cron_execute_failed": {
+      "message": "Cron-Job '{name}' konnte nicht ausgeführt werden. Prüfe die OMV-Logs."
     }
   },
   "issues": {

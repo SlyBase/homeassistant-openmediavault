@@ -21,6 +21,7 @@ from custom_components.omv.const import (
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
+    CONF_SELECTED_CRON_JOBS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
     CONF_SELECTED_NETWORK_INTERFACES,
@@ -355,3 +356,87 @@ async def test_options_flow_scan_interval_saves_correctly(hass, config_entry) ->
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_SCAN_INTERVAL] == 300
+
+
+@pytest.mark.asyncio
+async def test_options_flow_cron_jobs_default_to_none(hass, config_entry) -> None:
+    """Test the cron multiselect defaults to no selection (opt-in, never select-all)."""
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {
+            "get_live_inventory": lambda self=None: {
+                CONF_SELECTED_DISKS: [{"value": "sda", "label": "sda"}],
+                CONF_SELECTED_FILESYSTEMS: [],
+                CONF_SELECTED_SERVICES: [],
+                CONF_SELECTED_NETWORK_INTERFACES: [],
+                CONF_SELECTED_RAIDS: [],
+                CONF_SELECTED_ZFS_POOLS: [],
+                CONF_SELECTED_COMPOSE_PROJECTS: [],
+                CONF_SELECTED_CONTAINERS: [],
+                CONF_SELECTED_CRON_JOBS: [
+                    {"value": "cron-uuid-0001", "label": "Nightly cleanup"},
+                    {"value": "cron-uuid-0002", "label": "Weekly task"},
+                ],
+            }
+        },
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+
+    # Resource fields default to select-all on fresh entries; cron must not.
+    assert defaults[CONF_SELECTED_DISKS] == ["sda"]
+    assert defaults[CONF_SELECTED_CRON_JOBS] == []
+
+    cron_marker = _field_marker(result["data_schema"], CONF_SELECTED_CRON_JOBS)
+    cron_selector = result["data_schema"].schema[cron_marker]
+    assert _selector_values(cron_selector) == ["cron-uuid-0001", "cron-uuid-0002"]
+
+
+@pytest.mark.asyncio
+async def test_options_flow_cron_jobs_round_trip_and_persist(hass, config_entry) -> None:
+    """Test a persisted cron selection is the default and survives omission."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        data=config_entry.data,
+        options={
+            CONF_SELECTED_DISKS: ["sda"],
+            CONF_SELECTED_CRON_JOBS: ["cron-uuid-0001"],
+        },
+    )
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {
+            "get_live_inventory": lambda self=None: {
+                CONF_SELECTED_DISKS: [{"value": "sda", "label": "sda"}],
+                CONF_SELECTED_FILESYSTEMS: [],
+                CONF_SELECTED_SERVICES: [],
+                CONF_SELECTED_NETWORK_INTERFACES: [],
+                CONF_SELECTED_RAIDS: [],
+                CONF_SELECTED_ZFS_POOLS: [],
+                CONF_SELECTED_COMPOSE_PROJECTS: [],
+                CONF_SELECTED_CONTAINERS: [],
+                CONF_SELECTED_CRON_JOBS: [
+                    {"value": "cron-uuid-0001", "label": "Nightly cleanup"},
+                ],
+            }
+        },
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+    assert defaults[CONF_SELECTED_CRON_JOBS] == ["cron-uuid-0001"]
+
+    # Submitting without the field must not clear the persisted selection.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_SCAN_INTERVAL: 120},
+    )
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_SELECTED_CRON_JOBS] == ["cron-uuid-0001"]

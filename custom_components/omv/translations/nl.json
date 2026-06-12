@@ -32,9 +32,12 @@
           "selected_zfs_pools": "Geselecteerde ZFS-pools",
           "selected_compose_projects": "Geselecteerde Compose-projecten",
           "selected_containers": "Geselecteerde containers",
-          "selected_vms": "Geselecteerde VM's"
+          "selected_vms": "Geselecteerde VM's",
+          "selected_cron_jobs": "Cron-taken met triggerknop"
         },
-        "data_description": {}
+        "data_description": {
+          "selected_cron_jobs": "Maakt een knop voor elke geselecteerde door de gebruiker gedefinieerde cron-taak. Waarschuwing: het indrukken van zo'n knop voert het willekeurige shell-commando van de taak uit op de NAS. Standaard: geen."
+        }
       }
     }
   },
@@ -237,6 +240,9 @@
       },
       "rsync_run": {
         "name": "rsync {name} uitvoeren"
+      },
+      "cron_run": {
+        "name": "Cron {name} uitvoeren"
       }
     }
   }

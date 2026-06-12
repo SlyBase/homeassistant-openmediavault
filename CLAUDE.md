@@ -81,6 +81,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | `tempmon` | Temperature sensors from `openmediavault-tempmon` plugin (empty list when plugin absent) |
 | `nut` | UPS metrics parsed from the `Nut.getStats` plain-string `upsc` output (`battery_charge`, `battery_runtime`, `load`, `status`, `on_battery`, `model`, `raw`; empty dict when plugin absent or NUT service disabled) |
 | `rsync` | Rsync jobs from `Rsync.getList` (`rsync_key`=uuid, `name` from comment with "src → dest" fallback, `enabled`, `type`, `mode`, `srcname`, `destname`, `schedule`; always passed through unfiltered) |
+| `cron` | User-defined cron jobs from `Cron.getList` with required `type: ["userdefined"]` (`cron_key`=uuid, `name` from comment with shortened-command fallback, `enabled`, `command`, `username`, `schedule`; always passed through unfiltered — the `selected_cron_jobs` option is an opt-in for button creation read directly from `entry.options` in button.py, NOT a data filter) |
 
 ### API Client Gotchas
 
