@@ -4,6 +4,8 @@
 
 ### Added
 
+- New GitHub Actions workflow `dependabot-auto-merge.yml` that automatically approves and squash-merges Dependabot PRs for patch and minor version bumps; major version bumps are left open for manual review.
+
 - New diagnostic sensors `Load average (1 min)`, `Load average (5 min)`, `Load average (15 min)` on the system device, sourced from the existing `loadAverage` data already collected by the coordinator.
 - New diagnostic binary sensors `Bad sectors` and `CRC errors` per disk, derived from the existing `Reallocated_Sector_Ct`/`UDMA_CRC_Error_Count` SMART attributes. Created only for SMART-eligible disks; stay unknown when the underlying SMART attribute is unavailable.
 - Live RPC compatibility probe re-run against OMV8 8.3.0-1: confirmed `compose.getContainerList` field shape and documented that `Kvm.getVmList` is unavailable when the `openmediavault-kvm` plugin is not installed (`RPC service 'Kvm' not found`). Added regression tests covering both findings to `test_live_compatibility_probe.py`.
