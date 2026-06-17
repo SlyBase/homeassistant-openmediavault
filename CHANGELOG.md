@@ -10,6 +10,7 @@
 ### Fixed
 
 - SMART polling no longer keeps disks spinning indefinitely: the per-cycle `Smart.getList`/`getAttributes` calls (which wake disks from standby) now run only on the configurable SMART interval instead of every scan interval, restoring OMV power-saving/spin-down behaviour (#41).
+- ZFS pool entities (status, scrub button, scrub-active, last-scrub/dataset/snapshot counts) no longer collide on duplicate unique IDs when a pool spans multiple disks; exactly one entity is now created per pool.
 
 ## [2.5.0] - 2026-06-17
 

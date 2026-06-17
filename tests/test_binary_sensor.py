@@ -246,3 +246,22 @@ async def test_zfs_pool_scrub_active_setup_and_expected_ids(coordinator, config_
     assert any(entity.unique_id.endswith("zfs_pool_scrub_active-tank") for entity in added)
     entry_id = coordinator.config_entry.entry_id
     assert f"{entry_id}-zfs_pool_scrub_active-tank" in get_expected_binary_sensor_unique_ids(coordinator)
+
+
+@pytest.mark.asyncio
+async def test_zfs_scrub_active_dedupes_across_disks(coordinator, config_entry) -> None:
+    """A pool spanning multiple disks gets exactly one scrub-active sensor."""
+    pool_a = coordinator.data["zfs"][0]
+    pool_b = {**pool_a, "disk_key": "sdb"}  # same name "tank", different disk
+    coordinator.data = {**coordinator.data, "zfs": [pool_a, pool_b]}
+
+    added: list = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    unique_ids = [entity.unique_id for entity in added]
+    assert len(unique_ids) == len(set(unique_ids))
+    assert sum(uid.endswith("zfs_pool_scrub_active-tank") for uid in unique_ids) == 1

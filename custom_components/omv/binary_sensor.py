@@ -162,12 +162,16 @@ async def async_setup_entry(
             continue
         entities.append(OMVBinarySensor(coordinator, RSYNC_JOB_ENABLED_BINARY_SENSOR, item_key=item_key))
 
+    # A pool spanning multiple disks appears once per disk in the zfs data;
+    # de-duplicate by pool name so only one scrub-active sensor is created.
+    seen_pools: set[str] = set()
     for pool in coordinator.data.get("zfs", []):
         if not isinstance(pool, dict):
             continue
         item_key = str(pool.get("name") or "")
-        if not item_key:
+        if not item_key or item_key in seen_pools:
             continue
+        seen_pools.add(item_key)
         entities.append(
             OMVBinarySensor(
                 coordinator,
