@@ -2,6 +2,10 @@
 
 ## [2.5.0] - 2026-06-17
 
+### Fixed
+
+- Translation strings: removed single quotes around ICU placeholders (e.g. `'{name}'` → `{name}`) so HA's `hassfest` validator no longer rejects `strings.json` and locale files.
+
 ### Added
 
 - New GitHub Actions workflow `dependabot-auto-merge.yml` that automatically approves and squash-merges Dependabot PRs for patch and minor version bumps; major version bumps are left open for manual review.

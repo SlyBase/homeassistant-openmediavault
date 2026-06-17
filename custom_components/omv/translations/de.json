@@ -289,22 +289,22 @@
       "message": "Konfigurationsänderungen konnten nicht angewendet werden. Bitte die OMV-Logs prüfen."
     },
     "container_command_failed": {
-      "message": "Container '{resource}' konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
+      "message": "Container {resource} konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
     },
     "vm_command_failed": {
-      "message": "VM '{resource}' konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
+      "message": "VM {resource} konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
     },
     "rsync_execute_failed": {
-      "message": "Rsync-Auftrag '{name}' konnte nicht gestartet werden. Prüfe die OMV-Logs."
+      "message": "Rsync-Auftrag {name} konnte nicht gestartet werden. Prüfe die OMV-Logs."
     },
     "cron_execute_failed": {
-      "message": "Cron-Job '{name}' konnte nicht ausgeführt werden. Prüfe die OMV-Logs."
+      "message": "Cron-Job {name} konnte nicht ausgeführt werden. Prüfe die OMV-Logs."
     },
     "zfs_scrub_failed": {
-      "message": "Scrub für Pool '{name}' konnte nicht gestartet werden. Prüfe die OMV-Logs."
+      "message": "Scrub für Pool {name} konnte nicht gestartet werden. Prüfe die OMV-Logs."
     },
     "compose_command_failed": {
-      "message": "Befehl '{command}' für Compose-Projekt '{resource}' fehlgeschlagen. Prüfe die OMV-Logs."
+      "message": "Befehl {command} für Compose-Projekt {resource} fehlgeschlagen. Prüfe die OMV-Logs."
     },
     "service_entry_not_found": {
       "message": "Kein geladener OpenMediaVault-Konfigurationseintrag passt zu diesem Service-Aufruf."
@@ -313,13 +313,13 @@
       "message": "Mehrere OpenMediaVault-Konfigurationseinträge sind geladen. Gib 'config_entry_id' an."
     },
     "service_project_not_found": {
-      "message": "Compose-Projekt '{project}' wurde auf dem OMV-Host nicht gefunden."
+      "message": "Compose-Projekt {project} wurde auf dem OMV-Host nicht gefunden."
     },
     "service_job_not_found": {
-      "message": "Rsync-Job '{job}' wurde auf dem OMV-Host nicht gefunden."
+      "message": "Rsync-Job {job} wurde auf dem OMV-Host nicht gefunden."
     },
     "wol_failed": {
-      "message": "Wake-on-LAN-Paket für '{interface}' konnte nicht gesendet werden."
+      "message": "Wake-on-LAN-Paket für {interface} konnte nicht gesendet werden."
     }
   },
   "issues": {
