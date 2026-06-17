@@ -20,6 +20,8 @@ from custom_components.omv.const import (
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_VMS,
     CONF_SELECTED_ZFS_POOLS,
+    CONF_SMART_INTERVAL,
+    CONF_SMART_POLLING_DISABLED,
     DOMAIN,
 )
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
@@ -1649,7 +1651,7 @@ async def test_smart_skips_getattributes_for_hotpluggable_disk(hass, config_entr
     )
     coordinator.omv_version = 7
 
-    await coordinator._async_get_smart(disks)
+    await coordinator._async_fetch_smart(disks)
 
     # getAttributes must NOT have been called for the hotpluggable disk
     for call in api.async_call.await_args_list:
@@ -1691,7 +1693,7 @@ async def test_smart_does_not_skip_getattributes_for_non_hotpluggable_disk(hass,
     api.async_call = AsyncMock(side_effect=async_call)
     coordinator.omv_version = 8
 
-    await coordinator._async_get_smart(disks)
+    await coordinator._async_fetch_smart(disks)
 
     assert any(
         len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"
@@ -1733,17 +1735,106 @@ async def test_smart_skips_getattributes_after_failure(hass, config_entry) -> No
     coordinator.omv_version = 8
 
     # First poll: getAttributes fails, device added to _smart_no_attributes
-    await coordinator._async_get_smart(disks)
+    await coordinator._async_fetch_smart(disks)
     assert "/dev/sda" in coordinator._smart_no_attributes
 
     api.async_call.reset_mock()
 
     # Second poll: getAttributes must NOT be called again
-    await coordinator._async_get_smart(disks)
+    await coordinator._async_fetch_smart(disks)
     for call in api.async_call.await_args_list:
         assert not (len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"), (
             "getAttributes was called again after a permanent failure"
         )
+
+
+@pytest.mark.asyncio
+async def test_smart_polling_disabled_skips_all_rpcs(hass, config_entry) -> None:
+    """With SMART polling disabled no Smart RPC runs and disks keep no SMART data (#41)."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_POLLING_DISABLED: True},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock(return_value={"data": []})
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+
+    disks = [
+        {
+            "disk_key": "sda",
+            "devicename": "sda",
+            "canonicaldevicefile": "/dev/sda",
+            "devicefile": "/dev/sda",
+            "hotpluggable": False,
+            "overallstatus": "unknown",
+        }
+    ]
+
+    records = await coordinator._async_collect_smart(disks)
+
+    assert records == []
+    assert "temperature" not in disks[0]
+    for call in api.async_call.await_args_list:
+        assert call.args[0] != "Smart", "no SMART RPC should run when polling is disabled"
+
+
+@pytest.mark.asyncio
+async def test_smart_interval_caches_between_polls(hass, config_entry) -> None:
+    """SMART RPCs run once per interval; cached data is re-applied to disks in between (#41)."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_INTERVAL: 3600},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        if method == "getListBg":
+            return {"data": [{"devicename": "sda", "temperature": 35, "overallstatus": "PASSED"}]}
+        if method == "getAttributes":
+            return {"data": [{"attrname": "Raw_Read_Error_Rate", "rawvalue": "0"}]}
+        return []
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+
+    def make_disks() -> list[dict]:
+        return [
+            {
+                "disk_key": "sda",
+                "devicename": "sda",
+                "canonicaldevicefile": "/dev/sda",
+                "devicefile": "/dev/sda",
+                "hotpluggable": False,
+                "overallstatus": "unknown",
+            }
+        ]
+
+    # First poll: live fetch populates the cache and the disk.
+    disks1 = make_disks()
+    await coordinator._async_collect_smart(disks1)
+    smart_calls_first = sum(1 for c in api.async_call.await_args_list if c.args[0] == "Smart")
+    assert smart_calls_first > 0
+    assert disks1[0]["temperature"] == 35
+
+    api.async_call.reset_mock()
+
+    # Second poll within the interval: no SMART RPC, cache still applied to fresh disks.
+    disks2 = make_disks()
+    await coordinator._async_collect_smart(disks2)
+    smart_calls_second = sum(1 for c in api.async_call.await_args_list if c.args[0] == "Smart")
+    assert smart_calls_second == 0
+    assert disks2[0]["temperature"] == 35
+    assert disks2[0]["smart_attributes"] == {"Raw_Read_Error_Rate": "0"}
 
 
 @pytest.mark.asyncio

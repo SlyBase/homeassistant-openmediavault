@@ -73,8 +73,8 @@ The config flow asks for:
 After setup, the options flow lets you adjust:
 
 - The scan interval
-- Whether SMART polling should be disabled
-- Virtual passthrough mode for hypervisor-backed setups (e.g. Proxmox) — disables SMART polling and temperature entities automatically
+- The SMART polling interval — how often SMART data (status, attributes, disk temperature) is read. Reading SMART wakes disks from standby, so a larger interval lets disks spin down for power saving. Defaults to the scan interval.
+- Whether SMART polling is disabled entirely — disks are then never woken by the integration, but SMART status, SMART attributes, and disk temperature entities become unavailable
 - Which disks, filesystems, network interfaces, services, RAIDs, ZFS pools, Compose projects, and containers are monitored — resources not selected simply disappear from Home Assistant
 
 ## Entities

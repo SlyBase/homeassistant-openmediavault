@@ -654,3 +654,22 @@ def test_get_expected_button_unique_ids_includes_standby_and_wol(coordinator, co
     coordinator.data["network"][0]["wol"] = True
     unique_ids = get_expected_button_unique_ids(config_entry, coordinator)
     assert f"{config_entry.entry_id}-wol-net-1" in unique_ids
+
+
+@pytest.mark.asyncio
+async def test_zfs_scrub_button_dedupes_across_disks(coordinator, config_entry) -> None:
+    """A pool spanning multiple disks gets exactly one scrub button."""
+    pool_a = coordinator.data["zfs"][0]
+    pool_b = {**pool_a, "disk_key": "sdb"}  # same name "tank", different disk
+    coordinator.data = {**coordinator.data, "zfs": [pool_a, pool_b]}
+
+    added: list = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    unique_ids = [entity.unique_id for entity in added]
+    assert len(unique_ids) == len(set(unique_ids))
+    assert sum(uid.endswith("zfs_scrub-tank") for uid in unique_ids) == 1

@@ -513,12 +513,17 @@ async def async_setup_entry(
         items = coordinator.data.get(description.data_path, [])
         if not isinstance(items, list):
             continue
+        # A ZFS pool spanning multiple disks yields one record per disk in
+        # coordinator.data["zfs"], all sharing the same pool name. De-duplicate
+        # by item_key so exactly one entity is created per pool (first wins).
+        seen_keys: set[str] = set()
         for item in items:
             if not isinstance(item, dict):
                 continue
             item_key = str(item.get(description.collection_key or "") or "")
-            if not item_key or not _should_add_description(description, item):
+            if not item_key or item_key in seen_keys or not _should_add_description(description, item):
                 continue
+            seen_keys.add(item_key)
             entities.append(
                 OMVSensor(
                     coordinator,

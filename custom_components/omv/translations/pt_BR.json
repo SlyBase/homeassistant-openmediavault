@@ -24,6 +24,8 @@
       "init": {
         "data": {
           "scan_interval": "Intervalo de varredura (segundos)",
+          "smart_interval": "Intervalo de consulta SMART (segundos)",
+          "smart_polling_disabled": "Desativar consulta SMART",
           "selected_disks": "Discos selecionados",
           "selected_filesystems": "Sistemas de arquivos selecionados",
           "selected_services": "Serviços selecionados",
@@ -36,6 +38,8 @@
           "selected_cron_jobs": "Tarefas cron com botão de acionamento"
         },
         "data_description": {
+          "smart_interval": "Com que frequência os dados SMART (status, atributos, temperatura do disco) são lidos. Ler SMART desperta os discos do modo de espera, portanto um valor maior permite que os discos desliguem para economizar energia. Padrão: o intervalo de varredura.",
+          "smart_polling_disabled": "Quando ativado, o SMART nunca é consultado. Os discos não são despertados por esta integração, mas as entidades de status SMART, atributos SMART e temperatura do disco ficam indisponíveis.",
           "selected_cron_jobs": "Cria um botão para cada tarefa cron definida pelo usuário selecionada. Aviso: pressionar esse botão executa o comando shell arbitrário da tarefa no NAS. Padrão: nenhuma."
         }
       }

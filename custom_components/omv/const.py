@@ -21,6 +21,10 @@ DEFAULT_VERIFY_SSL = True
 # Optionsschlüssel für auswählbare Ressourcen
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_REBOOT_REPAIR_DISABLED = "reboot_repair_disabled"
+# SMART polling controls (Issue #41) — decouple SMART from the scan interval so
+# disks can spin down. CONF_SMART_INTERVAL defaults to the scan interval.
+CONF_SMART_INTERVAL = "smart_interval"
+CONF_SMART_POLLING_DISABLED = "smart_polling_disabled"
 CONF_SELECTED_DISKS = "selected_disks"
 CONF_SELECTED_FILESYSTEMS = "selected_filesystems"
 CONF_SELECTED_SERVICES = "selected_services"

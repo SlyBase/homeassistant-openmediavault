@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.5.1] - 2026-06-17
+
+### Added
+
+- New options-flow setting `SMART polling interval (seconds)` that decouples SMART reads from the scan interval (defaults to the scan interval). SMART records and attributes are cached between polls and re-applied to disks every cycle, so SMART/temperature entities stay populated while disks can spin down for power saving (#41).
+- New options-flow toggle `Disable SMART polling` that stops all SMART RPCs entirely; disks are then never woken by the integration, at the cost of SMART status/attribute/disk-temperature entities becoming unavailable (#41).
+
+### Fixed
+
+- SMART polling no longer keeps disks spinning indefinitely: the per-cycle `Smart.getList`/`getAttributes` calls (which wake disks from standby) now run only on the configurable SMART interval instead of every scan interval, restoring OMV power-saving/spin-down behaviour (#41).
+- ZFS pool entities (status, scrub button, scrub-active, last-scrub/dataset/snapshot counts) no longer collide on duplicate unique IDs when a pool spans multiple disks; exactly one entity is now created per pool.
+
 ## [2.5.0] - 2026-06-17
 
 ### Fixed

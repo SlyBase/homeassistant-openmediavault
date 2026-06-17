@@ -188,9 +188,16 @@ async def async_setup_entry(
             continue
         entities.append(OMVCronRunButton(coordinator, job))
 
+    # A pool spanning multiple disks appears once per disk in the zfs data;
+    # de-duplicate by pool name so only one scrub button is created.
+    seen_pools: set[str] = set()
     for pool in coordinator.data.get("zfs", []):
-        if not isinstance(pool, dict) or not str(pool.get("name") or ""):
+        if not isinstance(pool, dict):
             continue
+        pool_name = str(pool.get("name") or "")
+        if not pool_name or pool_name in seen_pools:
+            continue
+        seen_pools.add(pool_name)
         entities.append(OMVZfsScrubButton(coordinator, pool))
 
     for iface in coordinator.data.get("network", []):

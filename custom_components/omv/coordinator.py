@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -15,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_SCAN_INTERVAL,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
     CONF_SELECTED_CRON_JOBS,
@@ -25,6 +27,8 @@ from .const import (
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_VMS,
     CONF_SELECTED_ZFS_POOLS,
+    CONF_SMART_INTERVAL,
+    CONF_SMART_POLLING_DISABLED,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -100,6 +104,13 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (e.g. NVMe or other non-ATA disks that return HTTP 500). Populated on
         # first failure; skipped on all subsequent polls to avoid log spam.
         self._smart_no_attributes: set[str] = set()
+        # SMART cache (Issue #41): SMART RPCs wake disks from standby, so they
+        # run only every CONF_SMART_INTERVAL seconds. The cached records and
+        # per-canonical attributes are re-applied to freshly enumerated disks on
+        # every cycle so SMART/temperature entities stay populated in between.
+        self._smart_records_cache: list[dict[str, Any]] = []
+        self._smart_attributes_cache: dict[str, dict[str, Any]] = {}
+        self._smart_last_poll: float | None = None
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""
@@ -381,7 +392,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     pool["dataset_count"] = dataset_counts.get(pool_name, 0)
                     pool["snapshot_count"] = snapshot_counts.get(pool_name, 0)
 
-            smart_records = await self._async_get_smart(disks)
+            smart_records = await self._async_collect_smart(disks)
 
             gpu = await self._async_get_gpu_info()
 
@@ -737,8 +748,69 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return hwinfo
 
-    async def _async_get_smart(self, disks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Fetch SMART information and merge relevant fields into disks."""
+    async def _async_collect_smart(self, disks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Refresh SMART data on its own interval and apply it to the disks.
+
+        SMART RPCs run ``smartctl``, which wakes disks from standby; polling them
+        every scan interval prevents OMV's disk spin-down (Issue #41). They are
+        therefore fetched at most once per ``CONF_SMART_INTERVAL`` seconds and
+        cached, while the cached records/attributes are re-applied to the freshly
+        enumerated disks on every cycle so SMART and temperature entities stay
+        populated in between. When ``CONF_SMART_POLLING_DISABLED`` is set, no
+        SMART RPC is ever issued and the disks keep no SMART/temperature fields.
+
+        Args:
+            disks: Normalized disk records for the current cycle (mutated in place).
+
+        Returns:
+            The cached SMART records (empty list when polling is disabled).
+        """
+        options = self.config_entry.options
+        if options.get(CONF_SMART_POLLING_DISABLED, False):
+            self._smart_records_cache = []
+            self._smart_attributes_cache = {}
+            _LOGGER.debug("SMART polling disabled via options; skipping fetch")
+            return []
+
+        interval = options.get(
+            CONF_SMART_INTERVAL,
+            options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        now = time.monotonic()
+        if self._smart_last_poll is None or (now - self._smart_last_poll) >= interval:
+            (
+                self._smart_records_cache,
+                self._smart_attributes_cache,
+            ) = await self._async_fetch_smart(disks)
+            self._smart_last_poll = now
+            _LOGGER.debug("SMART data refreshed (interval=%ss)", interval)
+        else:
+            _LOGGER.debug(
+                "Using cached SMART data (%.0fs since last poll, interval=%ss)",
+                now - self._smart_last_poll,
+                interval,
+            )
+
+        self._apply_smart_to_disks(disks, self._smart_records_cache, self._smart_attributes_cache)
+        return self._smart_records_cache
+
+    async def _async_fetch_smart(
+        self, disks: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+        """Fetch SMART records and per-disk attributes via RPC.
+
+        This issues the live SMART RPCs (``getListBg``/``getList`` and per-disk
+        ``getAttributes``), which spin disks up — call it only on the SMART poll
+        cadence. It does not mutate the disk records.
+
+        Args:
+            disks: Normalized disk records used to decide which canonical device
+                files to query for attributes.
+
+        Returns:
+            Tuple of ``(smart_records, attributes_by_canonical)`` where the second
+            element maps a canonical device file to its ``{attrname: rawvalue}``.
+        """
         method = "getListBg" if self.omv_version >= 7 else "getList"
         params = {"start": 0, "limit": 100}
         # Use _fetch_optional so HTTP 500 / transient errors don't abort the full update
@@ -753,29 +825,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             response = await self._fetch_optional("Smart", "getList", params)
 
         smart_records = self._records_from_response(response)
-        smart_by_key: dict[str, dict[str, Any]] = {}
-        for record in smart_records:
-            for key in self._disk_record_keys(record):
-                smart_by_key[key] = record
 
+        attributes_by_canonical: dict[str, dict[str, Any]] = {}
         for disk in disks:
-            smart_record = None
-            for key in self._disk_record_keys(disk):
-                smart_record = smart_by_key.get(key)
-                if smart_record is not None:
-                    break
-
-            if smart_record is not None and not disk.get("is_virtual"):
-                smart_temp = self._coerce_optional_float(smart_record.get("temperature"))
-                if smart_temp:
-                    disk["temperature"] = smart_temp
-                disk["overallstatus"] = str(smart_record.get("overallstatus", disk.get("overallstatus", "unknown")))
-                disk["smart_details"] = {
-                    key: value
-                    for key, value in smart_record.items()
-                    if key not in {"devicename", "devicefile", "canonicaldevicefile"}
-                }
-
             canonical = str(disk.get("canonicaldevicefile") or "")
             if (
                 not canonical
@@ -821,12 +873,57 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raw_value = attribute.get("rawvalue", "unknown")
                 if isinstance(raw_value, str) and " " in raw_value:
                     raw_value = raw_value.split(" ", 1)[0]
-                disk[str(attrname)] = raw_value
                 smart_attributes[str(attrname)] = raw_value
             if smart_attributes:
-                disk["smart_attributes"] = smart_attributes
+                attributes_by_canonical[canonical] = smart_attributes
 
-        return smart_records
+        return smart_records, attributes_by_canonical
+
+    def _apply_smart_to_disks(
+        self,
+        disks: list[dict[str, Any]],
+        smart_records: list[dict[str, Any]],
+        attributes_by_canonical: dict[str, dict[str, Any]],
+    ) -> None:
+        """Merge (cached or freshly fetched) SMART data into disk records.
+
+        Pure with respect to the API — performs no RPC, so it is safe to call on
+        every cycle to keep SMART/temperature entities populated between polls.
+
+        Args:
+            disks: Normalized disk records to enrich in place.
+            smart_records: Bulk SMART records (overall status, temperature).
+            attributes_by_canonical: Per-canonical ``{attrname: rawvalue}`` maps.
+        """
+        smart_by_key: dict[str, dict[str, Any]] = {}
+        for record in smart_records:
+            for key in self._disk_record_keys(record):
+                smart_by_key[key] = record
+
+        for disk in disks:
+            smart_record = None
+            for key in self._disk_record_keys(disk):
+                smart_record = smart_by_key.get(key)
+                if smart_record is not None:
+                    break
+
+            if smart_record is not None and not disk.get("is_virtual"):
+                smart_temp = self._coerce_optional_float(smart_record.get("temperature"))
+                if smart_temp:
+                    disk["temperature"] = smart_temp
+                disk["overallstatus"] = str(smart_record.get("overallstatus", disk.get("overallstatus", "unknown")))
+                disk["smart_details"] = {
+                    key: value
+                    for key, value in smart_record.items()
+                    if key not in {"devicename", "devicefile", "canonicaldevicefile"}
+                }
+
+            canonical = str(disk.get("canonicaldevicefile") or "")
+            smart_attributes = attributes_by_canonical.get(canonical)
+            if smart_attributes:
+                for attrname, raw_value in smart_attributes.items():
+                    disk[attrname] = raw_value
+                disk["smart_attributes"] = dict(smart_attributes)
 
     async def _async_get_gpu_info(self) -> dict[str, Any]:
         """Read Intel iGPU info from sysfs and apply spike filtering."""

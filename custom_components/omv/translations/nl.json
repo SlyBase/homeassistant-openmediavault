@@ -24,6 +24,8 @@
       "init": {
         "data": {
           "scan_interval": "Scaninterval (seconden)",
+          "smart_interval": "SMART-pollinginterval (seconden)",
+          "smart_polling_disabled": "SMART-polling uitschakelen",
           "selected_disks": "Geselecteerde schijven",
           "selected_filesystems": "Geselecteerde bestandssystemen",
           "selected_services": "Geselecteerde services",
@@ -36,6 +38,8 @@
           "selected_cron_jobs": "Cron-taken met triggerknop"
         },
         "data_description": {
+          "smart_interval": "Hoe vaak SMART-gegevens (status, attributen, schijftemperatuur) worden gelezen. Het lezen van SMART haalt schijven uit stand-by, dus een hogere waarde laat schijven uitschakelen om energie te besparen. Standaard: het scaninterval.",
+          "smart_polling_disabled": "Indien ingeschakeld wordt SMART nooit gepolld. Schijven worden door deze integratie niet gewekt, maar de entiteiten voor SMART-status, SMART-attributen en schijftemperatuur worden niet beschikbaar.",
           "selected_cron_jobs": "Maakt een knop voor elke geselecteerde door de gebruiker gedefinieerde cron-taak. Waarschuwing: het indrukken van zo'n knop voert het willekeurige shell-commando van de taak uit op de NAS. Standaard: geen."
         }
       }

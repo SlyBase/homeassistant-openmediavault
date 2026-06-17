@@ -33,6 +33,8 @@ from .const import (
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_VMS,
     CONF_SELECTED_ZFS_POOLS,
+    CONF_SMART_INTERVAL,
+    CONF_SMART_POLLING_DISABLED,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SSL,
@@ -216,6 +218,17 @@ class OMVOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_REBOOT_REPAIR_DISABLED,
                     default=self._entry.options.get(CONF_REBOOT_REPAIR_DISABLED, False),
+                ): bool,
+                vol.Optional(
+                    CONF_SMART_INTERVAL,
+                    default=self._entry.options.get(
+                        CONF_SMART_INTERVAL,
+                        self._entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                    ),
+                ): vol.All(int, vol.Range(min=10, max=86400)),
+                vol.Optional(
+                    CONF_SMART_POLLING_DISABLED,
+                    default=self._entry.options.get(CONF_SMART_POLLING_DISABLED, False),
                 ): bool,
                 vol.Optional(
                     CONF_SELECTED_DISKS,

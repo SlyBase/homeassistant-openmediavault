@@ -28,6 +28,8 @@ from custom_components.omv.const import (
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
     CONF_SELECTED_ZFS_POOLS,
+    CONF_SMART_INTERVAL,
+    CONF_SMART_POLLING_DISABLED,
     DOMAIN,
 )
 from custom_components.omv.exceptions import OMVAuthError
@@ -199,6 +201,47 @@ async def test_options_flow_uses_live_inventory_and_defaults_to_all(hass, config
     disk_marker = _field_marker(result["data_schema"], CONF_SELECTED_DISKS)
     disk_selector = result["data_schema"].schema[disk_marker]
     assert _selector_values(disk_selector) == ["sda", "sdb"]
+
+
+@pytest.mark.asyncio
+async def test_options_flow_exposes_smart_polling_controls(hass, config_entry) -> None:
+    """The options flow exposes the SMART interval and disable toggle (#41)."""
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: {}},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+
+    # SMART interval defaults to the scan interval; the disable toggle defaults to off.
+    assert defaults[CONF_SMART_INTERVAL] == defaults[CONF_SCAN_INTERVAL]
+    assert defaults[CONF_SMART_POLLING_DISABLED] is False
+
+
+@pytest.mark.asyncio
+async def test_options_flow_honors_stored_smart_polling_controls(hass) -> None:
+    """A stored SMART interval/disable toggle is reflected as the schema default (#41)."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        data=USER_INPUT,
+        options={CONF_SMART_INTERVAL: 3600, CONF_SMART_POLLING_DISABLED: True},
+    )
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: {}},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+
+    assert defaults[CONF_SMART_INTERVAL] == 3600
+    assert defaults[CONF_SMART_POLLING_DISABLED] is True
 
 
 @pytest.mark.asyncio
