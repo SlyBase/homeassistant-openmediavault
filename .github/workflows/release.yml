@@ -42,7 +42,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ steps.release.outputs.tag }}
 
