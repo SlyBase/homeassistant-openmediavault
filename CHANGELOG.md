@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- README setup section now shows example values and format rules for each config-flow field (host as plain IP/hostname, default ports, SSL guidance).
+
 ## [2.5.1] - 2026-06-17
 
 ### Added

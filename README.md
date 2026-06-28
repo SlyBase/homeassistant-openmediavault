@@ -61,12 +61,14 @@ Copy `custom_components/omv/` from this repository into your HA `config/custom_c
 
 The config flow asks for:
 
-- Host
-- Username
-- Password
-- Port
-- SSL
-- SSL verification
+| Field | Example | Notes |
+|---|---|---|
+| **Host** | `192.168.1.100` or `mynas.local` | IP address or hostname — **no** `http://` prefix and **no** port suffix |
+| **Username** | `admin` | Default OMV admin account |
+| **Password** | _(your OMV password)_ | |
+| **Port** | `80` | Default for HTTP. Use `443` (or your custom port) when SSL is enabled |
+| **SSL** | off | Enable if your OMV is reachable via HTTPS |
+| **SSL verification** | on | Disable only when using a self-signed certificate |
 
 ## Configuration
 
