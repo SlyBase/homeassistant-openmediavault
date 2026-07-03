@@ -70,6 +70,12 @@ The config flow asks for:
 | **SSL** | off | Enable if your OMV is reachable via HTTPS |
 | **SSL verification** | on | Disable only when using a self-signed certificate |
 
+### Using a dedicated (non-`admin`) OMV user
+
+OMV's API only recognizes two access levels: **Administrator** and plain **User**, decided solely by membership in the `openmediavault-admin` system group. Every RPC this integration calls — disks, SMART, filesystems, network, services, Compose, KVM, ZFS, rsync, cron, etc. — requires the Administrator role; there is no finer-grained or read-only permission level to scope it down to.
+
+If you'd rather not use the built-in `admin` account, create a new user under **Users** > **Users** in the OMV WebUI and add it to the **openmediavault-admin** group (shown as **Administrators** in the group picker). Without this group membership the account can still log in, but OMV rejects every RPC call this integration depends on with a permission error, so the config flow and every sensor/control would fail.
+
 ## Configuration
 
 After setup, the options flow lets you adjust:

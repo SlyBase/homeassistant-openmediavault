@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- README section documenting that a dedicated (non-`admin`) OMV user for this integration must be a member of the `openmediavault-admin` group, since OMV's RPC authorization model has no finer-grained permission level.
+
 ### Fixed
 
 - Reconfigure and reauthentication no longer immediately fail again for 2FA-enabled accounts: the config flow now hands its already-authenticated session off to the entry setup that follows, instead of the automatic post-flow reload opening a brand new OMV login (which OMV always challenges for 2FA, with nobody there to answer it).
