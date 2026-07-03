@@ -7,7 +7,12 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
+from homeassistant.config_entries import (
+    SOURCE_RECONFIGURE,
+    ConfigEntry,
+    ConfigFlow,
+    OptionsFlow,
+)
 from homeassistant.const import (
     CONF_HOST,
     CONF_PASSWORD,
@@ -116,6 +121,33 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle reconfiguration of an existing OMV entry (e.g. switching to HTTPS or 2FA)."""
+        entry = self._get_reconfigure_entry()
+        if user_input is None:
+            self._user_form_values.update(
+                {
+                    CONF_HOST: entry.data.get(CONF_HOST, ""),
+                    CONF_USERNAME: entry.data.get(CONF_USERNAME, "admin"),
+                    CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
+                    CONF_SSL: entry.data.get(CONF_SSL, DEFAULT_SSL),
+                    CONF_VERIFY_SSL: entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+                }
+            )
+        return await self.async_step_user(user_input)
+
+    def _finish_flow(self, hostname: str, data: dict[str, Any]) -> FlowResult:
+        """Create a new entry, or update the entry being reconfigured, after a successful login."""
+        if self.source == SOURCE_RECONFIGURE:
+            self._abort_if_unique_id_mismatch()
+            return self.async_update_reload_and_abort(
+                self._get_reconfigure_entry(),
+                title=f"OMV ({hostname})",
+                data=data,
+            )
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=f"OMV ({hostname})", data=data)
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
         """Handle the initial user step."""
         errors: dict[str, str] = {}
@@ -180,11 +212,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                 hostname = str(system_info.get("hostname") or user_input[CONF_HOST])
                 await api.async_close()
                 await self.async_set_unique_id(hostname)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"OMV ({hostname})",
-                    data=user_input,
-                )
+                return self._finish_flow(hostname, user_input)
 
         _LOGGER.debug(
             "OMV config flow show form host=%r username=%r port=%s ssl=%s verify_ssl=%s errors=%s",
@@ -229,11 +257,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                 await api.async_close()
                 self._pending_api = None
                 await self.async_set_unique_id(hostname)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"OMV ({hostname})",
-                    data=self._pending_user_input,
-                )
+                return self._finish_flow(hostname, self._pending_user_input)
 
         return self.async_show_form(
             step_id="totp",

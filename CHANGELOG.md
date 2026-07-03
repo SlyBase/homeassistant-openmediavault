@@ -8,11 +8,13 @@
 - German (`de`) translations for the setup form's example/format hints and the tempmon temperature sensor name, closing a gap versus the English strings.
 - Official support for OpenMediaVault 8.5, including its new two-step `Session.login` authentication response format (#50).
 - Support for OMV accounts with two-factor authentication (e.g. the `openmediavault-2fa-totp` plugin) enabled: the config flow now shows a second step to enter the verification code and completes the login via `Session.verify`, instead of rejecting the account.
+- Config entries can now be reconfigured in place (Settings → Devices & Services → OMV → Reconfigure) instead of having to delete and re-add them — needed to switch an existing entry to HTTPS and/or enable two-factor authentication without losing entity history.
 
 ### Changed
 
 - README setup section now shows example values and format rules for each config-flow field (host as plain IP/hostname, default ports, SSL guidance).
 - Setup form's username field hint shortened to "OMV Admin Account (e.g. admin)".
+- The "already configured" setup error now explains that Reconfigure should be used to update an existing entry's host, port, SSL or 2FA settings, instead of a bare generic message.
 
 ### Fixed
 

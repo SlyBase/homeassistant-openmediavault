@@ -196,6 +196,101 @@ async def test_flow_duplicate_abort(hass, config_entry) -> None:
 
 
 @pytest.mark.asyncio
+async def test_flow_reconfigure_prefills_existing_values(hass) -> None:
+    """Test the reconfigure form is pre-filled from the existing entry, password blank."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "user"
+    defaults = result["data_schema"]({})
+    assert defaults[CONF_HOST] == USER_INPUT[CONF_HOST]
+    assert defaults[CONF_USERNAME] == USER_INPUT[CONF_USERNAME]
+    assert defaults[CONF_PORT] == USER_INPUT[CONF_PORT]
+    assert defaults[CONF_SSL] is USER_INPUT[CONF_SSL]
+    assert defaults[CONF_VERIFY_SSL] is USER_INPUT[CONF_VERIFY_SSL]
+    assert defaults[CONF_PASSWORD] == ""
+
+
+@pytest.mark.asyncio
+async def test_flow_reconfigure_success_switches_to_https_and_2fa(hass) -> None:
+    """Test reconfiguring an entry to HTTPS + 2FA updates the entry in place (no duplicate)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    new_input = {
+        **USER_INPUT,
+        CONF_PORT: 443,
+        CONF_SSL: True,
+    }
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], new_input)
+        assert result["type"] == "form"
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PORT] == 443
+    assert entry.data[CONF_SSL] is True
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+@pytest.mark.asyncio
+async def test_flow_reconfigure_wrong_account_aborts(hass) -> None:
+    """Test reconfiguring against a different OMV host is rejected via unique_id mismatch."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(return_value={"hostname": "othernas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {**USER_INPUT, CONF_HOST: "192.0.2.99"},
+        )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "unique_id_mismatch"
+
+
+@pytest.mark.asyncio
 async def test_options_flow_uses_live_inventory_and_defaults_to_all(hass, config_entry) -> None:
     """Test the options flow exposes unfiltered live inventory with defaults."""
     config_entry = MockConfigEntry(
