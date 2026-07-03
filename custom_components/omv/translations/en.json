@@ -13,7 +13,7 @@
         },
         "data_description": {
           "host": "IP address or hostname — no http(s):// prefix, no port suffix (e.g. 192.168.1.100 or mynas.local)",
-          "username": "Default OMV admin account (e.g. admin)",
+          "username": "OMV Admin Account (e.g. admin)",
           "password": "Your OMV account password",
           "port": "e.g. 80 for HTTP, 443 (or a custom port) when SSL is enabled",
           "ssl": "Enable if your OMV web interface is reachable via HTTPS",

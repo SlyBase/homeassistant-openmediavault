@@ -1,14 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [2.6.0] - 2026-07-03
 
 ### Added
 
 - Setup form now shows inline example/format hints (host format, port defaults, SSL guidance) under each field.
+- German (`de`) translations for the setup form's example/format hints and the tempmon temperature sensor name, closing a gap versus the English strings.
+- Official support for OpenMediaVault 8.5, including its new two-step `Session.login` authentication response format (#50).
 
 ### Changed
 
 - README setup section now shows example values and format rules for each config-flow field (host as plain IP/hostname, default ports, SSL guidance).
+- Setup form's username field hint shortened to "OMV Admin Account (e.g. admin)".
 
 ### Fixed
 

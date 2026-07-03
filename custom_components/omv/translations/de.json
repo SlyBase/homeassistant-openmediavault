@@ -10,6 +10,14 @@
           "port": "Port",
           "ssl": "SSL verwenden",
           "verify_ssl": "SSL-Zertifikat überprüfen"
+        },
+        "data_description": {
+          "host": "IP-Adresse oder Hostname — ohne http(s):// Präfix, ohne Port-Suffix (z. B. 192.168.1.100 oder mynas.local)",
+          "username": "OMV Admin Account (z. B. admin)",
+          "password": "Dein OMV-Kontopasswort",
+          "port": "z. B. 80 für HTTP, 443 (oder ein benutzerdefinierter Port) bei aktiviertem SSL",
+          "ssl": "Aktivieren, wenn die OMV-Weboberfläche über HTTPS erreichbar ist",
+          "verify_ssl": "Nur bei einem selbstsignierten Zertifikat deaktivieren"
         }
       }
     },
@@ -180,6 +188,9 @@
       },
       "disk_smart_status": {
         "name": "SMART Status"
+      },
+      "tempmon_temperature": {
+        "name": "{resource} Temperatur"
       },
       "vm_state": {
         "name": "{resource} Zustand"
