@@ -132,8 +132,7 @@ class OMVAPI:
 
         if not authenticated:
             _LOGGER.debug(
-                "OMV login rejected [%s] host=%r status=%r authenticated=%s "
-                "sessionid_present=%s cookie_names=%s",
+                "OMV login rejected [%s] host=%r status=%r authenticated=%s sessionid_present=%s cookie_names=%s",
                 self._source,
                 self._host,
                 status,
@@ -143,9 +142,7 @@ class OMVAPI:
             )
             if status == "challengeRequired":
                 challenge_kind = (
-                    isinstance(data, dict)
-                    and isinstance(data.get("challenge"), dict)
-                    and data["challenge"].get("kind")
+                    isinstance(data, dict) and isinstance(data.get("challenge"), dict) and data["challenge"].get("kind")
                 )
                 raise OMVAuthError(
                     "OMV account requires two-factor authentication "
@@ -311,9 +308,7 @@ class OMVAPI:
                         # come from OMV's own rpc.php (e.g. a reverse proxy, WAF,
                         # or fail2ban rejecting the request) — treat it as a
                         # connectivity problem rather than a credentials problem.
-                        raise OMVConnectionError(
-                            f"Unexpected HTTP {response.status} response (not an OMV RPC body)"
-                        )
+                        raise OMVConnectionError(f"Unexpected HTTP {response.status} response (not an OMV RPC body)")
                     raise OMVAuthError(f"OMV returned HTTP {response.status}")
                 if response.status >= 500:
                     body = (await response.text())[:500]

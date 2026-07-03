@@ -14,6 +14,7 @@
 
 - Login now recognizes OMV 8.5+'s two-step `Session.login` response (`status: "authenticated"`/`"challengeRequired"`), fixing false "Invalid credentials" errors during setup even with correct credentials on updated OMV instances (#50). Accounts with TOTP two-factor authentication enabled now raise a clearer debug-logged reason instead of a bare rejection (2FA login itself remains unsupported).
 - Opaque, non-OMV HTTP 401/403 responses on the login request (e.g. from a reverse proxy, WAF, or fail2ban in front of OMV) are now reported as "Cannot connect to OMV" instead of being misclassified as "Invalid credentials".
+- Reformatted `omv_api.py` with `ruff format` to satisfy the CI lint job (`ruff format --check`), no behaviour change.
 
 ## [2.5.1] - 2026-06-17
 
