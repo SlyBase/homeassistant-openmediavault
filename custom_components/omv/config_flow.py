@@ -8,6 +8,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import (
+    SOURCE_REAUTH,
     SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigFlow,
@@ -136,12 +137,33 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         return await self.async_step_user(user_input)
 
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+        """Handle reauthentication triggered by HA (e.g. a changed password or newly required 2FA)."""
+        entry = self._get_reauth_entry()
+        self._user_form_values.update(
+            {
+                CONF_HOST: entry.data.get(CONF_HOST, ""),
+                CONF_USERNAME: entry.data.get(CONF_USERNAME, "admin"),
+                CONF_PORT: entry.data.get(CONF_PORT, DEFAULT_PORT),
+                CONF_SSL: entry.data.get(CONF_SSL, DEFAULT_SSL),
+                CONF_VERIFY_SSL: entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            }
+        )
+        return await self.async_step_user()
+
     def _finish_flow(self, hostname: str, data: dict[str, Any]) -> FlowResult:
-        """Create a new entry, or update the entry being reconfigured, after a successful login."""
+        """Create a new entry, or update the entry being reconfigured/reauthenticated, after a successful login."""
         if self.source == SOURCE_RECONFIGURE:
             self._abort_if_unique_id_mismatch()
             return self.async_update_reload_and_abort(
                 self._get_reconfigure_entry(),
+                title=f"OMV ({hostname})",
+                data=data,
+            )
+        if self.source == SOURCE_REAUTH:
+            self._abort_if_unique_id_mismatch()
+            return self.async_update_reload_and_abort(
+                self._get_reauth_entry(),
                 title=f"OMV ({hostname})",
                 data=data,
             )

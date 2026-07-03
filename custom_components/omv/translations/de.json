@@ -36,8 +36,9 @@
     },
     "abort": {
       "already_configured": "Dieser OpenMediaVault-Host ist bereits konfiguriert. Verwende „Neu konfigurieren“, um Host, Port, SSL- oder Zwei-Faktor-Authentifizierungs-Einstellungen zu ändern, anstatt ihn erneut hinzuzufügen.",
-      "unique_id_mismatch": "Dieses Konto gehört zu einem anderen OpenMediaVault-Host als dem, der gerade neu konfiguriert wird. Die Neukonfiguration aktualisiert nur die Einstellungen des bestehenden Hosts.",
-      "reconfigure_successful": "OpenMediaVault-Einstellungen erfolgreich aktualisiert."
+      "unique_id_mismatch": "Dieses Konto gehört zu einem anderen OpenMediaVault-Host als dem, der gerade neu konfiguriert oder erneut authentifiziert wird.",
+      "reconfigure_successful": "OpenMediaVault-Einstellungen erfolgreich aktualisiert.",
+      "reauth_successful": "Erneute Authentifizierung bei OpenMediaVault erfolgreich."
     }
   },
   "options": {

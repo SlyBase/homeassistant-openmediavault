@@ -38,7 +38,7 @@ sensor.py / binary_sensor.py / button.py   HA platform entry points
 entity.py           Shared base entity (links entity descriptions to coordinator data)
 ```
 
-- `config_flow.py` — initial setup (host/credentials, with a 2FA/TOTP second step when required) + reconfigure flow (update host/port/SSL/credentials on an existing entry in place, e.g. to switch to HTTPS or enable 2FA, without deleting it) + options flow (scan interval, resource filtering, feature flags)
+- `config_flow.py` — initial setup (host/credentials, with a 2FA/TOTP second step when required) + reconfigure flow (update host/port/SSL/credentials on an existing entry in place, e.g. to switch to HTTPS or enable 2FA, without deleting it) + reauth flow (triggered automatically by HA when `__init__.py`'s `async_setup_entry` raises `ConfigEntryAuthFailed`, e.g. OMV newly requires 2FA or the password changed — reuses the same host/credentials + totp steps) + options flow (scan interval, resource filtering, feature flags)
 - `const.py` — all constants: `DOMAIN="omv"`, default ports, `CONF_SELECTED_*` filter keys
 - `diagnostics.py` — HA diagnostics support
 - `exceptions.py` — `OMVAuthError` (+ `OMVTwoFactorRequiredError` subclass for OMV 8.5+ 2FA challenges), `OMVConnectionError`, `OMVApiError`

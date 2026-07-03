@@ -9,6 +9,7 @@
 - Official support for OpenMediaVault 8.5, including its new two-step `Session.login` authentication response format (#50).
 - Support for OMV accounts with two-factor authentication (e.g. the `openmediavault-2fa-totp` plugin) enabled: the config flow now shows a second step to enter the verification code and completes the login via `Session.verify`, instead of rejecting the account.
 - Config entries can now be reconfigured in place (Settings → Devices & Services → OMV → Reconfigure) instead of having to delete and re-add them — needed to switch an existing entry to HTTPS and/or enable two-factor authentication without losing entity history.
+- Added a reauthentication flow: when OMV rejects the stored credentials at startup (e.g. because 2FA was newly enabled on the OMV account, or the password changed), Home Assistant now offers an interactive "Reauthenticate" step — reusing the same host/credentials form and TOTP step — instead of getting stuck in a silent `setup_error` with no way to fix it short of deleting the entry.
 
 ### Changed
 
