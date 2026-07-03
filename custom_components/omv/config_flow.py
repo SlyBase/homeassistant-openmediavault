@@ -26,6 +26,7 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
+from . import session_handoff
 from .const import (
     CONF_REBOOT_REPAIR_DISABLED,
     CONF_SCAN_INTERVAL,
@@ -151,23 +152,54 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         return await self.async_step_user()
 
-    def _finish_flow(self, hostname: str, data: dict[str, Any]) -> FlowResult:
-        """Create a new entry, or update the entry being reconfigured/reauthenticated, after a successful login."""
+    async def _finish_flow(
+        self,
+        hostname: str,
+        data: dict[str, Any],
+        api: OMVAPI,
+        system_info: dict[str, Any],
+    ) -> FlowResult:
+        """Create/update the entry after a successful login.
+
+        Hands off the already-authenticated ``api``/``system_info`` to the
+        setup that Home Assistant triggers immediately after this flow
+        finishes, so it doesn't have to open a brand new (and, for 2FA
+        accounts, immediately challenged) OMV login. If the flow aborts
+        instead (e.g. a unique-ID mismatch), the hand-off never happens and
+        the session is closed here.
+        """
         if self.source == SOURCE_RECONFIGURE:
-            self._abort_if_unique_id_mismatch()
+            entry = self._get_reconfigure_entry()
+            try:
+                self._abort_if_unique_id_mismatch()
+            except Exception:
+                await api.async_close()
+                raise
+            session_handoff.store(hostname, api, system_info)
             return self.async_update_reload_and_abort(
-                self._get_reconfigure_entry(),
+                entry,
                 title=f"OMV ({hostname})",
                 data=data,
             )
         if self.source == SOURCE_REAUTH:
-            self._abort_if_unique_id_mismatch()
+            entry = self._get_reauth_entry()
+            try:
+                self._abort_if_unique_id_mismatch()
+            except Exception:
+                await api.async_close()
+                raise
+            session_handoff.store(hostname, api, system_info)
             return self.async_update_reload_and_abort(
-                self._get_reauth_entry(),
+                entry,
                 title=f"OMV ({hostname})",
                 data=data,
             )
-        self._abort_if_unique_id_configured()
+        try:
+            self._abort_if_unique_id_configured()
+        except Exception:
+            await api.async_close()
+            raise
+        session_handoff.store(hostname, api, system_info)
         return self.async_create_entry(title=f"OMV ({hostname})", data=data)
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
@@ -232,9 +264,8 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                 await api.async_close()
             else:
                 hostname = str(system_info.get("hostname") or user_input[CONF_HOST])
-                await api.async_close()
                 await self.async_set_unique_id(hostname)
-                return self._finish_flow(hostname, user_input)
+                return await self._finish_flow(hostname, user_input, api, system_info)
 
         _LOGGER.debug(
             "OMV config flow show form host=%r username=%r port=%s ssl=%s verify_ssl=%s errors=%s",
@@ -276,10 +307,9 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 assert self._pending_user_input is not None
                 hostname = str(system_info.get("hostname") or self._pending_user_input[CONF_HOST])
-                await api.async_close()
                 self._pending_api = None
                 await self.async_set_unique_id(hostname)
-                return self._finish_flow(hostname, self._pending_user_input)
+                return await self._finish_flow(hostname, self._pending_user_input, api, system_info)
 
         return self.async_show_form(
             step_id="totp",

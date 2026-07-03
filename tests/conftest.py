@@ -22,8 +22,17 @@ from homeassistant.const import (
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components
+from custom_components.omv import session_handoff
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+
+
+@pytest.fixture(autouse=True)
+def _clear_session_handoff() -> Generator[None]:
+    """Reset the module-level session hand-off registry between tests."""
+    session_handoff._pending.clear()
+    yield
+    session_handoff._pending.clear()
 
 
 @pytest.fixture(autouse=True)

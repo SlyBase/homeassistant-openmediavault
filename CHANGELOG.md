@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Reconfigure and reauthentication no longer immediately fail again for 2FA-enabled accounts: the config flow now hands its already-authenticated session off to the entry setup that follows, instead of the automatic post-flow reload opening a brand new OMV login (which OMV always challenges for 2FA, with nobody there to answer it).
+
 ## [2.6.0] - 2026-07-03
 
 ### Added

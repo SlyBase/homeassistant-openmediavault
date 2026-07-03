@@ -16,6 +16,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from . import session_handoff
 from .const import (
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
@@ -102,25 +103,52 @@ async def _async_cleanup_stale_registry_entries(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
-    """Set up OMV from a config entry."""
-    api = OMVAPI(
-        host=entry.data[CONF_HOST],
-        username=entry.data[CONF_USERNAME],
-        password=entry.data[CONF_PASSWORD],
-        port=entry.data.get(CONF_PORT, DEFAULT_PORT),
-        ssl=entry.data.get(CONF_SSL, DEFAULT_SSL),
-        verify_ssl=entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-        source="setup_entry",
-    )
+    """Set up OMV from a config entry.
 
-    try:
-        system_info = await api.async_connect()
-    except OMVAuthError as err:
-        await api.async_close()
-        raise ConfigEntryAuthFailed("OMV authentication failed") from err
-    except OMVConnectionError as err:
-        await api.async_close()
-        raise ConfigEntryNotReady("Cannot connect to OMV") from err
+    If the config flow just authenticated this host (user/reconfigure/reauth),
+    reuses that already-authenticated :class:`~custom_components.omv.omv_api.OMVAPI`
+    session and its ``system_info`` via :mod:`custom_components.omv.session_handoff`
+    instead of opening a brand new OMV login, since OMV challenges 2FA-enabled
+    accounts fresh on every login and nobody is present to answer a second
+    challenge triggered by the automatic post-flow reload.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry to set up.
+
+    Returns:
+        True once setup has completed successfully.
+
+    Raises:
+        ConfigEntryAuthFailed: If OMV authentication fails (no pending hand-off).
+        ConfigEntryNotReady: If OMV cannot be reached (no pending hand-off).
+    """
+    handoff = session_handoff.pop(entry.unique_id)
+    if handoff is not None:
+        # Reuse the session the config flow (user/reconfigure/reauth) just
+        # authenticated, instead of opening a brand new OMV login — OMV
+        # always challenges 2FA accounts fresh, so a second login right
+        # after the flow finished would fail with nobody there to answer it.
+        api, system_info = handoff
+    else:
+        api = OMVAPI(
+            host=entry.data[CONF_HOST],
+            username=entry.data[CONF_USERNAME],
+            password=entry.data[CONF_PASSWORD],
+            port=entry.data.get(CONF_PORT, DEFAULT_PORT),
+            ssl=entry.data.get(CONF_SSL, DEFAULT_SSL),
+            verify_ssl=entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            source="setup_entry",
+        )
+
+        try:
+            system_info = await api.async_connect()
+        except OMVAuthError as err:
+            await api.async_close()
+            raise ConfigEntryAuthFailed("OMV authentication failed") from err
+        except OMVConnectionError as err:
+            await api.async_close()
+            raise ConfigEntryNotReady("Cannot connect to OMV") from err
 
     coordinator = OMVDataUpdateCoordinator(
         hass,
