@@ -19,10 +19,18 @@
           "ssl": "Aktivieren, wenn die OMV-Weboberfläche über HTTPS erreichbar ist",
           "verify_ssl": "Nur bei einem selbstsignierten Zertifikat deaktivieren"
         }
+      },
+      "totp": {
+        "title": "Zwei-Faktor-Authentifizierung",
+        "description": "Gib den Verifizierungscode aus deiner Authenticator-App ein, um die Anmeldung abzuschließen.",
+        "data": {
+          "code": "Verifizierungscode"
+        }
       }
     },
     "error": {
       "invalid_auth": "Ungültige Zugangsdaten",
+      "invalid_totp_code": "Ungültiger oder abgelaufener Verifizierungscode",
       "cannot_connect": "Verbindung zu OMV nicht möglich",
       "unknown": "Unbekannter Fehler"
     }

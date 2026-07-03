@@ -32,7 +32,7 @@ from custom_components.omv.const import (
     CONF_SMART_POLLING_DISABLED,
     DOMAIN,
 )
-from custom_components.omv.exceptions import OMVAuthError
+from custom_components.omv.exceptions import OMVAuthError, OMVTwoFactorRequiredError
 
 USER_INPUT = {
     CONF_HOST: "192.0.2.10",
@@ -109,6 +109,61 @@ async def test_flow_auth_error(hass) -> None:
     assert defaults[CONF_SSL] is USER_INPUT[CONF_SSL]
     assert defaults[CONF_VERIFY_SSL] is USER_INPUT[CONF_VERIFY_SSL]
     assert defaults[CONF_PASSWORD] == ""
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_required_then_success(hass) -> None:
+    """Test the 2FA path: challenge required on step 1, code accepted on step 2."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        assert result["type"] == "form"
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == "OMV (nas)"
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_wrong_code(hass) -> None:
+    """Test that a rejected TOTP code shows the invalid_totp_code error and stays on the totp step."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(side_effect=OMVAuthError("Two-factor verification failed")),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "000000"})
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "totp"
+    assert result["errors"]["base"] == "invalid_totp_code"
 
 
 @pytest.mark.asyncio

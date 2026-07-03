@@ -19,10 +19,18 @@
           "ssl": "Enable if your OMV web interface is reachable via HTTPS",
           "verify_ssl": "Disable only when using a self-signed certificate"
         }
+      },
+      "totp": {
+        "title": "Two-factor authentication",
+        "description": "Enter the verification code from your authenticator app to finish signing in.",
+        "data": {
+          "code": "Verification code"
+        }
       }
     },
     "error": {
       "invalid_auth": "Invalid credentials",
+      "invalid_totp_code": "Invalid or expired verification code",
       "cannot_connect": "Cannot connect to OMV",
       "unknown": "Unknown error"
     }

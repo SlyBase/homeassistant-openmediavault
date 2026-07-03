@@ -9,7 +9,12 @@ from typing import Any
 import aiohttp
 from yarl import URL
 
-from .exceptions import OMVApiError, OMVAuthError, OMVConnectionError
+from .exceptions import (
+    OMVApiError,
+    OMVAuthError,
+    OMVConnectionError,
+    OMVTwoFactorRequiredError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _SESSION_EXPIRED_CODES = {5001, 5002}
@@ -109,13 +114,15 @@ class OMVAPI:
         - Legacy (OMV 7, pre-2FA OMV 8): ``{"authenticated": true, "sessionid": ...}``.
         - Current (OMV 8.5+, native TOTP 2FA support): ``{"status": "authenticated",
           "sessionid": ...}`` on success, or ``{"status": "challengeRequired", ...}``
-          when the account has two-factor authentication enabled. The latter is
-          treated as an auth failure since this integration cannot complete a
-          2FA challenge.
+          when the account has two-factor authentication enabled. The latter
+          raises :class:`~custom_components.omv.exceptions.OMVTwoFactorRequiredError`
+          so callers (e.g. the config flow) can complete the challenge via
+          :meth:`async_submit_two_factor_code`.
 
         Raises:
-            OMVAuthError: If the credentials are rejected, or if the account
-                requires two-factor authentication.
+            OMVAuthError: If the credentials are rejected.
+            OMVTwoFactorRequiredError: If the account requires two-factor
+                authentication to complete the login.
         """
         self._session_id = None
         data = await self._async_raw_call(
@@ -144,10 +151,9 @@ class OMVAPI:
                 challenge_kind = (
                     isinstance(data, dict) and isinstance(data.get("challenge"), dict) and data["challenge"].get("kind")
                 )
-                raise OMVAuthError(
-                    "OMV account requires two-factor authentication "
-                    f"(challenge kind={challenge_kind!r}), which this integration "
-                    "does not support"
+                raise OMVTwoFactorRequiredError(
+                    f"OMV account requires two-factor authentication (challenge kind={challenge_kind!r})",
+                    challenge_kind=challenge_kind if isinstance(challenge_kind, str) else None,
                 )
             raise OMVAuthError("Invalid credentials")
 
@@ -162,6 +168,43 @@ class OMVAPI:
             self._session_id is not None,
             self._cookie_names(),
         )
+
+    async def async_submit_two_factor_code(self, code: str) -> dict[str, Any]:
+        """Complete a two-step OMV login by submitting the second-factor code.
+
+        Must be called on the same :class:`OMVAPI` instance that received the
+        ``challengeRequired`` response from :meth:`async_connect`: OMV binds
+        the in-progress login to the PHP session cookie set during the first
+        step (``Session.login``), so the same aiohttp session/cookie jar has
+        to be reused for ``Session.verify``.
+
+        Args:
+            code: The verification code (e.g. a 6-digit TOTP code).
+
+        Returns:
+            The ``System.getInformation`` response.
+
+        Raises:
+            OMVAuthError: If the code is rejected or the pending login
+                (server-side, 5-minute TTL) has expired.
+        """
+        self._session_id = None
+        data = await self._async_raw_call(
+            "session",
+            "verify",
+            {"code": code},
+            options=None,
+        )
+        status = data.get("status") if isinstance(data, dict) else None
+        if status != "authenticated":
+            raise OMVAuthError("Two-factor verification failed")
+
+        session_id = data.get("sessionid")
+        if isinstance(session_id, str) and session_id:
+            self._session_id = session_id
+
+        response = await self.async_call("System", "getInformation")
+        return response if isinstance(response, dict) else {}
 
     async def async_call(
         self,

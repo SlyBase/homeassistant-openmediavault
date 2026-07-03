@@ -42,10 +42,12 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OMVDataUpdateCoordinator
-from .exceptions import OMVAuthError, OMVConnectionError
+from .exceptions import OMVAuthError, OMVConnectionError, OMVTwoFactorRequiredError
 from .omv_api import OMVAPI
 
 _LOGGER = logging.getLogger(__name__)
+
+CONF_TOTP_CODE = "code"
 
 _DEFAULT_USER_FORM_VALUES: dict[str, Any] = {
     CONF_HOST: "",
@@ -82,6 +84,8 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the flow and persist the latest form values."""
         self._user_form_values = dict(_DEFAULT_USER_FORM_VALUES)
+        self._pending_api: OMVAPI | None = None
+        self._pending_user_input: dict[str, Any] | None = None
 
     def _update_user_form_values(self, user_input: dict[str, Any]) -> None:
         """Persist entered values while always clearing the password field."""
@@ -141,6 +145,17 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             )
             try:
                 system_info = await api.async_connect()
+            except OMVTwoFactorRequiredError as err:
+                _LOGGER.debug(
+                    "OMV config flow requires two-factor authentication for host=%r: %s",
+                    user_input[CONF_HOST],
+                    err,
+                )
+                # Keep the api instance (and its session cookie) alive — OMV
+                # binds the pending login to it and the totp step reuses it.
+                self._pending_api = api
+                self._pending_user_input = dict(user_input)
+                return await self.async_step_totp()
             except OMVAuthError as err:
                 _LOGGER.debug(
                     "OMV config flow invalid_auth for host=%r: %s",
@@ -148,6 +163,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                     err,
                 )
                 errors["base"] = "invalid_auth"
+                await api.async_close()
             except OMVConnectionError as err:
                 _LOGGER.debug(
                     "OMV config flow cannot_connect for host=%r: %s",
@@ -155,19 +171,20 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                     err,
                 )
                 errors["base"] = "cannot_connect"
+                await api.async_close()
             except Exception:
                 _LOGGER.exception("Unexpected error during OMV setup")
                 errors["base"] = "unknown"
+                await api.async_close()
             else:
                 hostname = str(system_info.get("hostname") or user_input[CONF_HOST])
+                await api.async_close()
                 await self.async_set_unique_id(hostname)
                 self._abort_if_unique_id_configured()
                 return self.async_create_entry(
                     title=f"OMV ({hostname})",
                     data=user_input,
                 )
-            finally:
-                await api.async_close()
 
         _LOGGER.debug(
             "OMV config flow show form host=%r username=%r port=%s ssl=%s verify_ssl=%s errors=%s",
@@ -182,6 +199,45 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=self._build_user_schema(),
+            errors=errors,
+        )
+
+    async def async_step_totp(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+        """Handle the second step of a two-factor OMV login."""
+        errors: dict[str, str] = {}
+        api = self._pending_api
+
+        if user_input is not None and api is not None:
+            try:
+                system_info = await api.async_submit_two_factor_code(user_input[CONF_TOTP_CODE])
+            except OMVAuthError as err:
+                _LOGGER.debug("OMV config flow invalid_totp_code: %s", err)
+                errors["base"] = "invalid_totp_code"
+            except OMVConnectionError as err:
+                _LOGGER.debug("OMV config flow cannot_connect during 2FA verification: %s", err)
+                errors["base"] = "cannot_connect"
+                await api.async_close()
+                self._pending_api = None
+            except Exception:
+                _LOGGER.exception("Unexpected error during OMV 2FA verification")
+                errors["base"] = "unknown"
+                await api.async_close()
+                self._pending_api = None
+            else:
+                assert self._pending_user_input is not None
+                hostname = str(system_info.get("hostname") or self._pending_user_input[CONF_HOST])
+                await api.async_close()
+                self._pending_api = None
+                await self.async_set_unique_id(hostname)
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"OMV ({hostname})",
+                    data=self._pending_user_input,
+                )
+
+        return self.async_show_form(
+            step_id="totp",
+            data_schema=vol.Schema({vol.Required(CONF_TOTP_CODE): str}),
             errors=errors,
         )
 

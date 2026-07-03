@@ -41,7 +41,7 @@ entity.py           Shared base entity (links entity descriptions to coordinator
 - `config_flow.py` — initial setup (host/credentials) + options flow (scan interval, resource filtering, feature flags)
 - `const.py` — all constants: `DOMAIN="omv"`, default ports, `CONF_SELECTED_*` filter keys
 - `diagnostics.py` — HA diagnostics support
-- `exceptions.py` — `OMVAuthError`, `OMVConnectionError`, `OMVApiError`
+- `exceptions.py` — `OMVAuthError` (+ `OMVTwoFactorRequiredError` subclass for OMV 8.5+ 2FA challenges), `OMVConnectionError`, `OMVApiError`
 
 ## Key Conventions
 
@@ -145,6 +145,7 @@ The Tier 2 live probe run (2026-06-12) was **skipped** — `OMV_PASSWORD` was no
 - **`zfs.scrubPool`** (openmediavault-zfs): `{"name": "<plain pool name>"}` — plain name, NOT the OMV8 tree id `root/pool-<Name>`. **`zfs.listDatasets`** does no param validation but indexes `start`/`limit`/`sortfield`/`sortdir` directly — always pass all four (`{"start": 0, "limit": -1, "sortfield": None, "sortdir": None}`). **`zfs.getAllSnapshots`** follows `rpc.common.getlist`.
 - **`System.standby`** (core): exists alongside `reboot`/`shutdown`; callable without params like `System.reboot`.
 - **WoL/MAC**: raw `Network.enumerateDevices` records contain `ether` (MAC) and `wol` on both OMV7 and OMV8 (see `reports/omv-rpc-compatibility.json`).
+- **`Session.verify`** (core, OMV 8.5+ 2-step login, source-verified 2026-07-03 against `rpc/session.inc` and the `openmediavault-2fa-totp` plugin's `tfatotp.inc`): despite the `rpc.session.verify` datamodel nominally declaring a top-level `challengeresponse` property, the actual client params must be the raw challenge answer directly — `{"code": "123456"}` for TOTP, NOT `{"challengeresponse": {"code": ...}}`. `session.inc` forwards the client's whole params object as the `challengeresponse` field when it calls the plugin's `verifyChallenge` RPC internally, so a client-side `challengeresponse` wrapper would double-nest. Success response shape matches `Session.login`: `{"status": "authenticated", "sessionid": ..., username, permissions}`. Failure (wrong code, or the 5-minute-TTL pending login already expired) raises an OMV `HttpErrorException(401, ...)`, which surfaces through this integration's `_async_raw_call` as `OMVAuthError` like any other HTTP 401. The pending login is bound to the PHP session cookie set during `Session.login`, so `Session.verify` must reuse the same `aiohttp.ClientSession`/cookie jar — see `OMVAPI.async_submit_two_factor_code`.
 
 ## Integration Domain & Platforms
 

@@ -7,6 +7,7 @@
 - Setup form now shows inline example/format hints (host format, port defaults, SSL guidance) under each field.
 - German (`de`) translations for the setup form's example/format hints and the tempmon temperature sensor name, closing a gap versus the English strings.
 - Official support for OpenMediaVault 8.5, including its new two-step `Session.login` authentication response format (#50).
+- Support for OMV accounts with two-factor authentication (e.g. the `openmediavault-2fa-totp` plugin) enabled: the config flow now shows a second step to enter the verification code and completes the login via `Session.verify`, instead of rejecting the account.
 
 ### Changed
 
@@ -15,7 +16,7 @@
 
 ### Fixed
 
-- Login now recognizes OMV 8.5+'s two-step `Session.login` response (`status: "authenticated"`/`"challengeRequired"`), fixing false "Invalid credentials" errors during setup even with correct credentials on updated OMV instances (#50). Accounts with TOTP two-factor authentication enabled now raise a clearer debug-logged reason instead of a bare rejection (2FA login itself remains unsupported).
+- Login now recognizes OMV 8.5+'s two-step `Session.login` response (`status: "authenticated"`/`"challengeRequired"`), fixing false "Invalid credentials" errors during setup even with correct credentials on updated OMV instances (#50).
 - Opaque, non-OMV HTTP 401/403 responses on the login request (e.g. from a reverse proxy, WAF, or fail2ban in front of OMV) are now reported as "Cannot connect to OMV" instead of being misclassified as "Invalid credentials".
 - Reformatted `omv_api.py` with `ruff format` to satisfy the CI lint job (`ruff format --check`), no behaviour change.
 
