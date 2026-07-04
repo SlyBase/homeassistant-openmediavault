@@ -31,6 +31,12 @@ jobs:
     # already present) and matches the runtime actions/checkout itself needs.
     container:
       image: node:24-bookworm
+    # GitHub Actions defaults run: steps to `sh` (not bash) when a job
+    # container is set, and dash's `set` doesn't support `-o pipefail`,
+    # which every multi-command step below relies on.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
