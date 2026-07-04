@@ -1,39 +1,28 @@
 # Changelog
 
-## [Unreleased]
-
-### Added
-
-- README section documenting that a dedicated (non-`admin`) OMV user for this integration must be a member of the `openmediavault-admin` group, since OMV's RPC authorization model has no finer-grained permission level.
-
-### Fixed
-
-- Reconfigure and reauthentication no longer immediately fail again for 2FA-enabled accounts: the config flow now hands its already-authenticated session off to the entry setup that follows, instead of the automatic post-flow reload opening a brand new OMV login (which OMV always challenges for 2FA, with nobody there to answer it).
-- Changing an option (scan interval, resource filters, feature flags) no longer forces a fresh OMV login on reload: the still-valid session is now handed off to the reload's entry setup instead, so 2FA-enabled accounts aren't re-challenged just for an options change.
-- The coordinator no longer silently freezes entities on stale cached data forever when the OMV session dies mid-run and automatic reconnect hits a 2FA challenge nobody can answer; it now raises `ConfigEntryAuthFailed` so Home Assistant prompts a reauthentication instead.
-
 ## [2.6.0] - 2026-07-03
 
 ### Added
 
-- Setup form now shows inline example/format hints (host format, port defaults, SSL guidance) under each field.
-- German (`de`) translations for the setup form's example/format hints and the tempmon temperature sensor name, closing a gap versus the English strings.
-- Official support for OpenMediaVault 8.5, including its new two-step `Session.login` authentication response format (#50).
-- Support for OMV accounts with two-factor authentication (e.g. the `openmediavault-2fa-totp` plugin) enabled: the config flow now shows a second step to enter the verification code and completes the login via `Session.verify`, instead of rejecting the account.
-- Config entries can now be reconfigured in place (Settings → Devices & Services → OMV → Reconfigure) instead of having to delete and re-add them — needed to switch an existing entry to HTTPS and/or enable two-factor authentication without losing entity history.
-- Added a reauthentication flow: when OMV rejects the stored credentials at startup (e.g. because 2FA was newly enabled on the OMV account, or the password changed), Home Assistant now offers an interactive "Reauthenticate" step — reusing the same host/credentials form and TOTP step — instead of getting stuck in a silent `setup_error` with no way to fix it short of deleting the entry.
+- Official support for OpenMediaVault 8.5, including its new two-step login flow (#50).
+- Two-factor authentication (2FA/TOTP) support: if your OMV account requires a verification code, the setup form now asks for it instead of rejecting the login.
+- Config entries can now be reconfigured in place (Settings → Devices & Services → OMV → Reconfigure) — e.g. to switch to HTTPS or enable 2FA — instead of having to delete and re-add the integration.
+- New reauthentication flow: if OMV rejects the stored credentials (e.g. 2FA was newly enabled, or the password changed), Home Assistant now offers an interactive "Reauthenticate" step instead of getting stuck with a setup error.
+- Setup form now shows inline example/format hints (host, port, SSL) under each field, with German translations.
+- README documents that a dedicated (non-`admin`) OMV user for this integration must be a member of the `openmediavault-admin` group.
 
 ### Changed
 
-- README setup section now shows example values and format rules for each config-flow field (host as plain IP/hostname, default ports, SSL guidance).
-- Setup form's username field hint shortened to "OMV Admin Account (e.g. admin)".
-- The "already configured" setup error now explains that Reconfigure should be used to update an existing entry's host, port, SSL or 2FA settings, instead of a bare generic message.
+- README setup section now shows example values and format rules for each config field.
+- Clearer "already configured" setup error, explaining that Reconfigure should be used to update an existing entry's host, port, SSL or 2FA settings.
 
 ### Fixed
 
-- Login now recognizes OMV 8.5+'s two-step `Session.login` response (`status: "authenticated"`/`"challengeRequired"`), fixing false "Invalid credentials" errors during setup even with correct credentials on updated OMV instances (#50).
-- Opaque, non-OMV HTTP 401/403 responses on the login request (e.g. from a reverse proxy, WAF, or fail2ban in front of OMV) are now reported as "Cannot connect to OMV" instead of being misclassified as "Invalid credentials".
-- Reformatted `omv_api.py` with `ruff format` to satisfy the CI lint job (`ruff format --check`), no behaviour change.
+- Fixed "Invalid credentials" errors during setup on OMV 8.5+ even with correct credentials, caused by its new two-step login response (#50).
+- Connection issues in front of OMV (e.g. a reverse proxy or firewall) are no longer misreported as "Invalid credentials"; they now correctly show "Cannot connect to OMV".
+- Reconfiguring or reauthenticating a 2FA-enabled account no longer immediately asks you to log in and enter your 2FA code a second time.
+- Changing an option (scan interval, resource filters, feature flags) no longer forces a fresh login (and 2FA code) on 2FA-enabled accounts.
+- Sensors no longer freeze on stale data forever if the OMV session expires while running; Home Assistant now correctly prompts you to log in again instead.
 
 ## [2.5.1] - 2026-06-17
 
