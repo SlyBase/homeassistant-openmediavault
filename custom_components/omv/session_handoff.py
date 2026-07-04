@@ -35,3 +35,8 @@ def pop(unique_id: str | None) -> tuple[OMVAPI, dict[str, Any]] | None:
     if unique_id is None:
         return None
     return _pending.pop(unique_id, None)
+
+
+def has_pending(unique_id: str | None) -> bool:
+    """Return whether an authenticated API instance is stashed for this host."""
+    return unique_id is not None and unique_id in _pending

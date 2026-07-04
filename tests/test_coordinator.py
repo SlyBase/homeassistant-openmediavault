@@ -234,6 +234,29 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_data_raises_reauth_on_two_factor_challenge(hass, config_entry) -> None:
+    """A 2FA challenge surviving the API client's auto-reconnect must trigger reauth.
+
+    Regression test: previously this fell into the "cached data" fallback and
+    entities silently froze on stale values forever instead of prompting the
+    user to log back in.
+    """
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    from custom_components.omv.exceptions import OMVTwoFactorRequiredError
+
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp"))
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
 async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, config_entry) -> None:
     """Test OMV 7 MdMgmt data creates md RAID devices even without filesystem entries."""
     config_entry.add_to_hass(hass)

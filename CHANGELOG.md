@@ -9,6 +9,8 @@
 ### Fixed
 
 - Reconfigure and reauthentication no longer immediately fail again for 2FA-enabled accounts: the config flow now hands its already-authenticated session off to the entry setup that follows, instead of the automatic post-flow reload opening a brand new OMV login (which OMV always challenges for 2FA, with nobody there to answer it).
+- Changing an option (scan interval, resource filters, feature flags) no longer forces a fresh OMV login on reload: the still-valid session is now handed off to the reload's entry setup instead, so 2FA-enabled accounts aren't re-challenged just for an options change.
+- The coordinator no longer silently freezes entities on stale cached data forever when the OMV session dies mid-run and automatic reconnect hits a 2FA challenge nobody can answer; it now raises `ConfigEntryAuthFailed` so Home Assistant prompts a reauthentication instead.
 
 ## [2.6.0] - 2026-07-03
 

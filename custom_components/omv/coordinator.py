@@ -13,6 +13,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -32,7 +33,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .exceptions import OMVApiError, OMVConnectionError
+from .exceptions import OMVApiError, OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -444,6 +445,13 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 unfiltered_data,
                 dict(self.config_entry.options),
             )
+        except OMVAuthError as err:
+            # A 2FA challenge (or any other auth failure) surviving the API
+            # client's own automatic reconnect means nobody is present to
+            # answer it — falling back to cached data here would leave
+            # entities silently frozen on stale values forever instead of
+            # prompting the user to reauthenticate.
+            raise ConfigEntryAuthFailed(f"OMV authentication failed: {err}") from err
         except (OMVConnectionError, OMVApiError) as err:
             # Issue #26: If we have cached data, use it as fallback instead of failing.
             # On first refresh there is no cache yet, so we must propagate the error
