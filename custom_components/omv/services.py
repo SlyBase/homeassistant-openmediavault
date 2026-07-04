@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, callback
@@ -25,6 +27,9 @@ SERVICE_RUN_RSYNC_JOB = "run_rsync_job"
 
 CONTAINER_COMMANDS = ["start", "stop", "restart", "pause", "unpause"]
 COMPOSE_COMMANDS = ["up -d", "down", "start", "stop", "pull"]
+
+# Docker container name/id charset (also matches short and full hashes).
+_CONTAINER_REF_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 
 APPLY_CONFIG_SCHEMA = vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string})
 
@@ -97,7 +102,9 @@ def _resolve_container_id(coordinator: OMVDataUpdateCoordinator, value: str) -> 
 
     Matches against ``container_key``, ``name`` and ``container_id`` of the
     normalized container records. Unknown values are passed through verbatim
-    so users can target containers OMV has not listed yet.
+    so users can target containers OMV has not listed yet, but are validated
+    against the Docker name/id charset first since OMV's compose plugin
+    builds a shell command server-side from this value.
 
     Args:
         coordinator: The coordinator holding ``data["compose"]``.
@@ -105,6 +112,10 @@ def _resolve_container_id(coordinator: OMVDataUpdateCoordinator, value: str) -> 
 
     Returns:
         The Docker container id, or ``value`` unchanged when unmatched.
+
+    Raises:
+        ServiceValidationError: When an unmatched ``value`` contains
+            characters outside the Docker name/id charset.
     """
     for record in coordinator.data.get("compose", []):
         if value in (
@@ -113,6 +124,12 @@ def _resolve_container_id(coordinator: OMVDataUpdateCoordinator, value: str) -> 
             record.get("container_id"),
         ):
             return str(record.get("container_id") or value)
+    if not _CONTAINER_REF_RE.fullmatch(value):
+        raise ServiceValidationError(
+            translation_domain=DOMAIN,
+            translation_key="invalid_container_reference",
+            translation_placeholders={"container": value},
+        )
     return value
 
 

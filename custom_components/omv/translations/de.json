@@ -347,6 +347,9 @@
     "service_job_not_found": {
       "message": "Rsync-Job {job} wurde auf dem OMV-Host nicht gefunden."
     },
+    "invalid_container_reference": {
+      "message": "Container-Referenz {container} enthält Zeichen, die in einem Docker-Namen oder einer Docker-Id nicht zulässig sind."
+    },
     "wol_failed": {
       "message": "Wake-on-LAN-Paket für {interface} konnte nicht gesendet werden."
     }

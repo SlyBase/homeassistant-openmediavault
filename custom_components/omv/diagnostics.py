@@ -18,6 +18,7 @@ TO_REDACT = {
     "gateway",
     "macaddress",
     "mac",
+    "hostname",
 }
 
 

@@ -246,7 +246,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "hostport2": "n/a",
         }
         response = await self.api.async_call("Kvm", "doCommand", params)
-        _LOGGER.debug("Kvm.doCommand params=%s response=%s", params, response)
+        _LOGGER.debug("Kvm.doCommand command=%s name=%s", params["command"], params["name"])
         return response
 
     async def async_execute_rsync_job(self, uuid: str) -> Any:
