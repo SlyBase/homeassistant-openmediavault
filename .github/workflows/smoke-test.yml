@@ -1,0 +1,128 @@
+---
+name: "HA Smoke Test"
+
+# Only one deploy+verify against the single production Pi/HA instance at a
+# time — parallel PR runs would otherwise race on the same target.
+concurrency:
+  group: ha-smoke-test
+  cancel-in-progress: false
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # renovate: datasource=github-releases depName=mikefarah/yq
+  YQ_VERSION: "v4.53.3"
+
+jobs:
+  smoke:
+    name: Deploy + REST verify on Pi
+    # Ephemeral ARC runner (org-scoped, kubernetes containerMode) — see
+    # homelab kubernetes/apps/arc-runners. Fresh pod per run, nothing persists.
+    runs-on: k8s
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install CLI dependencies (ephemeral pod)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends openssh-client rsync jq
+          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Fetch SSH key from Infisical
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: ${{ vars.INFISICAL_URL }}
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-path: /ci/ssh
+
+      - name: Fetch HA URL/token from Infisical
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+          domain: ${{ vars.INFISICAL_URL }}
+          project-slug: ${{ vars.INFISICAL_PROJECT_SLUG }}
+          env-slug: prod
+          secret-path: /ci/homeassistant
+
+      - name: Setup SSH config for the pi
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s' "$SSH_KEYS_YAML" > /tmp/ssh-keys.yaml
+
+          cat > ~/.ssh/config <<-'EOF'
+          Host *
+            StrictHostKeyChecking accept-new
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+
+          host_ip=$(yq eval '.hosts.raspi.ip' /tmp/ssh-keys.yaml)
+          host_user=$(yq eval '.hosts.raspi.user' /tmp/ssh-keys.yaml)
+          host_port=$(yq eval '.hosts.raspi.port' /tmp/ssh-keys.yaml)
+
+          cat >> ~/.ssh/config <<-EOF
+          Host pi
+            HostName ${host_ip}
+            User ${host_user}
+            Port ${host_port}
+            IdentityFile ~/.ssh/pi_key
+            IdentitiesOnly yes
+          EOF
+
+          yq eval '.ssh_keys.raspi' /tmp/ssh-keys.yaml > ~/.ssh/pi_key
+          chmod 600 ~/.ssh/pi_key ~/.ssh/config
+          ssh-keyscan -H "${host_ip}" >> ~/.ssh/known_hosts 2>/dev/null
+          rm -f /tmp/ssh-keys.yaml
+
+      - name: Deploy to Home Assistant
+        run: bash .github/scripts/deploy-to-homeassistant.sh
+
+      - name: Verify OMV entities via HA REST API (deterministic)
+        run: |
+          set -euo pipefail
+          entities=("sensor.omv_cpu_utilization" "sensor.omv_memory_usage")
+          max_wait=90
+
+          for entity in "${entities[@]}"; do
+            echo "==> Polling ${entity}..."
+            elapsed=0
+            state=""
+            while true; do
+              # Bearer token goes over curl's stdin config (-K -), not argv,
+              # so it never shows up in `ps` on the remote pi. Heredoc is
+              # intentionally unquoted: ${entity}/${HA_TOKEN} must expand
+              # locally (client-side) since only the runner has HA_TOKEN.
+              # shellcheck disable=SC2029,SC2087
+              state=$(ssh pi "curl -sf --max-time 5 -K - http://localhost:8123/api/states/${entity}" <<HDR | jq -r '.state // empty'
+          header = "Authorization: Bearer ${HA_TOKEN}"
+          HDR
+              ) || state=""
+
+              if [[ "${state}" =~ ^-?[0-9]+([.][0-9]+)?$ ]]; then
+                echo "    ${entity} = ${state}"
+                break
+              fi
+
+              if [[ ${elapsed} -ge ${max_wait} ]]; then
+                echo "ERROR: ${entity} did not report a numeric state within ${max_wait}s (last state: '${state}')" >&2
+                exit 1
+              fi
+
+              sleep 5
+              elapsed=$((elapsed + 5))
+            done
+          done
+
+          echo "✅ Smoke test passed: OMV entities report live numeric state."

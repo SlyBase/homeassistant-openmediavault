@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- CI smoke-test workflow (`.github/workflows/smoke-test.yml`): deploys to the Pi and deterministically verifies OMV entities via the HA REST API on every PR against `main` and on `workflow_dispatch`, replacing the MCP-based check as the merge gate.
+
+## [2.6.1] - 2026-07-04
+
+### Changed
+
+- The `container_command` service now validates unmatched container references against the Docker name/id charset before passing them to OMV's compose RPC, closing a defense-in-depth gap where free-text input reached a server-side shell command unvalidated.
+- Debug logs no longer include password length; only the (non-sensitive) outer-whitespace flag is kept.
+- The `Kvm.doCommand` debug log now only records the command and VM name instead of the full request/response payload.
+- CI's `hassfest` action is now pinned to a commit SHA instead of the mutable `@master` ref.
+- CI now runs a non-blocking `pip-audit` step to surface vulnerable dependencies.
+- The deploy script's sudoers guidance now recommends a scoped sudo entry for the specific commands it runs, instead of `NOPASSWD: ALL`.
+- Diagnostics now redact the OMV `hostname` field, matching the existing redaction of other identifying fields.
+
 ### Fixed
 
 - Apply-config button now awaits the `persistent_notification.dismiss` service call instead of firing it without awaiting, which produced a "coroutine was never awaited" warning during tests.

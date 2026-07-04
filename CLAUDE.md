@@ -187,7 +187,7 @@ Before claiming a task complete:
 1. **Local validation** — run `pytest tests/ -q` (or a focused subset). No failures allowed.
 2. **Commit** — one conventional commit per completed task (do not push; CI handles that).
 3. **Deploy** — run the VS Code task `HASS: Deploy to HomeAssistant (SSH)` (or `.github/scripts/deploy-to-homeassistant.sh`) and wait for Home Assistant to come back online.
-4. **Smoke test** — use the Home Assistant MCP tools to confirm at least one OMV entity returns a non-`unavailable` state (e.g. `mcp_homeassistant_ha_search_entities` → `mcp_homeassistant_ha_get_state`).
+4. **Smoke test** — for local/interactive confidence, use the Home Assistant MCP tools to confirm at least one OMV entity returns a non-`unavailable` state (e.g. `mcp_homeassistant_ha_search_entities` → `mcp_homeassistant_ha_get_state`). The authoritative check is deterministic and runs in CI: `.github/workflows/smoke-test.yml` deploys to the Pi and polls the HA REST API for `sensor.omv_cpu_utilization`/`sensor.omv_memory_usage` on every PR against `main` — MCP does not gate merges, the CI check does.
 5. **Failure handling** — if any step fails, report the failed step, error signal, and the next repair step. Do not claim completion.
 
 ## Security Guidelines
