@@ -26,11 +26,11 @@ This instruction applies whenever a cohesive Autopilot task in the repository is
 - Wait until Home Assistant has finished starting up (the script waits automatically; alternatively confirm via MCP).
 - A task is not finished unless the deploy succeeds and Home Assistant is back online.
 
-## 4) HA MCP smoke test is mandatory
+## 4) Pipeline smoke test is the authoritative check
 
-- After a successful deploy, use the Home Assistant MCP tools to verify the integration is working.
-- Check that at least one OMV entity delivers a non-`unavailable` state, e.g. via `mcp_homeassistant_ha_search_entities` with `omv` as the query, then `mcp_homeassistant_ha_get_state` for a representative entity (e.g. a disk or memory sensor).
-- Until this smoke test confirms live data, the work must not be reported as complete.
+- The deterministic check lives in CI: `.github/workflows/smoke-test.yml` deploys to the Pi and polls the HA REST API (`sensor.omv_cpu_utilization`/`sensor.omv_memory_usage`) on every PR against `main` and on `workflow_dispatch`. A green check is required before merge.
+- For local/interactive confidence before opening the PR, you may additionally use the Home Assistant MCP tools to verify at least one OMV entity delivers a non-`unavailable` state, e.g. via `mcp_homeassistant_ha_search_entities` with `omv` as the query, then `mcp_homeassistant_ha_get_state` for a representative entity (e.g. a disk or memory sensor). MCP is not a gate — it does not replace the CI check.
+- Until the CI smoke-test check is green (or, for local-only confidence, MCP confirms live data), the work must not be reported as complete.
 
 ## 5) Failure handling
 
