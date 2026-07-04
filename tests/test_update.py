@@ -496,6 +496,8 @@ async def test_async_install_fires_notification_when_config_dirty_post_install(
     coordinator.async_request_refresh = _mock_refresh
 
     mock_hass = MagicMock()
+    mock_hass.services.has_service.return_value = True
+    mock_hass.services.async_call = AsyncMock()
     entity = OMVUpdateEntity(coordinator)
     entity.hass = mock_hass
 
@@ -530,6 +532,8 @@ async def test_async_install_no_notification_when_clean_post_install(
     coordinator.async_request_refresh = AsyncMock()
 
     mock_hass = MagicMock()
+    mock_hass.services.has_service.return_value = True
+    mock_hass.services.async_call = AsyncMock()
     entity = OMVUpdateEntity(coordinator)
     entity.hass = mock_hass
 

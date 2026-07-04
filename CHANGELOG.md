@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Apply-config button now awaits the `persistent_notification.dismiss` service call instead of firing it without awaiting, which produced a "coroutine was never awaited" warning during tests.
+
 ## [2.6.0] - 2026-07-03
 
 ### Added

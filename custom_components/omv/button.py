@@ -264,11 +264,12 @@ class OMVApplyConfigButton(OMVEntity, ButtonEntity):
                 translation_key="apply_config_failed",
             ) from err
         await self.coordinator.async_request_refresh()
-        self.coordinator.hass.services.async_call(
-            "persistent_notification",
-            "dismiss",
-            {"notification_id": "omv_config_dirty"},
-        )
+        if self.coordinator.hass.services.has_service("persistent_notification", "dismiss"):
+            await self.coordinator.hass.services.async_call(
+                "persistent_notification",
+                "dismiss",
+                {"notification_id": "omv_config_dirty"},
+            )
 
 
 class OMVShutdownButton(OMVEntity, ButtonEntity):
