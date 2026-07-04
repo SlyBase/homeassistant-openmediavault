@@ -25,16 +25,22 @@ jobs:
     # Ephemeral ARC runner (org-scoped, kubernetes containerMode) — see
     # homelab kubernetes/apps/arc-runners. Fresh pod per run, nothing persists.
     runs-on: k8s
+    # ARC's kubernetes containerMode enforces ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER,
+    # so every job must declare its own container or the runner refuses to run
+    # any step. node:*-bookworm is buildpack-deps-based (git/curl/openssh-client
+    # already present) and matches the runtime actions/checkout itself needs.
+    container:
+      image: node:24-bookworm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install CLI dependencies (ephemeral pod)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends openssh-client rsync jq
-          sudo wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
-          sudo chmod +x /usr/local/bin/yq
+          apt-get update -qq
+          apt-get install -y --no-install-recommends openssh-client rsync jq
+          wget -qO /usr/local/bin/yq "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          chmod +x /usr/local/bin/yq
 
       - name: Fetch SSH key from Infisical
         uses: Infisical/secrets-action@v1.0.16
