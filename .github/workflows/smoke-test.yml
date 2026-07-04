@@ -104,7 +104,7 @@ jobs:
       - name: Verify OMV entities via HA REST API (deterministic)
         run: |
           set -euo pipefail
-          entities=("sensor.omv_cpu_utilization" "sensor.omv_memory_usage")
+          entities=("sensor.omv_omv8_cpu_auslastung" "sensor.omv_omv8_speicherauslastung")
           max_wait=90
 
           for entity in "${entities[@]}"; do
