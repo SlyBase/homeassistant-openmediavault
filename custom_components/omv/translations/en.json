@@ -10,13 +10,35 @@
           "port": "Port",
           "ssl": "Use SSL",
           "verify_ssl": "Verify SSL certificate"
+        },
+        "data_description": {
+          "host": "IP address or hostname — no http(s):// prefix, no port suffix (e.g. 192.168.1.100 or mynas.local)",
+          "username": "OMV Admin Account (e.g. admin)",
+          "password": "Your OMV account password",
+          "port": "e.g. 80 for HTTP, 443 (or a custom port) when SSL is enabled",
+          "ssl": "Enable if your OMV web interface is reachable via HTTPS",
+          "verify_ssl": "Disable only when using a self-signed certificate"
+        }
+      },
+      "totp": {
+        "title": "Two-factor authentication",
+        "description": "Enter the verification code from your authenticator app to finish signing in.",
+        "data": {
+          "code": "Verification code"
         }
       }
     },
     "error": {
       "invalid_auth": "Invalid credentials",
+      "invalid_totp_code": "Invalid or expired verification code",
       "cannot_connect": "Cannot connect to OMV",
       "unknown": "Unknown error"
+    },
+    "abort": {
+      "already_configured": "This OpenMediaVault host is already configured. Use Reconfigure to update its host, port, SSL or two-factor authentication settings instead of adding it again.",
+      "unique_id_mismatch": "This account belongs to a different OpenMediaVault host than the one being reconfigured or reauthenticated.",
+      "reconfigure_successful": "OpenMediaVault settings updated successfully.",
+      "reauth_successful": "Reauthenticated with OpenMediaVault successfully."
     }
   },
   "options": {

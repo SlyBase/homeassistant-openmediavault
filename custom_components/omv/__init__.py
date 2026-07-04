@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+from typing import Any
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     CONF_HOST,
@@ -16,6 +19,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from . import session_handoff
 from .const import (
     CONF_SCAN_INTERVAL,
     DEFAULT_PORT,
@@ -26,10 +30,12 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import OMVDataUpdateCoordinator
-from .exceptions import OMVAuthError, OMVConnectionError
+from .exceptions import OMVApiError, OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
 from .repairs import async_delete_reboot_repair_issue, async_sync_reboot_repair_issue
 from .services import async_setup_services
+
+_LOGGER = logging.getLogger(__name__)
 
 type OMVConfigEntry = ConfigEntry[OMVDataUpdateCoordinator]
 
@@ -102,25 +108,52 @@ async def _async_cleanup_stale_registry_entries(
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
-    """Set up OMV from a config entry."""
-    api = OMVAPI(
-        host=entry.data[CONF_HOST],
-        username=entry.data[CONF_USERNAME],
-        password=entry.data[CONF_PASSWORD],
-        port=entry.data.get(CONF_PORT, DEFAULT_PORT),
-        ssl=entry.data.get(CONF_SSL, DEFAULT_SSL),
-        verify_ssl=entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-        source="setup_entry",
-    )
+    """Set up OMV from a config entry.
 
-    try:
-        system_info = await api.async_connect()
-    except OMVAuthError as err:
-        await api.async_close()
-        raise ConfigEntryAuthFailed("OMV authentication failed") from err
-    except OMVConnectionError as err:
-        await api.async_close()
-        raise ConfigEntryNotReady("Cannot connect to OMV") from err
+    If the config flow just authenticated this host (user/reconfigure/reauth),
+    reuses that already-authenticated :class:`~custom_components.omv.omv_api.OMVAPI`
+    session and its ``system_info`` via :mod:`custom_components.omv.session_handoff`
+    instead of opening a brand new OMV login, since OMV challenges 2FA-enabled
+    accounts fresh on every login and nobody is present to answer a second
+    challenge triggered by the automatic post-flow reload.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry to set up.
+
+    Returns:
+        True once setup has completed successfully.
+
+    Raises:
+        ConfigEntryAuthFailed: If OMV authentication fails (no pending hand-off).
+        ConfigEntryNotReady: If OMV cannot be reached (no pending hand-off).
+    """
+    handoff = session_handoff.pop(entry.unique_id)
+    if handoff is not None:
+        # Reuse the session the config flow (user/reconfigure/reauth) just
+        # authenticated, instead of opening a brand new OMV login — OMV
+        # always challenges 2FA accounts fresh, so a second login right
+        # after the flow finished would fail with nobody there to answer it.
+        api, system_info = handoff
+    else:
+        api = OMVAPI(
+            host=entry.data[CONF_HOST],
+            username=entry.data[CONF_USERNAME],
+            password=entry.data[CONF_PASSWORD],
+            port=entry.data.get(CONF_PORT, DEFAULT_PORT),
+            ssl=entry.data.get(CONF_SSL, DEFAULT_SSL),
+            verify_ssl=entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
+            source="setup_entry",
+        )
+
+        try:
+            system_info = await api.async_connect()
+        except OMVAuthError as err:
+            await api.async_close()
+            raise ConfigEntryAuthFailed("OMV authentication failed") from err
+        except OMVConnectionError as err:
+            await api.async_close()
+            raise ConfigEntryNotReady("Cannot connect to OMV") from err
 
     coordinator = OMVDataUpdateCoordinator(
         hass,
@@ -145,10 +178,39 @@ async def async_unload_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         async_delete_reboot_repair_issue(hass, entry.entry_id)
-        await entry.runtime_data.api.async_close()
+        # If _async_update_listener just stashed a live, already-authenticated
+        # session for the immediate reload below, leave it open — closing it
+        # here would force the reload's async_setup_entry into a brand new
+        # OMV login, re-triggering a 2FA challenge for a session that was
+        # still perfectly valid.
+        if not session_handoff.has_pending(entry.unique_id):
+            await entry.runtime_data.api.async_close()
     return unload_ok
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: OMVConfigEntry) -> None:
-    """Reload the entry when options change."""
+    """Reload the entry when options change, reusing the live OMV session.
+
+    Options changes (scan interval, resource filters, feature flags) don't
+    invalidate the OMV session, but a plain ``async_reload`` tears down the
+    API client and forces a brand new ``Session.login`` on setup — which
+    re-triggers a 2FA challenge for accounts with TOTP enabled, even though
+    nobody changed any credentials. Hand off the still-authenticated API
+    instance (refreshing ``system_info`` on it first) so the reload reuses
+    it instead, exactly like the reconfigure/reauth flows already do.
+    """
+    coordinator = entry.runtime_data
+    system_info: dict[str, Any] | None = None
+    try:
+        response = await coordinator.api.async_call("System", "getInformation")
+        if isinstance(response, dict):
+            system_info = response
+    except (OMVApiError, OMVConnectionError) as err:
+        _LOGGER.debug(
+            "Could not refresh system_info for options-reload hand-off on %s: %s",
+            entry.entry_id,
+            err,
+        )
+    if entry.unique_id is not None and system_info is not None:
+        session_handoff.store(entry.unique_id, coordinator.api, system_info)
     await hass.config_entries.async_reload(entry.entry_id)

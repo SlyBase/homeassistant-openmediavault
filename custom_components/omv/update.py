@@ -254,19 +254,20 @@ class OMVUpdateEntity(OMVEntity, UpdateEntity):
         hwinfo_post = self.coordinator.data.get("hwinfo", {})
         if hwinfo_post.get("configDirty"):
             modules = ", ".join(hwinfo_post.get("dirtyModules") or []) or "?"
-            self.hass.services.async_call(
-                "persistent_notification",
-                "create",
-                {
-                    "title": "OMV: Configuration changes pending",
-                    "message": (
-                        f"The update triggered new configuration changes: **{modules}**.\n\n"
-                        "Press the **Apply Configuration** button in the OMV integration "
-                        "before rebooting."
-                    ),
-                    "notification_id": "omv_config_dirty",
-                },
-            )
+            if self.hass.services.has_service("persistent_notification", "create"):
+                await self.hass.services.async_call(
+                    "persistent_notification",
+                    "create",
+                    {
+                        "title": "OMV: Configuration changes pending",
+                        "message": (
+                            f"The update triggered new configuration changes: **{modules}**.\n\n"
+                            "Press the **Apply Configuration** button in the OMV integration "
+                            "before rebooting."
+                        ),
+                        "notification_id": "omv_config_dirty",
+                    },
+                )
 
     async def _wait_for_bgproc(self, filename: Any) -> None:
         """Poll Exec.isRunning until the OMV background process finishes.

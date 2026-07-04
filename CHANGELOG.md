@@ -2,9 +2,33 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Apply-config button now awaits the `persistent_notification.dismiss` service call instead of firing it without awaiting, which produced a "coroutine was never awaited" warning during tests.
+
+## [2.6.0] - 2026-07-03
+
+### Added
+
+- Official support for OpenMediaVault 8.5, including its new two-step login flow (#50).
+- Two-factor authentication (2FA/TOTP) support: if your OMV account requires a verification code, the setup form now asks for it instead of rejecting the login.
+- Config entries can now be reconfigured in place (Settings → Devices & Services → OMV → Reconfigure) — e.g. to switch to HTTPS or enable 2FA — instead of having to delete and re-add the integration.
+- New reauthentication flow: if OMV rejects the stored credentials (e.g. 2FA was newly enabled, or the password changed), Home Assistant now offers an interactive "Reauthenticate" step instead of getting stuck with a setup error.
+- Setup form now shows inline example/format hints (host, port, SSL) under each field, with German translations.
+- README documents that a dedicated (non-`admin`) OMV user for this integration must be a member of the `openmediavault-admin` group.
+
 ### Changed
 
-- README setup section now shows example values and format rules for each config-flow field (host as plain IP/hostname, default ports, SSL guidance).
+- README setup section now shows example values and format rules for each config field.
+- Clearer "already configured" setup error, explaining that Reconfigure should be used to update an existing entry's host, port, SSL or 2FA settings.
+
+### Fixed
+
+- Fixed "Invalid credentials" errors during setup on OMV 8.5+ even with correct credentials, caused by its new two-step login response (#50).
+- Connection issues in front of OMV (e.g. a reverse proxy or firewall) are no longer misreported as "Invalid credentials"; they now correctly show "Cannot connect to OMV".
+- Reconfiguring or reauthenticating a 2FA-enabled account no longer immediately asks you to log in and enter your 2FA code a second time.
+- Changing an option (scan interval, resource filters, feature flags) no longer forces a fresh login (and 2FA code) on 2FA-enabled accounts.
+- Sensors no longer freeze on stale data forever if the OMV session expires while running; Home Assistant now correctly prompts you to log in again instead.
 
 ## [2.5.1] - 2026-06-17
 

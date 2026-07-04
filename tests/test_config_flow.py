@@ -32,7 +32,7 @@ from custom_components.omv.const import (
     CONF_SMART_POLLING_DISABLED,
     DOMAIN,
 )
-from custom_components.omv.exceptions import OMVAuthError
+from custom_components.omv.exceptions import OMVAuthError, OMVTwoFactorRequiredError
 
 USER_INPUT = {
     CONF_HOST: "192.0.2.10",
@@ -112,6 +112,61 @@ async def test_flow_auth_error(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_flow_totp_required_then_success(hass) -> None:
+    """Test the 2FA path: challenge required on step 1, code accepted on step 2."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        assert result["type"] == "form"
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == "OMV (nas)"
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_wrong_code(hass) -> None:
+    """Test that a rejected TOTP code shows the invalid_totp_code error and stays on the totp step."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(side_effect=OMVAuthError("Two-factor verification failed")),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "000000"})
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "totp"
+    assert result["errors"]["base"] == "invalid_totp_code"
+
+
+@pytest.mark.asyncio
 async def test_flow_duplicate_abort(hass, config_entry) -> None:
     """Test duplicate hostnames are rejected via unique_id."""
     config_entry = MockConfigEntry(
@@ -138,6 +193,167 @@ async def test_flow_duplicate_abort(hass, config_entry) -> None:
 
     assert result["type"] == "abort"
     assert result["reason"] == "already_configured"
+
+
+@pytest.mark.asyncio
+async def test_flow_reconfigure_prefills_existing_values(hass) -> None:
+    """Test the reconfigure form is pre-filled from the existing entry, password blank."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "user"
+    defaults = result["data_schema"]({})
+    assert defaults[CONF_HOST] == USER_INPUT[CONF_HOST]
+    assert defaults[CONF_USERNAME] == USER_INPUT[CONF_USERNAME]
+    assert defaults[CONF_PORT] == USER_INPUT[CONF_PORT]
+    assert defaults[CONF_SSL] is USER_INPUT[CONF_SSL]
+    assert defaults[CONF_VERIFY_SSL] is USER_INPUT[CONF_VERIFY_SSL]
+    assert defaults[CONF_PASSWORD] == ""
+
+
+@pytest.mark.asyncio
+async def test_flow_reconfigure_success_switches_to_https_and_2fa(hass) -> None:
+    """Test reconfiguring an entry to HTTPS + 2FA updates the entry in place (no duplicate)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    new_input = {
+        **USER_INPUT,
+        CONF_PORT: 443,
+        CONF_SSL: True,
+    }
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], new_input)
+        assert result["type"] == "form"
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_PORT] == 443
+    assert entry.data[CONF_SSL] is True
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+@pytest.mark.asyncio
+async def test_flow_reconfigure_wrong_account_aborts(hass) -> None:
+    """Test reconfiguring against a different OMV host is rejected via unique_id mismatch."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(return_value={"hostname": "othernas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await entry.start_reconfigure_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {**USER_INPUT, CONF_HOST: "192.0.2.99"},
+        )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "unique_id_mismatch"
+
+
+@pytest.mark.asyncio
+async def test_flow_reauth_totp_now_required_updates_entry(hass) -> None:
+    """Test reauth (e.g. triggered by OMV newly requiring 2FA) updates the entry via the same totp step."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        assert result["type"] == "form"
+        assert result["step_id"] == "user"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        assert result["type"] == "form"
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reauth_successful"
+    assert len(hass.config_entries.async_entries(DOMAIN)) == 1
+
+
+@pytest.mark.asyncio
+async def test_flow_reauth_wrong_account_aborts(hass) -> None:
+    """Test reauth against a different OMV host is rejected via unique_id mismatch."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(return_value={"hostname": "othernas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {**USER_INPUT, CONF_HOST: "192.0.2.99"},
+        )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "unique_id_mismatch"
 
 
 @pytest.mark.asyncio

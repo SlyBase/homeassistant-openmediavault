@@ -10,13 +10,35 @@
           "port": "Port",
           "ssl": "SSL verwenden",
           "verify_ssl": "SSL-Zertifikat überprüfen"
+        },
+        "data_description": {
+          "host": "IP-Adresse oder Hostname — ohne http(s):// Präfix, ohne Port-Suffix (z. B. 192.168.1.100 oder mynas.local)",
+          "username": "OMV Admin Account (z. B. admin)",
+          "password": "Dein OMV-Kontopasswort",
+          "port": "z. B. 80 für HTTP, 443 (oder ein benutzerdefinierter Port) bei aktiviertem SSL",
+          "ssl": "Aktivieren, wenn die OMV-Weboberfläche über HTTPS erreichbar ist",
+          "verify_ssl": "Nur bei einem selbstsignierten Zertifikat deaktivieren"
+        }
+      },
+      "totp": {
+        "title": "Zwei-Faktor-Authentifizierung",
+        "description": "Gib den Verifizierungscode aus deiner Authenticator-App ein, um die Anmeldung abzuschließen.",
+        "data": {
+          "code": "Verifizierungscode"
         }
       }
     },
     "error": {
       "invalid_auth": "Ungültige Zugangsdaten",
+      "invalid_totp_code": "Ungültiger oder abgelaufener Verifizierungscode",
       "cannot_connect": "Verbindung zu OMV nicht möglich",
       "unknown": "Unbekannter Fehler"
+    },
+    "abort": {
+      "already_configured": "Dieser OpenMediaVault-Host ist bereits konfiguriert. Verwende „Neu konfigurieren“, um Host, Port, SSL- oder Zwei-Faktor-Authentifizierungs-Einstellungen zu ändern, anstatt ihn erneut hinzuzufügen.",
+      "unique_id_mismatch": "Dieses Konto gehört zu einem anderen OpenMediaVault-Host als dem, der gerade neu konfiguriert oder erneut authentifiziert wird.",
+      "reconfigure_successful": "OpenMediaVault-Einstellungen erfolgreich aktualisiert.",
+      "reauth_successful": "Erneute Authentifizierung bei OpenMediaVault erfolgreich."
     }
   },
   "options": {
@@ -180,6 +202,9 @@
       },
       "disk_smart_status": {
         "name": "SMART Status"
+      },
+      "tempmon_temperature": {
+        "name": "{resource} Temperatur"
       },
       "vm_state": {
         "name": "{resource} Zustand"

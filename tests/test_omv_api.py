@@ -10,7 +10,11 @@ from aioresponses import aioresponses
 from aioresponses.core import CallbackResult
 from yarl import URL
 
-from custom_components.omv.exceptions import OMVAuthError, OMVConnectionError
+from custom_components.omv.exceptions import (
+    OMVAuthError,
+    OMVConnectionError,
+    OMVTwoFactorRequiredError,
+)
 from custom_components.omv.omv_api import OMVAPI
 
 
@@ -75,6 +79,171 @@ async def test_login_rpc_error_wrong_password_raises_auth_error(
     )
 
     api = OMVAPI("192.168.1.1", "admin", "wrong")
+    with pytest.raises(OMVAuthError):
+        await api.async_connect()
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_login_success_omv85_status_contract(mock_aiohttp: aioresponses) -> None:
+    """Test successful connect using OMV 8.5+'s status-based login contract."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "authenticated",
+                "sessionid": "session123",
+                "permissions": {},
+                "username": "admin",
+            },
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {"version": "8.5.0", "hostname": "nas"},
+            "error": None,
+        },
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    info = await api.async_connect()
+
+    assert info["hostname"] == "nas"
+    assert api._session_id == "session123"
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_login_challenge_required_raises_two_factor_error(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """Test that a 2FA challenge on login is surfaced as a distinguishable error."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "challengeRequired",
+                "challenge": {"kind": "totp"},
+                "username": "admin",
+            },
+            "error": None,
+        },
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    with pytest.raises(OMVTwoFactorRequiredError) as excinfo:
+        await api.async_connect()
+    assert excinfo.value.challenge_kind == "totp"
+    # Must still be catchable as a generic auth error by existing callers.
+    assert isinstance(excinfo.value, OMVAuthError)
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_submit_two_factor_code_success(mock_aiohttp: aioresponses) -> None:
+    """Test completing a 2FA login via Session.verify."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "challengeRequired",
+                "challenge": {"kind": "totp"},
+                "username": "admin",
+            },
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "authenticated",
+                "sessionid": "session123",
+                "username": "admin",
+                "permissions": {},
+            },
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {"version": "8.5.0", "hostname": "nas"},
+            "error": None,
+        },
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    with pytest.raises(OMVTwoFactorRequiredError):
+        await api.async_connect()
+
+    info = await api.async_submit_two_factor_code("123456")
+
+    assert info["hostname"] == "nas"
+    assert api._session_id == "session123"
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_submit_two_factor_code_wrong_code_raises_auth_error(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """Test that a rejected verification code raises OMVAuthError."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "challengeRequired",
+                "challenge": {"kind": "totp"},
+                "username": "admin",
+            },
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        status=401,
+        payload={"response": None, "error": {"code": 0, "message": "Challenge verification failed."}},
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    with pytest.raises(OMVTwoFactorRequiredError):
+        await api.async_connect()
+
+    with pytest.raises(OMVAuthError):
+        await api.async_submit_two_factor_code("000000")
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_login_opaque_401_raises_connection_error(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """Test a bare, non-OMV-RPC 401 (e.g. from a proxy/WAF) is not treated as invalid credentials."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        status=401,
+        body="Unauthorized",
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    with pytest.raises(OMVConnectionError):
+        await api.async_connect()
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_login_omv_rpc_401_raises_auth_error(mock_aiohttp: aioresponses) -> None:
+    """Test that a genuine OMV RPC error body on a 401 still raises OMVAuthError."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        status=401,
+        payload={"response": None, "error": {"code": 5001, "message": "Session expired"}},
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
     with pytest.raises(OMVAuthError):
         await api.async_connect()
     await api.async_close()
