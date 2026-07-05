@@ -61,7 +61,7 @@ class OMVAPI:
         """Create a session, authenticate and return system information."""
         _LOGGER.debug(
             "Starting OMV connect [%s] host=%r port=%s ssl=%s verify_ssl=%s "
-            "username=%r username_has_outer_whitespace=%s password_length=%d "
+            "username=%r username_has_outer_whitespace=%s "
             "password_has_outer_whitespace=%s",
             self._source,
             self._host,
@@ -70,7 +70,6 @@ class OMVAPI:
             self._verify_ssl,
             self._username,
             self._has_outer_whitespace(self._username),
-            len(self._password),
             self._has_outer_whitespace(self._password),
         )
         await self._async_ensure_session()

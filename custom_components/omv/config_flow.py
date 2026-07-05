@@ -210,14 +210,12 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             self._update_user_form_values(user_input)
             _LOGGER.debug(
                 "OMV config flow submit host=%r username=%r port=%s ssl=%s "
-                "verify_ssl=%s password_length=%d "
-                "password_has_outer_whitespace=%s",
+                "verify_ssl=%s password_has_outer_whitespace=%s",
                 user_input[CONF_HOST],
                 user_input[CONF_USERNAME],
                 user_input.get(CONF_PORT, DEFAULT_PORT),
                 user_input.get(CONF_SSL, DEFAULT_SSL),
                 user_input.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
-                len(user_input[CONF_PASSWORD]),
                 user_input[CONF_PASSWORD] != user_input[CONF_PASSWORD].strip(),
             )
             api = OMVAPI(

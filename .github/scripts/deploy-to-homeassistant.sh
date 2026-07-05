@@ -13,8 +13,16 @@
 #
 # Requirements on the pi:
 #   - SSH alias "pi" must be configured in ~/.ssh/config.
-#   - The user must have passwordless sudo for `cp`, `rm`, and `docker compose`
-#     (or for all commands via NOPASSWD: ALL).
+#   - The user must have passwordless sudo for `cp`, `rm`, `docker compose`
+#     and `docker inspect` on the fixed paths/service used below. Prefer a
+#     scoped sudoers entry over `NOPASSWD: ALL`, e.g. (adjust paths/user):
+#       timon ALL=(root) NOPASSWD: \
+#         /bin/cp -r /home/timon/homeassistant/tmp/omv /home/timon/homeassistant/hass/hass-config/custom_components/omv, \
+#         /bin/rm -rf /home/timon/homeassistant/hass/hass-config/custom_components/omv, \
+#         /usr/bin/docker compose restart hass, \
+#         /usr/bin/docker inspect * hass
+#     A compromised dev SSH key then only grants this narrow surface, not
+#     full root on the pi.
 #
 # Usage:
 #   bash .github/scripts/deploy-to-homeassistant.sh
