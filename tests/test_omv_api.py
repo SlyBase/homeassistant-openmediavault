@@ -217,6 +217,180 @@ async def test_submit_two_factor_code_wrong_code_raises_auth_error(
     await api.async_close()
 
 
+TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+
+
+@pytest.mark.asyncio
+async def test_connect_with_totp_secret_answers_challenge_automatically(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """A configured TOTP secret answers the login challenge via Session.verify."""
+    seen_bodies: list[dict] = []
+
+    def rpc_callback(url, **kwargs):
+        body = kwargs.get("json") or {}
+        seen_bodies.append(body)
+        if body["method"] == "login":
+            return CallbackResult(
+                status=200,
+                payload={
+                    "response": {
+                        "status": "challengeRequired",
+                        "challenge": {"kind": "totp"},
+                        "username": "admin",
+                    },
+                    "error": None,
+                },
+            )
+        if body["method"] == "verify":
+            return CallbackResult(
+                status=200,
+                payload={
+                    "response": {
+                        "status": "authenticated",
+                        "sessionid": "session123",
+                        "username": "admin",
+                        "permissions": {},
+                    },
+                    "error": None,
+                },
+            )
+        return CallbackResult(
+            status=200,
+            payload={"response": {"version": "8.5.0", "hostname": "nas"}, "error": None},
+        )
+
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", callback=rpc_callback, repeat=True)
+
+    api = OMVAPI("192.168.1.1", "admin", "pass", totp_secret=TOTP_SECRET)
+    info = await api.async_connect()
+
+    assert info["hostname"] == "nas"
+    assert api._session_id == "session123"
+    verify_bodies = [body for body in seen_bodies if body["method"] == "verify"]
+    assert len(verify_bodies) == 1
+    code = verify_bodies[0]["params"]["code"]
+    assert isinstance(code, str) and len(code) == 6 and code.isdigit()
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_session_expiry_auto_relogin_with_totp_secret(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """Session expiry on a 2FA account re-logins via the stored secret (Issue #55)."""
+    # Initial connect: legacy login (no challenge yet) + System.getInformation.
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": {"authenticated": True, "sessionid": "session123"}, "error": None},
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": {"version": "8.5.0", "hostname": "nas"}, "error": None},
+    )
+    # RPC fails with session-expired, fresh login is challenged, verify succeeds,
+    # the original RPC is retried successfully.
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": None, "error": {"code": 5001, "message": "expired"}},
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "challengeRequired",
+                "challenge": {"kind": "totp"},
+                "username": "admin",
+            },
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "authenticated",
+                "sessionid": "session456",
+                "username": "admin",
+                "permissions": {},
+            },
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": {"cpuUtilization": 42}, "error": None},
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass", totp_secret=TOTP_SECRET)
+    await api.async_connect()
+
+    response = await api.async_call("System", "getInformation")
+
+    assert response["cpuUtilization"] == 42
+    assert api._session_id == "session456"
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_connect_with_wrong_totp_secret_raises_auth_error(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """All candidate codes rejected (wrong secret) surfaces as OMVAuthError."""
+
+    def rpc_callback(url, **kwargs):
+        body = kwargs.get("json") or {}
+        if body["method"] == "login":
+            return CallbackResult(
+                status=200,
+                payload={
+                    "response": {
+                        "status": "challengeRequired",
+                        "challenge": {"kind": "totp"},
+                        "username": "admin",
+                    },
+                    "error": None,
+                },
+            )
+        return CallbackResult(
+            status=401,
+            payload={"response": None, "error": {"code": 0, "message": "Challenge verification failed."}},
+        )
+
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", callback=rpc_callback, repeat=True)
+
+    api = OMVAPI("192.168.1.1", "admin", "pass", totp_secret=TOTP_SECRET)
+    with pytest.raises(OMVAuthError) as excinfo:
+        await api.async_connect()
+    # Must NOT be the two-factor-required variant — a secret was configured,
+    # it just did not work; a reauth flow (not a dead-end) is the right outcome.
+    assert not isinstance(excinfo.value, OMVTwoFactorRequiredError)
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_connect_without_totp_secret_still_raises_two_factor_error(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """Without a stored secret the challenge behaviour is unchanged."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {
+                "status": "challengeRequired",
+                "challenge": {"kind": "totp"},
+                "username": "admin",
+            },
+            "error": None,
+        },
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    with pytest.raises(OMVTwoFactorRequiredError):
+        await api.async_connect()
+    await api.async_close()
+
+
 @pytest.mark.asyncio
 async def test_login_opaque_401_raises_connection_error(
     mock_aiohttp: aioresponses,

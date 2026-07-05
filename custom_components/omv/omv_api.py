@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any
 
 import aiohttp
 from yarl import URL
 
+from . import totp
 from .exceptions import (
     OMVApiError,
     OMVAuthError,
@@ -39,6 +41,7 @@ class OMVAPI:
         ssl: bool = False,
         verify_ssl: bool = True,
         source: str = "runtime",
+        totp_secret: str | None = None,
     ) -> None:
         self._host = host
         self._port = port
@@ -47,9 +50,23 @@ class OMVAPI:
         self._ssl = ssl
         self._verify_ssl = verify_ssl
         self._source = source
+        self._totp_secret = totp_secret
         self._session_id: str | None = None
         self._session: aiohttp.ClientSession | None = None
         self._lock = asyncio.Lock()
+
+    def set_totp_secret(self, totp_secret: str | None) -> None:
+        """Set the TOTP secret used to answer 2FA challenges automatically.
+
+        Needed by the config flow, which learns the secret only after the
+        API instance was created (in the ``totp`` step) but hands exactly
+        this instance off to the runtime setup afterwards.
+
+        Args:
+            totp_secret: Base32-encoded shared secret, or None to disable
+                automatic challenge answering.
+        """
+        self._totp_secret = totp_secret
 
     @property
     def base_url(self) -> str:
@@ -113,15 +130,21 @@ class OMVAPI:
         - Legacy (OMV 7, pre-2FA OMV 8): ``{"authenticated": true, "sessionid": ...}``.
         - Current (OMV 8.5+, native TOTP 2FA support): ``{"status": "authenticated",
           "sessionid": ...}`` on success, or ``{"status": "challengeRequired", ...}``
-          when the account has two-factor authentication enabled. The latter
-          raises :class:`~custom_components.omv.exceptions.OMVTwoFactorRequiredError`
-          so callers (e.g. the config flow) can complete the challenge via
+          when the account has two-factor authentication enabled. When a TOTP
+          secret is configured, a ``totp`` challenge is answered automatically
+          via :meth:`_async_answer_totp_challenge` (Issue #55) so session
+          expiry and HA restarts don't dead-end in a challenge nobody can
+          answer. Without a secret, the challenge raises
+          :class:`~custom_components.omv.exceptions.OMVTwoFactorRequiredError`
+          so callers (e.g. the config flow) can complete it via
           :meth:`async_submit_two_factor_code`.
 
         Raises:
-            OMVAuthError: If the credentials are rejected.
+            OMVAuthError: If the credentials are rejected, or a TOTP challenge
+                could not be answered with the configured secret.
             OMVTwoFactorRequiredError: If the account requires two-factor
-                authentication to complete the login.
+                authentication and no TOTP secret is configured (or the
+                challenge is of an unsupported kind).
         """
         self._session_id = None
         data = await self._async_raw_call(
@@ -150,6 +173,18 @@ class OMVAPI:
                 challenge_kind = (
                     isinstance(data, dict) and isinstance(data.get("challenge"), dict) and data["challenge"].get("kind")
                 )
+                if challenge_kind == "totp" and self._totp_secret:
+                    data = await self._async_answer_totp_challenge()
+                    session_id = data.get("sessionid")
+                    if isinstance(session_id, str) and session_id:
+                        self._session_id = session_id
+                    _LOGGER.debug(
+                        "Automatically answered OMV TOTP challenge for %s [%s]; sessionid_present=%s",
+                        self._host,
+                        self._source,
+                        self._session_id is not None,
+                    )
+                    return
                 raise OMVTwoFactorRequiredError(
                     f"OMV account requires two-factor authentication (challenge kind={challenge_kind!r})",
                     challenge_kind=challenge_kind if isinstance(challenge_kind, str) else None,
@@ -167,6 +202,59 @@ class OMVAPI:
             self._session_id is not None,
             self._cookie_names(),
         )
+
+    async def _async_answer_totp_challenge(self) -> dict[str, Any]:
+        """Answer a pending TOTP challenge with the configured secret.
+
+        Generates the RFC 6238 code locally and submits it via
+        ``Session.verify`` on the same aiohttp session — OMV binds the pending
+        login to the PHP session cookie set by ``Session.login``. If the
+        current-window code is rejected, the neighbouring 30-second windows
+        (±``totp.TIME_STEP``) are tried once each to tolerate clock skew
+        between the HA host and the NAS.
+
+        Returns:
+            The successful ``Session.verify`` response
+            (``{"status": "authenticated", "sessionid": ...}``).
+
+        Raises:
+            OMVAuthError: When every candidate code is rejected (wrong secret,
+                or the pending login already expired server-side).
+            OMVConnectionError: When the OMV host is unreachable.
+        """
+        assert self._totp_secret is not None
+        now = time.time()
+        candidates: list[str] = []
+        for offset in (0, -totp.TIME_STEP, totp.TIME_STEP):
+            code = totp.generate_code(self._totp_secret, now + offset)
+            if code not in candidates:
+                candidates.append(code)
+
+        last_err: OMVAuthError | None = None
+        for attempt, code in enumerate(candidates):
+            try:
+                data = await self._async_raw_call(
+                    "session",
+                    "verify",
+                    {"code": code},
+                    options=None,
+                )
+            except OMVAuthError as err:
+                last_err = err
+                _LOGGER.debug(
+                    "OMV TOTP challenge answer rejected [%s] host=%r attempt=%d/%d",
+                    self._source,
+                    self._host,
+                    attempt + 1,
+                    len(candidates),
+                )
+                continue
+            status = data.get("status") if isinstance(data, dict) else None
+            if status == "authenticated":
+                return data if isinstance(data, dict) else {}
+            last_err = OMVAuthError(f"Two-factor verification failed (status={status!r})")
+
+        raise OMVAuthError("Two-factor verification with the stored TOTP secret failed") from last_err
 
     async def async_submit_two_factor_code(self, code: str) -> dict[str, Any]:
         """Complete a two-step OMV login by submitting the second-factor code.

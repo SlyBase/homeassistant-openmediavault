@@ -22,9 +22,14 @@
             },
             "totp": {
                 "title": "Two-factor authentication",
-                "description": "Enter the verification code from your authenticator app to finish signing in.",
+                "description": "Sign in with either a one-time verification code or your TOTP secret. A code is valid for this login only — after a Home Assistant restart or session expiry you will need to reauthenticate. The secret is stored and lets the integration sign in again automatically.",
                 "data": {
-                    "code": "Verification code"
+                    "code": "Verification code",
+                    "totp_secret": "TOTP secret"
+                },
+                "data_description": {
+                    "code": "6-digit one-time code from your authenticator app. Requires reauthentication after a Home Assistant restart or session expiry.",
+                    "totp_secret": "Base32 secret from your authenticator setup — enables automatic re-logins, no reauthentication after restarts. Leave the code field empty when using this."
                 }
             }
         },
@@ -32,7 +37,9 @@
             "invalid_auth": "Invalid credentials",
             "invalid_totp_code": "Invalid or expired verification code",
             "cannot_connect": "Cannot connect to OMV",
-            "unknown": "Unknown error"
+            "unknown": "Unknown error",
+            "invalid_totp_secret": "Invalid TOTP secret or the generated code was rejected",
+            "totp_code_or_secret_required": "Enter either a verification code or the TOTP secret (exactly one)"
         },
         "abort": {
             "already_configured": "This OpenMediaVault host is already configured. Use Reconfigure to update its host, port, SSL or two-factor authentication settings instead of adding it again.",

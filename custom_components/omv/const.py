@@ -18,6 +18,9 @@ DEFAULT_SSL = False
 DEFAULT_VERIFY_SSL = True
 
 
+# Optionales TOTP-Secret (entry.data) für automatische Re-Logins bei 2FA (Issue #55)
+CONF_TOTP_SECRET = "totp_secret"
+
 # Optionsschlüssel für auswählbare Ressourcen
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_REBOOT_REPAIR_DISABLED = "reboot_repair_disabled"

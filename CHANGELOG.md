@@ -1,10 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [2.6.2] - 2026-07-05
 
 ### Added
 
+- Optional TOTP secret in the two-factor config-flow step (`totp.py`, stdlib-only RFC 6238 generator): when stored, the integration answers OMV's 2FA challenge automatically on every re-login (session expiry, HA restarts), with ±30 s clock-skew tolerance (Issue #55).
 - CI smoke-test workflow (`.github/workflows/smoke-test.yml`): deploys to the Pi and deterministically verifies OMV entities via the HA REST API on every PR against `main` and on `workflow_dispatch`, replacing the MCP-based check as the merge gate.
+
+### Fixed
+
+- 2FA accounts no longer dead-end in a reauth loop on every session expiry or HA restart when a TOTP secret is stored; without a secret, the coordinator's auth-failure message now explains that reauthenticating with a stored secret enables automatic re-logins (Issue #55).
+- Reauth/reconfigure session hand-off is now keyed by the entry's `unique_id` instead of the freshly computed hostname, so multi-instance setups can no longer miss or cross their hand-offs (Issue #55).
+- `async_unload_entry` now closes the previous API session after a reauth/reconfigure instead of leaking it; only the options-reload hand-off (same instance) is kept open (Issue #55).
 
 ## [2.6.1] - 2026-07-04
 

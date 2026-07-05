@@ -26,7 +26,7 @@ from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from . import session_handoff
+from . import session_handoff, totp
 from .const import (
     CONF_REBOOT_REPAIR_DISABLED,
     CONF_SCAN_INTERVAL,
@@ -42,6 +42,7 @@ from .const import (
     CONF_SELECTED_ZFS_POOLS,
     CONF_SMART_INTERVAL,
     CONF_SMART_POLLING_DISABLED,
+    CONF_TOTP_SECRET,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SSL,
@@ -167,28 +168,21 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         accounts, immediately challenged) OMV login. If the flow aborts
         instead (e.g. a unique-ID mismatch), the hand-off never happens and
         the session is closed here.
+
+        For reauth/reconfigure the hand-off is keyed by the entry's existing
+        ``unique_id`` — that is the key ``async_setup_entry`` pops — instead
+        of the freshly computed hostname, so the two can never diverge
+        (Issue #55). For brand new entries both are identical because
+        ``async_set_unique_id(hostname)`` just ran.
         """
-        if self.source == SOURCE_RECONFIGURE:
-            entry = self._get_reconfigure_entry()
+        if self.source in (SOURCE_RECONFIGURE, SOURCE_REAUTH):
+            entry = self._get_reconfigure_entry() if self.source == SOURCE_RECONFIGURE else self._get_reauth_entry()
             try:
                 self._abort_if_unique_id_mismatch()
             except Exception:
                 await api.async_close()
                 raise
-            session_handoff.store(hostname, api, system_info)
-            return self.async_update_reload_and_abort(
-                entry,
-                title=f"OMV ({hostname})",
-                data=data,
-            )
-        if self.source == SOURCE_REAUTH:
-            entry = self._get_reauth_entry()
-            try:
-                self._abort_if_unique_id_mismatch()
-            except Exception:
-                await api.async_close()
-                raise
-            session_handoff.store(hostname, api, system_info)
+            session_handoff.store(entry.unique_id or hostname, api, system_info)
             return self.async_update_reload_and_abort(
                 entry,
                 title=f"OMV ({hostname})",
@@ -281,37 +275,77 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _existing_totp_secret(self) -> str | None:
+        """Return the TOTP secret already stored on the entry being reauthed/reconfigured."""
+        if self.source == SOURCE_RECONFIGURE:
+            entry: ConfigEntry | None = self._get_reconfigure_entry()
+        elif self.source == SOURCE_REAUTH:
+            entry = self._get_reauth_entry()
+        else:
+            entry = None
+        if entry is None:
+            return None
+        secret = entry.data.get(CONF_TOTP_SECRET)
+        return secret if isinstance(secret, str) and secret else None
+
     async def async_step_totp(self, user_input: dict[str, Any] | None = None) -> FlowResult:
-        """Handle the second step of a two-factor OMV login."""
+        """Handle the second step of a two-factor OMV login.
+
+        Accepts either a one-time verification code or the Base32 TOTP secret
+        itself (exactly one of the two). When the secret is provided, the code
+        is generated locally, verified against OMV, and the secret is stored
+        in the entry data so the integration can answer future 2FA challenges
+        (session expiry, HA restarts) without user interaction (Issue #55).
+        """
         errors: dict[str, str] = {}
         api = self._pending_api
 
         if user_input is not None and api is not None:
-            try:
-                system_info = await api.async_submit_two_factor_code(user_input[CONF_TOTP_CODE])
-            except OMVAuthError as err:
-                _LOGGER.debug("OMV config flow invalid_totp_code: %s", err)
-                errors["base"] = "invalid_totp_code"
-            except OMVConnectionError as err:
-                _LOGGER.debug("OMV config flow cannot_connect during 2FA verification: %s", err)
-                errors["base"] = "cannot_connect"
-                await api.async_close()
-                self._pending_api = None
-            except Exception:
-                _LOGGER.exception("Unexpected error during OMV 2FA verification")
-                errors["base"] = "unknown"
-                await api.async_close()
-                self._pending_api = None
+            code = str(user_input.get(CONF_TOTP_CODE) or "").strip()
+            secret = str(user_input.get(CONF_TOTP_SECRET) or "").strip()
+            if bool(code) == bool(secret):
+                errors["base"] = "totp_code_or_secret_required"
+            elif secret and not totp.is_valid_secret(secret):
+                errors["base"] = "invalid_totp_secret"
             else:
-                assert self._pending_user_input is not None
-                hostname = str(system_info.get("hostname") or self._pending_user_input[CONF_HOST])
-                self._pending_api = None
-                await self.async_set_unique_id(hostname)
-                return await self._finish_flow(hostname, self._pending_user_input, api, system_info)
+                try:
+                    system_info = await api.async_submit_two_factor_code(code or totp.generate_code(secret))
+                except OMVAuthError as err:
+                    _LOGGER.debug("OMV config flow 2FA verification rejected: %s", err)
+                    errors["base"] = "invalid_totp_secret" if secret else "invalid_totp_code"
+                except OMVConnectionError as err:
+                    _LOGGER.debug("OMV config flow cannot_connect during 2FA verification: %s", err)
+                    errors["base"] = "cannot_connect"
+                    await api.async_close()
+                    self._pending_api = None
+                except Exception:
+                    _LOGGER.exception("Unexpected error during OMV 2FA verification")
+                    errors["base"] = "unknown"
+                    await api.async_close()
+                    self._pending_api = None
+                else:
+                    assert self._pending_user_input is not None
+                    data = dict(self._pending_user_input)
+                    # Keep a previously stored secret when the user verified with
+                    # a one-time code during reauth/reconfigure — dropping it
+                    # would silently disable automatic re-logins again.
+                    stored_secret = secret or self._existing_totp_secret()
+                    if stored_secret:
+                        data[CONF_TOTP_SECRET] = stored_secret
+                        api.set_totp_secret(stored_secret)
+                    hostname = str(system_info.get("hostname") or data[CONF_HOST])
+                    self._pending_api = None
+                    await self.async_set_unique_id(hostname)
+                    return await self._finish_flow(hostname, data, api, system_info)
 
         return self.async_show_form(
             step_id="totp",
-            data_schema=vol.Schema({vol.Required(CONF_TOTP_CODE): str}),
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_TOTP_CODE): str,
+                    vol.Optional(CONF_TOTP_SECRET): str,
+                }
+            ),
             errors=errors,
         )
 

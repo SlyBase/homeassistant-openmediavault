@@ -30,6 +30,7 @@ from custom_components.omv.const import (
     CONF_SELECTED_ZFS_POOLS,
     CONF_SMART_INTERVAL,
     CONF_SMART_POLLING_DISABLED,
+    CONF_TOTP_SECRET,
     DOMAIN,
 )
 from custom_components.omv.exceptions import OMVAuthError, OMVTwoFactorRequiredError
@@ -164,6 +165,256 @@ async def test_flow_totp_wrong_code(hass) -> None:
     assert result["type"] == "form"
     assert result["step_id"] == "totp"
     assert result["errors"]["base"] == "invalid_totp_code"
+
+
+TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_secret_verifies_and_stores_secret(hass) -> None:
+    """Providing the TOTP secret verifies a locally generated code and stores the secret."""
+    submit_mock = AsyncMock(return_value={"hostname": "nas"})
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=submit_mock,
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_TOTP_SECRET: TOTP_SECRET},
+        )
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_TOTP_SECRET] == TOTP_SECRET
+    submitted_code = submit_mock.await_args.args[0]
+    assert len(submitted_code) == 6 and submitted_code.isdigit()
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_neither_code_nor_secret_shows_error(hass) -> None:
+    """Submitting the totp step without code and secret shows a validation error."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "totp"
+    assert result["errors"]["base"] == "totp_code_or_secret_required"
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_both_code_and_secret_shows_error(hass) -> None:
+    """Submitting both a code and a secret shows the exactly-one validation error."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {"code": "123456", CONF_TOTP_SECRET: TOTP_SECRET},
+        )
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "totp_code_or_secret_required"
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_invalid_secret_shows_error(hass) -> None:
+    """A secret that is not valid Base32 is rejected without contacting OMV."""
+    submit_mock = AsyncMock()
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=submit_mock,
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_TOTP_SECRET: "not-base32!!"},
+        )
+
+    assert result["type"] == "form"
+    assert result["errors"]["base"] == "invalid_totp_secret"
+    submit_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_flow_totp_secret_rejected_by_omv_shows_error(hass) -> None:
+    """A well-formed secret whose generated code OMV rejects shows invalid_totp_secret."""
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(side_effect=OMVAuthError("Two-factor verification failed")),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": "user"},
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_TOTP_SECRET: TOTP_SECRET},
+        )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "totp"
+    assert result["errors"]["base"] == "invalid_totp_secret"
+
+
+@pytest.mark.asyncio
+async def test_flow_reauth_with_totp_secret_updates_entry(hass) -> None:
+    """Reauth with a TOTP secret stores it on the existing entry."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        assert result["step_id"] == "totp"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_TOTP_SECRET: TOTP_SECRET},
+        )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_TOTP_SECRET] == TOTP_SECRET
+
+
+@pytest.mark.asyncio
+async def test_flow_reauth_with_code_keeps_stored_totp_secret(hass) -> None:
+    """Reauthenticating with a one-time code must not drop a previously stored secret."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data={**USER_INPUT, CONF_TOTP_SECRET: TOTP_SECRET},
+    )
+    entry.add_to_hass(hass)
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(side_effect=OMVTwoFactorRequiredError("2FA required", challenge_kind="totp")),
+        ),
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_submit_two_factor_code",
+            new=AsyncMock(return_value={"hostname": "nas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {"code": "123456"})
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_TOTP_SECRET] == TOTP_SECRET
+
+
+@pytest.mark.asyncio
+async def test_flow_reauth_stores_handoff_under_entry_unique_id(hass) -> None:
+    """The reauth hand-off is keyed by entry.unique_id, not the fresh hostname (Issue #55)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=USER_INPUT,
+    )
+    entry.add_to_hass(hass)
+
+    stored_keys: list[str] = []
+
+    with (
+        patch(
+            "custom_components.omv.config_flow.OMVAPI.async_connect",
+            new=AsyncMock(return_value={"hostname": "othernas"}),
+        ),
+        patch("custom_components.omv.config_flow.OMVAPI.async_close", new=AsyncMock()),
+        patch(
+            "custom_components.omv.config_flow.OMVConfigFlow._abort_if_unique_id_mismatch",
+            new=lambda self, **kwargs: None,
+        ),
+        patch(
+            "custom_components.omv.config_flow.session_handoff.store",
+            side_effect=lambda key, api, info: stored_keys.append(key),
+        ),
+        patch("custom_components.omv.async_setup_entry", return_value=True),
+    ):
+        result = await entry.start_reauth_flow(hass)
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], USER_INPUT)
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "reauth_successful"
+    # Setup pops the hand-off under entry.unique_id — storing it under the
+    # freshly computed hostname ("othernas") would strand it forever.
+    assert stored_keys == ["nas"]
 
 
 @pytest.mark.asyncio
