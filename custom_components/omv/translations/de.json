@@ -22,14 +22,14 @@
       },
       "totp": {
         "title": "Zwei-Faktor-Authentifizierung",
-        "description": "Gib entweder einen einmaligen Verifizierungscode aus deiner Authenticator-App ein oder dein Base32-TOTP-Secret. Wird das Secret angegeben, wird es gespeichert, damit sich die Integration automatisch neu anmelden kann (z. B. nach Ablauf der Sitzung oder einem Home-Assistant-Neustart).",
+        "description": "Melde dich entweder mit einem einmaligen Verifizierungscode oder mit deinem TOTP-Secret an. Ein Code gilt nur für diese Anmeldung — nach einem Home-Assistant-Neustart oder Sitzungsablauf ist eine erneute Reauthentifizierung nötig. Das Secret wird gespeichert und ermöglicht der Integration eine automatische Neuanmeldung.",
         "data": {
           "code": "Verifizierungscode",
           "totp_secret": "TOTP-Secret"
         },
         "data_description": {
-          "code": "6-stelliger Einmalcode. Leer lassen, wenn stattdessen das TOTP-Secret angegeben wird.",
-          "totp_secret": "Optional: Secret speichern für automatische Re-Logins. Leer lassen, wenn stattdessen ein Einmalcode angegeben wird."
+          "code": "6-stelliger Einmalcode aus deiner Authenticator-App. Benötigt nach einem Home-Assistant-Neustart oder Sitzungsablauf eine erneute Reauthentifizierung.",
+          "totp_secret": "Base32-Secret aus deiner Authenticator-Einrichtung — ermöglicht automatische Re-Logins, keine Reauthentifizierung nach Neustarts. Code-Feld leer lassen, wenn du das Secret nutzt."
         }
       }
     },

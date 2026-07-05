@@ -22,14 +22,14 @@
       },
       "totp": {
         "title": "Two-factor authentication",
-        "description": "Enter either a one-time verification code from your authenticator app, or your Base32 TOTP secret. When the secret is provided, it is stored so the integration can sign in again automatically (e.g. after a session expires or Home Assistant restarts).",
+        "description": "Sign in with either a one-time verification code or your TOTP secret. A code is valid for this login only — after a Home Assistant restart or session expiry you will need to reauthenticate. The secret is stored and lets the integration sign in again automatically.",
         "data": {
           "code": "Verification code",
           "totp_secret": "TOTP secret"
         },
         "data_description": {
-          "code": "6-digit one-time code. Leave empty when providing the TOTP secret instead.",
-          "totp_secret": "Optional: store the secret to enable automatic re-logins. Leave empty when providing a one-time code instead."
+          "code": "6-digit one-time code from your authenticator app. Requires reauthentication after a Home Assistant restart or session expiry.",
+          "totp_secret": "Base32 secret from your authenticator setup — enables automatic re-logins, no reauthentication after restarts. Leave the code field empty when using this."
         }
       }
     },

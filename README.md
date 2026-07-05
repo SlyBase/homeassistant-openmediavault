@@ -70,6 +70,15 @@ The config flow asks for:
 | **SSL** | off | Enable if your OMV is reachable via HTTPS |
 | **SSL verification** | on | Disable only when using a self-signed certificate |
 
+### Two-factor authentication (TOTP)
+
+If the OMV account has 2FA enabled (OMV 8.5+), the config flow asks for a second factor after the credentials step. You can provide **either**:
+
+- **Verification code** — a one-time 6-digit code from your authenticator app. It is valid for this login only: after a Home Assistant restart or an expired OMV session, Home Assistant will ask you to reauthenticate.
+- **TOTP secret** (recommended) — the Base32 secret behind your authenticator entry. It is stored with the config entry (same confidentiality class as the password) and lets the integration answer OMV's 2FA challenge automatically, so restarts and session expiry no longer require manual reauthentication.
+
+You can copy the secret from OMV at any time — even after 2FA has already been set up: in the OMV WebUI open **Users** > **2FA TOTP**, select your username, and copy the displayed secret.
+
 ### Using a dedicated (non-`admin`) OMV user
 
 OMV's API only recognizes two access levels: **Administrator** and plain **User**, decided solely by membership in the `openmediavault-admin` system group. Every RPC this integration calls — disks, SMART, filesystems, network, services, Compose, KVM, ZFS, rsync, cron, etc. — requires the Administrator role; there is no finer-grained or read-only permission level to scope it down to.
