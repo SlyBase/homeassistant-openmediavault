@@ -150,6 +150,15 @@
             "disk_temperature": {
                 "name": "{resource} temperature"
             },
+            "disk_wear_level": {
+                "name": "{resource} wear level"
+            },
+            "disk_data_written": {
+                "name": "{resource} data written"
+            },
+            "disk_data_read": {
+                "name": "{resource} data read"
+            },
             "disk_used_percent": {
                 "name": "{resource} used %"
             },

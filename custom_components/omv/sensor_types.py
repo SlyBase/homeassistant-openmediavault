@@ -507,6 +507,48 @@ DISK_SMART_STATUS_SENSOR = OMVSensorDescription(
     extra_attrs_fn=lambda data: {"overall_status": data.get("overallstatus")},
 )
 
+DISK_WEAR_LEVEL_SENSOR = OMVSensorDescription(
+    key="disk_wear_level",
+    translation_key="disk_wear_level",
+    native_unit_of_measurement=PERCENTAGE,
+    icon="mdi:chart-donut",
+    state_class=SensorStateClass.MEASUREMENT,
+    data_path="disk",
+    is_collection=True,
+    collection_key="disk_key",
+    name_key="devicename",
+    value_fn=lambda data: data.get("wear_percent"),
+    extra_attrs_fn=lambda data: {"nvme_health": data.get("nvme_health")},
+)
+
+DISK_DATA_WRITTEN_SENSOR = OMVSensorDescription(
+    key="disk_data_written",
+    translation_key="disk_data_written",
+    native_unit_of_measurement=UnitOfInformation.TERABYTES,
+    device_class=SensorDeviceClass.DATA_SIZE,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    suggested_display_precision=1,
+    data_path="disk",
+    is_collection=True,
+    collection_key="disk_key",
+    name_key="devicename",
+    value_fn=lambda data: data.get("data_written_tb"),
+)
+
+DISK_DATA_READ_SENSOR = OMVSensorDescription(
+    key="disk_data_read",
+    translation_key="disk_data_read",
+    native_unit_of_measurement=UnitOfInformation.TERABYTES,
+    device_class=SensorDeviceClass.DATA_SIZE,
+    state_class=SensorStateClass.TOTAL_INCREASING,
+    suggested_display_precision=1,
+    data_path="disk",
+    is_collection=True,
+    collection_key="disk_key",
+    name_key="devicename",
+    value_fn=lambda data: data.get("data_read_tb"),
+)
+
 DISK_USED_PERCENT_SENSOR = OMVSensorDescription(
     key="disk_used_percent",
     translation_key="disk_used_percent",

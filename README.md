@@ -110,6 +110,7 @@ After setup, the options flow lets you adjust:
 - Temperature
 - Used %, free %, used size, free size, total size
 - SMART status and SMART attributes (Raw Read Error Rate, Reallocated Sector Count, Pending Sector Count, Uncorrectable Sector Count, Power On Hours, Start Stop Count, Load Cycle Count)
+- SSD/NVMe endurance (when the drive reports it): wear level (%), total data written (TB), total data read (TB) — from the NVMe health log (`Percentage Used`, `Data Units Written/Read`) or the SATA SSD wear attributes (`Wear_Leveling_Count`, `SSD_Life_Left`, `Media_Wearout_Indicator`, `Percent_Lifetime_Remain`, `Total_LBAs_Written/Read`); NVMe sensors expose the full health log (available spare, unsafe shutdowns, media errors, …) as attributes
 
 ### Filesystem devices (one device per mounted filesystem)
 

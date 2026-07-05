@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- SSD/NVMe endurance sensors per disk (Issue #54): wear level (%), total data written (TB) and total data read (TB). NVMe values come from the `smartctl` health log via `Smart.getExtendedInformation` (`Percentage Used`, `Data Units Written/Read`; full health log exposed as attributes), SATA SSD values from the wear SMART attributes (`Wear_Leveling_Count`, `SSD_Life_Left`, `Media_Wearout_Indicator`, `Percent_Lifetime_Remain`, `Total_LBAs_Written/Read`). Entities are only created when the drive reports the data; all fetches follow the SMART polling interval.
+
 ## [2.6.2] - 2026-07-05
 
 ### Added
