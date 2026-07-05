@@ -22,6 +22,7 @@ from homeassistant.helpers import entity_registry as er
 from . import session_handoff
 from .const import (
     CONF_SCAN_INTERVAL,
+    CONF_TOTP_SECRET,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SSL,
@@ -144,6 +145,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
             ssl=entry.data.get(CONF_SSL, DEFAULT_SSL),
             verify_ssl=entry.data.get(CONF_VERIFY_SSL, DEFAULT_VERIFY_SSL),
             source="setup_entry",
+            totp_secret=entry.data.get(CONF_TOTP_SECRET),
         )
 
         try:
@@ -178,12 +180,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         async_delete_reboot_repair_issue(hass, entry.entry_id)
-        # If _async_update_listener just stashed a live, already-authenticated
+        # If _async_update_listener just stashed THIS live, already-authenticated
         # session for the immediate reload below, leave it open — closing it
         # here would force the reload's async_setup_entry into a brand new
         # OMV login, re-triggering a 2FA challenge for a session that was
-        # still perfectly valid.
-        if not session_handoff.has_pending(entry.unique_id):
+        # still perfectly valid. A pending hand-off holding a DIFFERENT
+        # instance (reauth/reconfigure just authenticated a new session)
+        # means the old one is obsolete and must be closed, or it leaks.
+        if not session_handoff.pending_api_is(entry.unique_id, entry.runtime_data.api):
             await entry.runtime_data.api.async_close()
     return unload_ok
 

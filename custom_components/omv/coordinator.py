@@ -33,7 +33,12 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
-from .exceptions import OMVApiError, OMVAuthError, OMVConnectionError
+from .exceptions import (
+    OMVApiError,
+    OMVAuthError,
+    OMVConnectionError,
+    OMVTwoFactorRequiredError,
+)
 from .omv_api import OMVAPI
 
 _LOGGER = logging.getLogger(__name__)
@@ -445,10 +450,18 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 unfiltered_data,
                 dict(self.config_entry.options),
             )
+        except OMVTwoFactorRequiredError as err:
+            # OMV challenged a fresh re-login and no TOTP secret is stored, so
+            # nobody can answer it — reauthenticating (and storing the TOTP
+            # secret there) enables automatic re-logins instead (Issue #55).
+            raise ConfigEntryAuthFailed(
+                "OMV re-login requires a two-factor code and no TOTP secret is "
+                "stored; reauthenticate and provide the TOTP secret to enable "
+                f"automatic re-logins: {err}"
+            ) from err
         except OMVAuthError as err:
-            # A 2FA challenge (or any other auth failure) surviving the API
-            # client's own automatic reconnect means nobody is present to
-            # answer it — falling back to cached data here would leave
+            # An auth failure surviving the API client's own automatic
+            # reconnect — falling back to cached data here would leave
             # entities silently frozen on stale values forever instead of
             # prompting the user to reauthenticate.
             raise ConfigEntryAuthFailed(f"OMV authentication failed: {err}") from err

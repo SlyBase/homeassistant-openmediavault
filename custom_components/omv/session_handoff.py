@@ -40,3 +40,16 @@ def pop(unique_id: str | None) -> tuple[OMVAPI, dict[str, Any]] | None:
 def has_pending(unique_id: str | None) -> bool:
     """Return whether an authenticated API instance is stashed for this host."""
     return unique_id is not None and unique_id in _pending
+
+
+def pending_api_is(unique_id: str | None, api: OMVAPI) -> bool:
+    """Return whether the stashed API instance for this host is exactly ``api``.
+
+    Lets ``async_unload_entry`` distinguish the options-reload hand-off (the
+    still-live instance it must not close) from a reauth/reconfigure hand-off
+    (a brand new instance — the old one must be closed or its session leaks).
+    """
+    if unique_id is None:
+        return False
+    pending = _pending.get(unique_id)
+    return pending is not None and pending[0] is api

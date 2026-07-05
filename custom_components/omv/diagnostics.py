@@ -11,6 +11,8 @@ from homeassistant.core import HomeAssistant
 TO_REDACT = {
     "username",
     "password",
+    # TOTP shared secret — same confidentiality class as the password
+    "totp_secret",
     # Hardware identifiers that can de-anonymise a user's device
     "serialnumber",
     "address",  # IP address of network interfaces

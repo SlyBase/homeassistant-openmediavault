@@ -22,9 +22,14 @@
       },
       "totp": {
         "title": "Zwei-Faktor-Authentifizierung",
-        "description": "Gib den Verifizierungscode aus deiner Authenticator-App ein, um die Anmeldung abzuschließen.",
+        "description": "Gib entweder einen einmaligen Verifizierungscode aus deiner Authenticator-App ein oder dein Base32-TOTP-Secret. Wird das Secret angegeben, wird es gespeichert, damit sich die Integration automatisch neu anmelden kann (z. B. nach Ablauf der Sitzung oder einem Home-Assistant-Neustart).",
         "data": {
-          "code": "Verifizierungscode"
+          "code": "Verifizierungscode",
+          "totp_secret": "TOTP-Secret"
+        },
+        "data_description": {
+          "code": "6-stelliger Einmalcode. Leer lassen, wenn stattdessen das TOTP-Secret angegeben wird.",
+          "totp_secret": "Optional: Secret speichern für automatische Re-Logins. Leer lassen, wenn stattdessen ein Einmalcode angegeben wird."
         }
       }
     },
@@ -32,7 +37,9 @@
       "invalid_auth": "Ungültige Zugangsdaten",
       "invalid_totp_code": "Ungültiger oder abgelaufener Verifizierungscode",
       "cannot_connect": "Verbindung zu OMV nicht möglich",
-      "unknown": "Unbekannter Fehler"
+      "unknown": "Unbekannter Fehler",
+      "invalid_totp_secret": "Ungültiges TOTP-Secret oder der erzeugte Code wurde abgelehnt",
+      "totp_code_or_secret_required": "Gib entweder einen Verifizierungscode oder das TOTP-Secret ein (genau eines von beiden)"
     },
     "abort": {
       "already_configured": "Dieser OpenMediaVault-Host ist bereits konfiguriert. Verwende „Neu konfigurieren“, um Host, Port, SSL- oder Zwei-Faktor-Authentifizierungs-Einstellungen zu ändern, anstatt ihn erneut hinzuzufügen.",
