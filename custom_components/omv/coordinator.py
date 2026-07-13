@@ -70,7 +70,37 @@ _SMART_ATTRIBUTE_NAMES = (
     "Load_Cycle_Count",
     "UDMA_CRC_Error_Count",
     "Multi_Zone_Error_Rate",
+    # SATA-SSD wear/endurance attributes (Issue #54)
+    "Wear_Leveling_Count",
+    "Percent_Lifetime_Remain",
+    "SSD_Life_Left",
+    "Media_Wearout_Indicator",
+    "Total_LBAs_Written",
+    "Total_LBAs_Read",
 )
+# Attributes whose normalized SMART "value" column is needed in addition to the
+# raw value (wear derivation, Issue #54); stored as "<attrname>__value".
+_SMART_VALUE_ATTRIBUTE_NAMES = (
+    "Wear_Leveling_Count",
+    "Percent_Lifetime_Remain",
+    "SSD_Life_Left",
+    "Media_Wearout_Indicator",
+)
+# smartctl reports NVMe data units in blocks of 1000 x 512 bytes.
+_NVME_DATA_UNIT_BYTES = 512_000
+_ATA_LBA_BYTES = 512
+_BYTES_PER_TB = 1_000_000_000_000
+# Mapping of "SMART/Health Information (NVMe Log 0x02)" labels to record keys.
+_NVME_HEALTH_FIELDS = {
+    "Available Spare": "available_spare",
+    "Available Spare Threshold": "available_spare_threshold",
+    "Percentage Used": "percentage_used",
+    "Data Units Read": "data_units_read",
+    "Data Units Written": "data_units_written",
+    "Power On Hours": "power_on_hours",
+    "Unsafe Shutdowns": "unsafe_shutdowns",
+    "Media and Data Integrity Errors": "media_errors",
+}
 _GPU_CUR_FREQ_PATH = "/sys/class/drm/card0/gt_cur_freq_mhz"
 _GPU_MAX_FREQ_PATH = "/sys/class/drm/card0/gt_max_freq_mhz"
 _GPU_CONFIRMATION_CYCLES = 2
@@ -110,12 +140,16 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # (e.g. NVMe or other non-ATA disks that return HTTP 500). Populated on
         # first failure; skipped on all subsequent polls to avoid log spam.
         self._smart_no_attributes: set[str] = set()
+        # Canonical device paths for which getExtendedInformation permanently
+        # fails (Issue #54) — same pattern as _smart_no_attributes.
+        self._smart_no_extended: set[str] = set()
         # SMART cache (Issue #41): SMART RPCs wake disks from standby, so they
         # run only every CONF_SMART_INTERVAL seconds. The cached records and
         # per-canonical attributes are re-applied to freshly enumerated disks on
         # every cycle so SMART/temperature entities stay populated in between.
         self._smart_records_cache: list[dict[str, Any]] = []
         self._smart_attributes_cache: dict[str, dict[str, Any]] = {}
+        self._smart_nvme_cache: dict[str, dict[str, Any]] = {}
         self._smart_last_poll: float | None = None
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
@@ -790,6 +824,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if options.get(CONF_SMART_POLLING_DISABLED, False):
             self._smart_records_cache = []
             self._smart_attributes_cache = {}
+            self._smart_nvme_cache = {}
             _LOGGER.debug("SMART polling disabled via options; skipping fetch")
             return []
 
@@ -802,6 +837,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             (
                 self._smart_records_cache,
                 self._smart_attributes_cache,
+                self._smart_nvme_cache,
             ) = await self._async_fetch_smart(disks)
             self._smart_last_poll = now
             _LOGGER.debug("SMART data refreshed (interval=%ss)", interval)
@@ -812,25 +848,34 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 interval,
             )
 
-        self._apply_smart_to_disks(disks, self._smart_records_cache, self._smart_attributes_cache)
+        self._apply_smart_to_disks(
+            disks,
+            self._smart_records_cache,
+            self._smart_attributes_cache,
+            self._smart_nvme_cache,
+        )
         return self._smart_records_cache
 
     async def _async_fetch_smart(
         self, disks: list[dict[str, Any]]
-    ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-        """Fetch SMART records and per-disk attributes via RPC.
+    ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
+        """Fetch SMART records, per-disk attributes and NVMe health via RPC.
 
-        This issues the live SMART RPCs (``getListBg``/``getList`` and per-disk
-        ``getAttributes``), which spin disks up — call it only on the SMART poll
-        cadence. It does not mutate the disk records.
+        This issues the live SMART RPCs (``getListBg``/``getList``, per-disk
+        ``getAttributes`` and, for NVMe devices, ``getExtendedInformation``),
+        which spin disks up — call it only on the SMART poll cadence. It does
+        not mutate the disk records.
 
         Args:
             disks: Normalized disk records used to decide which canonical device
                 files to query for attributes.
 
         Returns:
-            Tuple of ``(smart_records, attributes_by_canonical)`` where the second
-            element maps a canonical device file to its ``{attrname: rawvalue}``.
+            Tuple of ``(smart_records, attributes_by_canonical,
+            nvme_health_by_canonical)``. The attribute maps are keyed by
+            canonical device file; attribute values are raw values plus a
+            ``<attrname>__value`` normalized column for the wear attributes,
+            NVMe health maps are the output of :meth:`_parse_nvme_health`.
         """
         method = "getListBg" if self.omv_version >= 7 else "getList"
         params = {"start": 0, "limit": 100}
@@ -848,6 +893,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         smart_records = self._records_from_response(response)
 
         attributes_by_canonical: dict[str, dict[str, Any]] = {}
+        nvme_by_canonical: dict[str, dict[str, Any]] = {}
         for disk in disks:
             canonical = str(disk.get("canonicaldevicefile") or "")
             if (
@@ -863,6 +909,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     canonical or disk.get("devicename"),
                 )
                 continue
+
+            if str(disk.get("devicename") or "").startswith("nvme"):
+                nvme_health = await self._async_fetch_nvme_health(canonical)
+                if nvme_health:
+                    nvme_by_canonical[canonical] = nvme_health
 
             if canonical in self._smart_no_attributes:
                 _LOGGER.debug(
@@ -895,26 +946,121 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if isinstance(raw_value, str) and " " in raw_value:
                     raw_value = raw_value.split(" ", 1)[0]
                 smart_attributes[str(attrname)] = raw_value
+                # Keep the normalized "value" column for the wear attributes —
+                # SATA SSDs report remaining life there, not in the raw value.
+                if attrname in _SMART_VALUE_ATTRIBUTE_NAMES and attribute.get("value") is not None:
+                    smart_attributes[f"{attrname}__value"] = attribute.get("value")
             if smart_attributes:
                 attributes_by_canonical[canonical] = smart_attributes
 
-        return smart_records, attributes_by_canonical
+        return smart_records, attributes_by_canonical, nvme_by_canonical
+
+    async def _async_fetch_nvme_health(self, canonical: str) -> dict[str, Any]:
+        """Fetch and parse the NVMe health log for one device (Issue #54).
+
+        OMV's ``Smart.getAttributes`` only parses the ATA attribute table, so
+        NVMe wear/endurance values are read from the raw ``smartctl --xall``
+        output returned by ``Smart.getExtendedInformation`` instead. Devices
+        that fail permanently are skipped on all subsequent polls (same
+        pattern as ``_smart_no_attributes``).
+
+        Args:
+            canonical: Canonical device file (e.g. ``/dev/nvme0n1``).
+
+        Returns:
+            Parsed NVMe health map (see :meth:`_parse_nvme_health`), or an
+            empty dict when unavailable.
+        """
+        if canonical in self._smart_no_extended:
+            _LOGGER.debug(
+                "Skipping SMART extended information for %s (previously failed)",
+                canonical,
+            )
+            return {}
+        try:
+            response = await self.api.async_call(
+                "Smart",
+                "getExtendedInformation",
+                {"devicefile": canonical},
+                max_retries=0,
+            )
+        except (OMVApiError, OMVConnectionError) as err:
+            _LOGGER.debug(
+                "SMART extended information unavailable for %s, skipping on future polls: %s",
+                canonical,
+                err,
+            )
+            self._smart_no_extended.add(canonical)
+            return {}
+
+        text = response if isinstance(response, str) else ""
+        if isinstance(response, dict):
+            for key in ("extendedinformation", "output", "result"):
+                if isinstance(response.get(key), str):
+                    text = response[key]
+                    break
+        return self._parse_nvme_health(text)
+
+    @staticmethod
+    def _parse_nvme_health(text: str) -> dict[str, Any]:
+        """Parse the "SMART/Health Information (NVMe Log 0x02)" smartctl section.
+
+        Pure text parser: tolerates thousands separators (``1,892,791,876``)
+        and unit annotations (``[969 TB]``); lines that are absent simply do
+        not produce a key.
+
+        Args:
+            text: Raw ``smartctl --xall`` output.
+
+        Returns:
+            Mapping with (a subset of) the keys ``available_spare``,
+            ``available_spare_threshold``, ``percentage_used``,
+            ``data_units_read``, ``data_units_written``, ``power_on_hours``,
+            ``unsafe_shutdowns`` and ``media_errors``; numeric values as
+            ``int``. Empty when the NVMe health section is missing.
+        """
+        health: dict[str, Any] = {}
+        in_section = False
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("SMART/Health Information"):
+                in_section = True
+                continue
+            if not in_section:
+                continue
+            if not stripped:
+                break
+            label, _, value = stripped.partition(":")
+            key = _NVME_HEALTH_FIELDS.get(label.strip())
+            if key is None:
+                continue
+            # Drop unit annotations like "[969 TB]" and separators: "98%",
+            # "1,892,791,876 [969 TB]" -> "1892791876".
+            numeric = value.split("[", 1)[0].strip().rstrip("%").replace(",", "").strip()
+            if re.fullmatch(r"-?\d+", numeric):
+                health[key] = int(numeric)
+        return health
 
     def _apply_smart_to_disks(
         self,
         disks: list[dict[str, Any]],
         smart_records: list[dict[str, Any]],
         attributes_by_canonical: dict[str, dict[str, Any]],
+        nvme_by_canonical: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         """Merge (cached or freshly fetched) SMART data into disk records.
 
         Pure with respect to the API — performs no RPC, so it is safe to call on
         every cycle to keep SMART/temperature entities populated between polls.
+        Besides the raw SMART data this derives the unified wear/endurance
+        fields ``wear_percent``, ``data_written_tb``, ``data_read_tb`` and
+        ``nvme_health`` (Issue #54); fields stay absent when underivable.
 
         Args:
             disks: Normalized disk records to enrich in place.
             smart_records: Bulk SMART records (overall status, temperature).
             attributes_by_canonical: Per-canonical ``{attrname: rawvalue}`` maps.
+            nvme_by_canonical: Per-canonical parsed NVMe health maps.
         """
         smart_by_key: dict[str, dict[str, Any]] = {}
         for record in smart_records:
@@ -945,6 +1091,103 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 for attrname, raw_value in smart_attributes.items():
                     disk[attrname] = raw_value
                 disk["smart_attributes"] = dict(smart_attributes)
+
+            nvme_health = (nvme_by_canonical or {}).get(canonical)
+            if nvme_health:
+                disk["nvme_health"] = dict(nvme_health)
+            wear_percent = self._derive_wear_percent(disk)
+            if wear_percent is not None:
+                disk["wear_percent"] = wear_percent
+            data_written_tb = self._derive_data_volume_tb(disk, "data_units_written", "Total_LBAs_Written")
+            if data_written_tb is not None:
+                disk["data_written_tb"] = data_written_tb
+            data_read_tb = self._derive_data_volume_tb(disk, "data_units_read", "Total_LBAs_Read")
+            if data_read_tb is not None:
+                disk["data_read_tb"] = data_read_tb
+
+    def _derive_wear_percent(self, disk: dict[str, Any]) -> float | None:
+        """Derive a unified SSD/NVMe wear percentage (0 = new, 100 = worn out).
+
+        Priority: NVMe ``Percentage Used`` from the health log; otherwise the
+        ATA wear attributes, whose normalized value counts *remaining* life
+        down from 100 (``100 - value``); finally ``Percent_Lifetime_Remain``'s
+        raw value, which Micron drives report as percentage *used*.
+
+        Args:
+            disk: Enriched disk record.
+
+        Returns:
+            Wear percentage clamped to 0-100, or None when underivable.
+        """
+        nvme_health = disk.get("nvme_health")
+        if isinstance(nvme_health, dict):
+            percentage_used = self._smart_numeric(nvme_health.get("percentage_used"))
+            if percentage_used is not None:
+                return min(100.0, max(0.0, percentage_used))
+
+        for attrname in ("Wear_Leveling_Count", "Media_Wearout_Indicator", "SSD_Life_Left"):
+            remaining = self._smart_numeric(disk.get(f"{attrname}__value"))
+            if remaining is not None:
+                return min(100.0, max(0.0, 100.0 - remaining))
+
+        used = self._smart_numeric(disk.get("Percent_Lifetime_Remain"))
+        if used is not None:
+            return min(100.0, max(0.0, used))
+        return None
+
+    def _derive_data_volume_tb(
+        self,
+        disk: dict[str, Any],
+        nvme_key: str,
+        ata_attribute: str,
+    ) -> float | None:
+        """Derive total data written/read in decimal terabytes.
+
+        NVMe data units are 512 000-byte blocks (smartctl); ATA
+        ``Total_LBAs_*`` raw values count 512-byte sectors.
+
+        Args:
+            disk: Enriched disk record.
+            nvme_key: Key in ``disk["nvme_health"]`` (e.g. ``data_units_written``).
+            ata_attribute: ATA attribute name (e.g. ``Total_LBAs_Written``).
+
+        Returns:
+            Terabytes rounded to 2 decimals, or None when unavailable.
+        """
+        nvme_health = disk.get("nvme_health")
+        if isinstance(nvme_health, dict):
+            units = self._smart_numeric(nvme_health.get(nvme_key))
+            if units is not None:
+                return round(units * _NVME_DATA_UNIT_BYTES / _BYTES_PER_TB, 2)
+
+        lbas = self._smart_numeric(disk.get(ata_attribute))
+        if lbas is not None:
+            return round(lbas * _ATA_LBA_BYTES / _BYTES_PER_TB, 2)
+        return None
+
+    @staticmethod
+    def _smart_numeric(value: Any) -> float | None:
+        """Parse a SMART numeric value, treating non-numeric input as missing.
+
+        Unlike ``_coerce_optional_float`` this returns None (not 0.0) for
+        placeholders like ``"unknown"``, so absent attributes never fabricate
+        a value; thousands separators are tolerated.
+
+        Args:
+            value: Raw attribute value (int, float or string).
+
+        Returns:
+            The numeric value, or None when not parseable.
+        """
+        if value is None or isinstance(value, bool):
+            return None
+        if isinstance(value, int | float):
+            return float(value)
+        if isinstance(value, str):
+            stripped = value.strip().replace(",", "")
+            if re.fullmatch(r"-?\d+(?:\.\d+)?", stripped):
+                return float(stripped)
+        return None
 
     async def _async_get_gpu_info(self) -> dict[str, Any]:
         """Read Intel iGPU info from sysfs and apply spike filtering."""

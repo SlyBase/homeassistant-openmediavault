@@ -66,7 +66,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 | Key | Content |
 |-----|---------|
 | `hwinfo` | CPU util, memory, temperature, uptime, update availability |
-| `disk` | Physical disks + synthesised RAID/md* records |
+| `disk` | Physical disks + synthesised RAID/md* records; SMART-eligible SSD/NVMe disks additionally carry derived `wear_percent`, `data_written_tb`, `data_read_tb` and (NVMe) `nvme_health` (Issue #54) — keys absent when underivable |
 | `fs` | Filesystems mapped to disks (uuid, mount, size, used) |
 | `service` | OMV service status records |
 | `network` | Network interfaces with precomputed TX/RX Mbps rates, `wol` flag and lowercased `mac` (from raw `ether`); WoL buttons send the magic packet from the HA host via the stdlib-only `wol.py` (OMV API is down in standby) |

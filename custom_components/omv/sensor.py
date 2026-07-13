@@ -28,6 +28,8 @@ from .sensor_types import (
     COMPOSE_SENSORS,
     CONTAINER_SENSORS,
     CONTAINER_VOLUME_SENSORS,
+    DISK_DATA_READ_SENSOR,
+    DISK_DATA_WRITTEN_SENSOR,
     DISK_FREE_PERCENT_SENSOR,
     DISK_FREE_SIZE_SENSOR,
     DISK_SENSOR,
@@ -35,6 +37,7 @@ from .sensor_types import (
     DISK_TOTAL_SIZE_SENSOR,
     DISK_USED_PERCENT_SENSOR,
     DISK_USED_SIZE_SENSOR,
+    DISK_WEAR_LEVEL_SENSOR,
     FILESYSTEM_FREE_PERCENT_SENSOR,
     FILESYSTEM_FREE_SIZE_SENSOR,
     FILESYSTEM_SENSOR,
@@ -60,6 +63,14 @@ _DISK_SENSORS: tuple[OMVSensorDescription, ...] = (
     DISK_USED_SIZE_SENSOR,
     DISK_FREE_SIZE_SENSOR,
     DISK_TOTAL_SIZE_SENSOR,
+)
+
+# SMART-derived wear/endurance metrics (Issue #54): only for SMART-eligible
+# disks and only when the coordinator could derive a value (SSD/NVMe).
+_DISK_SMART_METRIC_SENSORS: tuple[OMVSensorDescription, ...] = (
+    DISK_WEAR_LEVEL_SENSOR,
+    DISK_DATA_WRITTEN_SENSOR,
+    DISK_DATA_READ_SENSOR,
 )
 
 _FILESYSTEM_SENSORS: tuple[OMVSensorDescription, ...] = (
@@ -275,6 +286,9 @@ def get_expected_sensor_registry_state(
         if disk_is_smart_eligible(disk):
             unique_ids.add(f"{entry_id}-{DISK_SMART_STATUS_SENSOR.key}-{item_key}")
             _collect_device_identifiers(get_disk_device_info(coordinator, disk), device_identifiers)
+            for description in _DISK_SMART_METRIC_SENSORS:
+                if _should_add_description(description, disk):
+                    unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
 
     for description in _FILESYSTEM_SENSORS:
         for filesystem in coordinator.data.get("fs", []):
@@ -492,6 +506,17 @@ async def async_setup_entry(
                     device_info=device_info,
                 )
             )
+            for description in _DISK_SMART_METRIC_SENSORS:
+                if not _should_add_description(description, disk):
+                    continue
+                entities.append(
+                    OMVSensor(
+                        coordinator,
+                        description,
+                        item_key=item_key,
+                        device_info=device_info,
+                    )
+                )
 
     for description in _FILESYSTEM_SENSORS:
         for filesystem in coordinator.data.get("fs", []):

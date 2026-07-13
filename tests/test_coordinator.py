@@ -1860,6 +1860,310 @@ async def test_smart_interval_caches_between_polls(hass, config_entry) -> None:
     assert disks2[0]["smart_attributes"] == {"Raw_Read_Error_Rate": "0"}
 
 
+_NVME_SMARTCTL_OUTPUT = """\
+=== START OF SMART DATA SECTION ===
+SMART overall-health self-assessment test result: PASSED
+
+SMART/Health Information (NVMe Log 0x02)
+Critical Warning:                   0x00
+Temperature:                        30 Celsius
+Available Spare:                    100%
+Available Spare Threshold:          10%
+Percentage Used:                    98%
+Data Units Read:                    585,673,910 [299 TB]
+Data Units Written:                 1,892,791,876 [969 TB]
+Host Read Commands:                 4,645,080,504
+Host Write Commands:                28,673,242,799
+Controller Busy Time:               202,838
+Power Cycles:                       66
+Power On Hours:                     24,222
+Unsafe Shutdowns:                   26
+Media and Data Integrity Errors:    0
+Error Information Log Entries:      0
+Warning  Comp. Temperature Time:    0
+Critical Comp. Temperature Time:    0
+
+Error Information (NVMe Log 0x01, 16 of 256 entries)
+No Errors Logged
+"""
+
+
+def _make_smart_coordinator(hass, config_entry) -> OMVDataUpdateCoordinator:
+    """Build a coordinator with a mocked API for SMART unit tests."""
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock(return_value={"data": []})
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+    return coordinator
+
+
+def test_parse_nvme_health_extracts_wear_and_data_units() -> None:
+    """The NVMe health parser extracts all mapped fields from the issue's sample (#54)."""
+    health = OMVDataUpdateCoordinator._parse_nvme_health(_NVME_SMARTCTL_OUTPUT)
+
+    assert health == {
+        "available_spare": 100,
+        "available_spare_threshold": 10,
+        "percentage_used": 98,
+        "data_units_read": 585673910,
+        "data_units_written": 1892791876,
+        "power_on_hours": 24222,
+        "unsafe_shutdowns": 26,
+        "media_errors": 0,
+    }
+
+
+def test_parse_nvme_health_without_section_returns_empty() -> None:
+    """ATA-only smartctl output (no NVMe health section) yields an empty map (#54)."""
+    ata_only = "=== START OF SMART DATA SECTION ===\nSMART overall-health self-assessment test result: PASSED\n"
+    assert OMVDataUpdateCoordinator._parse_nvme_health(ata_only) == {}
+    assert OMVDataUpdateCoordinator._parse_nvme_health("") == {}
+
+
+def test_parse_nvme_health_missing_lines_omit_keys() -> None:
+    """Absent lines simply do not produce keys — no fabricated zeros (#54)."""
+    text = "SMART/Health Information (NVMe Log 0x02)\nPercentage Used:  5%\n\nother stuff\n"
+    assert OMVDataUpdateCoordinator._parse_nvme_health(text) == {"percentage_used": 5}
+
+
+@pytest.mark.asyncio
+async def test_smart_fetch_calls_extended_information_only_for_nvme(hass, config_entry) -> None:
+    """Smart.getExtendedInformation is issued for NVMe devices only (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+
+    async def async_call(service, method, params=None, **kwargs):
+        if method == "getExtendedInformation":
+            return _NVME_SMARTCTL_OUTPUT
+        if method == "getAttributes":
+            return {"data": []}
+        return {"data": []}
+
+    coordinator.api.async_call = AsyncMock(side_effect=async_call)
+    disks = [
+        {
+            "disk_key": "sda",
+            "devicename": "sda",
+            "canonicaldevicefile": "/dev/sda",
+            "hotpluggable": False,
+        },
+        {
+            "disk_key": "nvme0n1",
+            "devicename": "nvme0n1",
+            "canonicaldevicefile": "/dev/nvme0n1",
+            "hotpluggable": False,
+        },
+    ]
+
+    _, _, nvme_by_canonical = await coordinator._async_fetch_smart(disks)
+
+    extended_calls = [
+        call.args[2]["devicefile"]
+        for call in coordinator.api.async_call.await_args_list
+        if call.args[1] == "getExtendedInformation"
+    ]
+    assert extended_calls == ["/dev/nvme0n1"]
+    assert nvme_by_canonical["/dev/nvme0n1"]["percentage_used"] == 98
+
+
+@pytest.mark.asyncio
+async def test_smart_extended_information_failure_skips_future_polls(hass, config_entry) -> None:
+    """A permanently failing getExtendedInformation is skipped on later polls (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+
+    async def async_call(service, method, params=None, **kwargs):
+        if method == "getExtendedInformation":
+            raise OMVApiError("RPC Smart.getExtendedInformation failed")
+        return {"data": []}
+
+    coordinator.api.async_call = AsyncMock(side_effect=async_call)
+    disks = [
+        {
+            "disk_key": "nvme0n1",
+            "devicename": "nvme0n1",
+            "canonicaldevicefile": "/dev/nvme0n1",
+            "hotpluggable": False,
+        }
+    ]
+
+    await coordinator._async_fetch_smart(disks)
+    assert "/dev/nvme0n1" in coordinator._smart_no_extended
+
+    coordinator.api.async_call.reset_mock()
+    await coordinator._async_fetch_smart(disks)
+    for call in coordinator.api.async_call.await_args_list:
+        assert call.args[1] != "getExtendedInformation", (
+            "getExtendedInformation was called again after a permanent failure"
+        )
+
+
+@pytest.mark.asyncio
+async def test_smart_fetch_keeps_value_column_for_wear_attributes(hass, config_entry) -> None:
+    """The normalized SMART value column is kept for wear attributes (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+
+    async def async_call(service, method, params=None, **kwargs):
+        if method == "getAttributes":
+            return {
+                "data": [
+                    {"attrname": "Wear_Leveling_Count", "rawvalue": "1200", "value": 97},
+                    {"attrname": "Total_LBAs_Written", "rawvalue": "78156288000", "value": 99},
+                ]
+            }
+        return {"data": []}
+
+    coordinator.api.async_call = AsyncMock(side_effect=async_call)
+    disks = [
+        {
+            "disk_key": "sda",
+            "devicename": "sda",
+            "canonicaldevicefile": "/dev/sda",
+            "hotpluggable": False,
+        }
+    ]
+
+    _, attributes_by_canonical, _ = await coordinator._async_fetch_smart(disks)
+
+    attributes = attributes_by_canonical["/dev/sda"]
+    assert attributes["Wear_Leveling_Count"] == "1200"
+    assert attributes["Wear_Leveling_Count__value"] == 97
+    # Total_LBAs_* is not a wear attribute — no value column kept.
+    assert "Total_LBAs_Written__value" not in attributes
+
+
+@pytest.mark.asyncio
+async def test_apply_smart_derives_nvme_wear_and_data_volumes(hass, config_entry) -> None:
+    """NVMe health values map to wear_percent and data_written/read_tb (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+    disk = {
+        "disk_key": "nvme0n1",
+        "devicename": "nvme0n1",
+        "canonicaldevicefile": "/dev/nvme0n1",
+    }
+    nvme_health = OMVDataUpdateCoordinator._parse_nvme_health(_NVME_SMARTCTL_OUTPUT)
+
+    coordinator._apply_smart_to_disks([disk], [], {}, {"/dev/nvme0n1": nvme_health})
+
+    assert disk["wear_percent"] == 98.0
+    # Data units are 512 000-byte blocks: 1 892 791 876 units ≈ 969.11 TB.
+    assert disk["data_written_tb"] == pytest.approx(969.11, abs=0.01)
+    assert disk["data_read_tb"] == pytest.approx(299.87, abs=0.01)
+    assert disk["nvme_health"]["unsafe_shutdowns"] == 26
+
+
+@pytest.mark.asyncio
+async def test_apply_smart_derives_sata_ssd_wear_from_value_column(hass, config_entry) -> None:
+    """SATA SSD wear derives from 100 - normalized value; LBAs convert at 512 B (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+    disk = {
+        "disk_key": "sda",
+        "devicename": "sda",
+        "canonicaldevicefile": "/dev/sda",
+    }
+    attributes = {
+        "Wear_Leveling_Count": "1200",
+        "Wear_Leveling_Count__value": 97,
+        "Total_LBAs_Written": "78156288000",
+        "Total_LBAs_Read": "39078144000",
+    }
+
+    coordinator._apply_smart_to_disks([disk], [], {"/dev/sda": attributes}, {})
+
+    assert disk["wear_percent"] == 3.0
+    assert disk["data_written_tb"] == pytest.approx(40.02, abs=0.01)
+    assert disk["data_read_tb"] == pytest.approx(20.01, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_apply_smart_derives_percent_lifetime_remain_raw_as_used(hass, config_entry) -> None:
+    """Micron's Percent_Lifetime_Remain raw value counts percentage used (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+    disk = {
+        "disk_key": "sda",
+        "devicename": "sda",
+        "canonicaldevicefile": "/dev/sda",
+    }
+
+    coordinator._apply_smart_to_disks([disk], [], {"/dev/sda": {"Percent_Lifetime_Remain": "12"}}, {})
+
+    assert disk["wear_percent"] == 12.0
+
+
+@pytest.mark.asyncio
+async def test_apply_smart_leaves_hdds_without_wear_fields(hass, config_entry) -> None:
+    """HDDs (no wear attributes, 'unknown' placeholders) get no wear/data fields (#54)."""
+    config_entry.add_to_hass(hass)
+    coordinator = _make_smart_coordinator(hass, config_entry)
+    disk = {
+        "disk_key": "sda",
+        "devicename": "sda",
+        "canonicaldevicefile": "/dev/sda",
+        "Wear_Leveling_Count": "unknown",
+        "Percent_Lifetime_Remain": "unknown",
+        "Total_LBAs_Written": "unknown",
+        "Total_LBAs_Read": "unknown",
+    }
+
+    coordinator._apply_smart_to_disks([disk], [], {"/dev/sda": {"Raw_Read_Error_Rate": "0"}}, {})
+
+    assert "wear_percent" not in disk
+    assert "data_written_tb" not in disk
+    assert "data_read_tb" not in disk
+    assert "nvme_health" not in disk
+
+
+@pytest.mark.asyncio
+async def test_smart_interval_caches_nvme_health_between_polls(hass, config_entry) -> None:
+    """Cached NVMe health is re-applied to fresh disks within the SMART interval (#54)."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_INTERVAL: 3600},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        if method == "getExtendedInformation":
+            return _NVME_SMARTCTL_OUTPUT
+        return {"data": []}
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+
+    def make_disks() -> list[dict]:
+        return [
+            {
+                "disk_key": "nvme0n1",
+                "devicename": "nvme0n1",
+                "canonicaldevicefile": "/dev/nvme0n1",
+                "hotpluggable": False,
+                "overallstatus": "unknown",
+            }
+        ]
+
+    disks1 = make_disks()
+    await coordinator._async_collect_smart(disks1)
+    assert disks1[0]["wear_percent"] == 98.0
+
+    api.async_call.reset_mock()
+
+    disks2 = make_disks()
+    await coordinator._async_collect_smart(disks2)
+    assert not any(call.args[0] == "Smart" for call in api.async_call.await_args_list)
+    assert disks2[0]["wear_percent"] == 98.0
+    assert disks2[0]["data_written_tb"] == pytest.approx(969.11, abs=0.01)
+
+
 @pytest.mark.asyncio
 async def test_normalize_hwinfo_uses_api_memused_field(hass, config_entry) -> None:
     """memUsed must use the API's memUsed field (= total - available), not total - free.

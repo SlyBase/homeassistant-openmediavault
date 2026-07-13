@@ -73,7 +73,9 @@ Hardware info is refreshed every `_HWINFO_REFRESH_MULTIPLIER` (60) update cycles
 
 - Always pass `{"start": 0, "limit": 100}` to both `Smart.getListBg` and `Smart.getList`. Omitting `start` causes an OMV error.
 - Skip `getAttributes` for device names starting with `mmcblk`, `sr`, or `bcache` — those are not SMART-capable.
-- After fetching attributes, map them by `attrname` into the disk dict AND into `disk["smart_attributes"]` for entity access.
+- After fetching attributes, map them by `attrname` into the disk dict AND into `disk["smart_attributes"]` for entity access. For the wear attributes (`_SMART_VALUE_ATTRIBUTE_NAMES`) the normalized SMART `value` column is kept as `<attrname>__value` — SATA SSDs report remaining life there, not in the raw value.
+- NVMe wear/endurance (Issue #54): `Smart.getAttributes` only parses the ATA table, so for `nvme*` disks `Smart.getExtendedInformation {"devicefile": ...}` is fetched (`max_retries=0`, permanent-failure set `_smart_no_extended`) and the raw `smartctl --xall` output is parsed by the pure `_parse_nvme_health()`. All NVMe data follows the SMART poll cadence (`CONF_SMART_INTERVAL`) via `_smart_nvme_cache`.
+- `_apply_smart_to_disks` derives unified `wear_percent` / `data_written_tb` / `data_read_tb` fields (NVMe health first, then ATA attributes; use `_smart_numeric()`, which treats `"unknown"` as missing instead of 0.0).
 
 ## Logging discipline
 

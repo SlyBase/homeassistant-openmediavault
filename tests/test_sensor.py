@@ -12,12 +12,15 @@ from custom_components.omv.sensor_types import (
     COMPOSE_SENSORS,
     CONTAINER_SENSORS,
     CONTAINER_VOLUME_SENSORS,
+    DISK_DATA_READ_SENSOR,
+    DISK_DATA_WRITTEN_SENSOR,
     DISK_FREE_PERCENT_SENSOR,
     DISK_FREE_SIZE_SENSOR,
     DISK_SENSOR,
     DISK_TOTAL_SIZE_SENSOR,
     DISK_USED_PERCENT_SENSOR,
     DISK_USED_SIZE_SENSOR,
+    DISK_WEAR_LEVEL_SENSOR,
     FILESYSTEM_FREE_PERCENT_SENSOR,
     FILESYSTEM_FREE_SIZE_SENSOR,
     FILESYSTEM_SENSOR,
@@ -515,6 +518,58 @@ async def test_virtual_disk_has_no_temperature_or_smart_entity(coordinator, conf
     assert not any(entity.unique_id.endswith("disk-sda") for entity in added)
     assert not any(entity.unique_id.endswith("disk_smart_status-sda") for entity in added)
     assert any(entity.unique_id.endswith("disk_used_size-sda") for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_wear_sensors_created_only_for_disks_with_values(coordinator, config_entry) -> None:
+    """Wear/data sensors appear for SSD/NVMe samples only, never for HDDs or RAID (#54)."""
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+
+    for disk_key in ("nvme0n1", "sdd"):
+        for metric in ("disk_wear_level", "disk_data_written", "disk_data_read"):
+            assert any(entity.unique_id.endswith(f"{metric}-{disk_key}") for entity in added), (
+                f"missing {metric} for {disk_key}"
+            )
+    # HDDs without wear data and the synthetic RAID record get none.
+    for disk_key in ("sda", "sdb", "sdc", "md0"):
+        for metric in ("disk_wear_level", "disk_data_written", "disk_data_read"):
+            assert not any(entity.unique_id.endswith(f"{metric}-{disk_key}") for entity in added), (
+                f"unexpected {metric} for {disk_key}"
+            )
+
+
+@pytest.mark.asyncio
+async def test_nvme_wear_sensor_exposes_value_and_health_attributes(coordinator) -> None:
+    """The NVMe wear sensor reports percentage used with the health log as attributes (#54)."""
+    sensor = OMVSensor(coordinator, DISK_WEAR_LEVEL_SENSOR, item_key="nvme0n1")
+
+    assert sensor.native_value == 98.0
+    assert sensor.extra_state_attributes["nvme_health"]["data_units_written"] == 1892791876
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:nvme0n1")}
+    assert sensor._attr_suggested_object_id == "nas_disk_nvme0n1_wear_level"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("description", "item_key", "expected"),
+    [
+        (DISK_DATA_WRITTEN_SENSOR, "nvme0n1", 969.11),
+        (DISK_DATA_READ_SENSOR, "nvme0n1", 299.87),
+        (DISK_WEAR_LEVEL_SENSOR, "sdd", 3.0),
+        (DISK_DATA_WRITTEN_SENSOR, "sdd", 40.02),
+        (DISK_DATA_READ_SENSOR, "sdd", 20.01),
+    ],
+)
+async def test_wear_and_data_sensors_expose_expected_values(coordinator, description, item_key, expected) -> None:
+    """Wear/data sensors read the coordinator-derived disk fields (#54)."""
+    sensor = OMVSensor(coordinator, description, item_key=item_key)
+
+    assert sensor.native_value == expected
 
 
 @pytest.mark.asyncio
