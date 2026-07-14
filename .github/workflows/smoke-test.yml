@@ -22,6 +22,11 @@ env:
 jobs:
   smoke:
     name: Deploy + REST verify on Pi
+    # Dependabot pull_request runs cannot read Actions secrets (they use a
+    # separate Dependabot secret store), so the Infisical fetch would fail with
+    # "Missing universal auth credentials". A live Pi deploy adds no value for a
+    # dependency/actions bump anyway — skip the job so it reports neutrally.
+    if: github.actor != 'dependabot[bot]'
     # Ephemeral ARC runner (org-scoped, kubernetes containerMode) — see
     # homelab kubernetes/apps/arc-runners. Fresh pod per run, nothing persists.
     runs-on: k8s
