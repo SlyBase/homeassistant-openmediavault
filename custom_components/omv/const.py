@@ -21,6 +21,12 @@ DEFAULT_VERIFY_SSL = True
 # Optionales TOTP-Secret (entry.data) für automatische Re-Logins bei 2FA (Issue #55)
 CONF_TOTP_SECRET = "totp_secret"
 
+# Persistenz des OMV Login-Notification-Dedup-Cookies (Issue #62): der
+# OPENMEDIAVAULT-LOGIN-*-Cookie-Name wird pro Config-Entry in einem HA-Store
+# abgelegt, damit OMV nach HA-Neustarts keine erneute Login-Mail schickt.
+LOGIN_COOKIE_STORAGE_VERSION = 1
+LOGIN_COOKIE_STORAGE_KEY = "login_cookie"
+
 # Optionsschlüssel für auswählbare Ressourcen
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_REBOOT_REPAIR_DISABLED = "reboot_repair_disabled"

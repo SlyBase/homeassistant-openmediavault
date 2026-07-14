@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import (
@@ -15,7 +15,11 @@ from homeassistant.const import (
 )
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.omv import session_handoff
+from custom_components.omv import (
+    _async_persist_login_cookie,
+    _login_cookie_store,
+    session_handoff,
+)
 from custom_components.omv.const import CONF_SCAN_INTERVAL, DOMAIN
 
 ENTRY_DATA = {
@@ -37,13 +41,51 @@ def _make_entry() -> MockConfigEntry:
     )
 
 
+def _mock_handoff_api() -> AsyncMock:
+    """Return a mock OMV API suitable for session-handoff tests.
+
+    ``get_login_cookie_name`` is a synchronous stub returning ``None`` so the
+    login-cookie persistence in ``async_setup_entry`` is a no-op and does not
+    try to serialise an ``AsyncMock`` coroutine (Issue #62).
+    """
+    api = AsyncMock()
+    api.get_login_cookie_name = MagicMock(return_value=None)
+    return api
+
+
+@pytest.mark.asyncio
+async def test_persist_login_cookie_writes_captured_name(hass) -> None:
+    """A captured OMV login-dedup cookie name is written to the entry store (Issue #62)."""
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+    api = _mock_handoff_api()
+    api.get_login_cookie_name = MagicMock(return_value="OPENMEDIAVAULT-LOGIN-xyz")
+
+    await _async_persist_login_cookie(hass, entry, api)
+
+    stored = await _login_cookie_store(hass, entry).async_load()
+    assert stored == {"cookie_name": "OPENMEDIAVAULT-LOGIN-xyz"}
+
+
+@pytest.mark.asyncio
+async def test_persist_login_cookie_noop_without_name(hass) -> None:
+    """Nothing is stored when no OMV login-dedup cookie has been captured (Issue #62)."""
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+    api = _mock_handoff_api()  # get_login_cookie_name() -> None
+
+    await _async_persist_login_cookie(hass, entry, api)
+
+    assert await _login_cookie_store(hass, entry).async_load() is None
+
+
 @pytest.mark.asyncio
 async def test_async_setup_entry_reuses_handed_off_session(hass) -> None:
     """A session stashed by the config flow is reused instead of a fresh OMV login."""
     entry = _make_entry()
     entry.add_to_hass(hass)
 
-    handed_off_api = AsyncMock()
+    handed_off_api = _mock_handoff_api()
     system_info = {"hostname": "nas", "version": "8.1.2-1"}
     session_handoff.store("nas", handed_off_api, system_info)
 
@@ -128,8 +170,8 @@ async def test_async_setup_entry_multi_instance_handoffs_stay_separate(hass) -> 
     entry1.add_to_hass(hass)
     entry2.add_to_hass(hass)
 
-    api1 = AsyncMock()
-    api2 = AsyncMock()
+    api1 = _mock_handoff_api()
+    api2 = _mock_handoff_api()
     session_handoff.store("nas1", api1, {"hostname": "nas1", "version": "8.1.2-1"})
     session_handoff.store("nas2", api2, {"hostname": "nas2", "version": "8.1.2-1"})
 
@@ -165,7 +207,7 @@ async def test_unload_closes_old_api_when_handoff_holds_new_instance(hass) -> No
     entry = _make_entry()
     entry.add_to_hass(hass)
 
-    old_api = AsyncMock()
+    old_api = _mock_handoff_api()
     session_handoff.store("nas", old_api, {"hostname": "nas", "version": "8.1.2-1"})
 
     with (
@@ -208,7 +250,7 @@ async def test_unload_keeps_api_open_when_handoff_holds_same_instance(hass) -> N
     entry = _make_entry()
     entry.add_to_hass(hass)
 
-    api = AsyncMock()
+    api = _mock_handoff_api()
     session_handoff.store("nas", api, {"hostname": "nas", "version": "8.1.2-1"})
 
     with (

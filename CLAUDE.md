@@ -88,6 +88,7 @@ Never hard-code English `_attr_name`. Use `translation_key` + `_attr_translation
 
 - **`CookieJar(unsafe=True)`** is required for IP-based hosts — without it the session cookie is silently dropped and subsequent RPCs fail with a spurious auth error.
 - `OMVAPI.async_call()` auto-re-authenticates on session expiry (error codes 5001/5002).
+- **Login-notification dedup cookie (Issue #62):** on the first login from a new browser, OMV sends a "login from browser" security email and sets a persistent 60-day cookie `OPENMEDIAVAULT-LOGIN-<hex(bcrypt(username))>` (only the cookie *name* is checked — `session.inc::isFirstLoginFromBrowser`). `OMVAPI` captures that cookie name, `__init__.py` persists it per entry in an HA `Store`, and `_inject_login_cookie()` replays it into every (re)created cookie jar so OMV suppresses repeat emails on re-logins and after HA restarts. Do not drop this cookie when recreating the aiohttp session.
 - All calls go through an async lock — no concurrent requests to the same session.
 - OMV size fields can arrive as bare numeric strings (no unit) — treat them as **bytes**, not GB.
 

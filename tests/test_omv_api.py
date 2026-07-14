@@ -580,3 +580,92 @@ async def test_async_apply_config_sends_required_params(
     assert body["method"] == "applyChanges"
     assert body["params"] == {"modules": [], "force": False}
     await api.async_close()
+
+
+def _login_cookie_names(api: OMVAPI) -> list[str]:
+    """Return the cookie names currently stored for the OMV RPC endpoint."""
+    assert api._session is not None
+    cookies = api._session.cookie_jar.filter_cookies(URL(f"{api.base_url}/rpc.php"))
+    return sorted(cookies.keys())
+
+
+@pytest.mark.asyncio
+async def test_get_set_login_cookie_name_roundtrip() -> None:
+    """The login-notification cookie name getter/setter round-trips (Issue #62)."""
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    assert api.get_login_cookie_name() is None
+    api.set_login_cookie_name("OPENMEDIAVAULT-LOGIN-abcd")
+    assert api.get_login_cookie_name() == "OPENMEDIAVAULT-LOGIN-abcd"
+
+
+@pytest.mark.asyncio
+async def test_capture_login_cookie_records_prefixed_cookie() -> None:
+    """_capture_login_cookie records the OMV login-dedup cookie, ignoring others."""
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    await api._async_ensure_session()
+    assert api._session is not None
+    # Simulate what real aiohttp does when OMV sends the Set-Cookie header on
+    # the first login from a new browser, plus an unrelated session cookie.
+    api._session.cookie_jar.update_cookies(
+        {
+            "X-OPENMEDIAVAULT-SESSIONID": "sess-value",
+            "OPENMEDIAVAULT-LOGIN-deadbeef": "dune-quote",
+        },
+        response_url=URL("http://192.168.1.1:80/rpc.php"),
+    )
+
+    api._capture_login_cookie()
+
+    assert api.get_login_cookie_name() == "OPENMEDIAVAULT-LOGIN-deadbeef"
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_reinjects_login_cookie() -> None:
+    """Recreating the session replays the login-dedup cookie so it survives.
+
+    The connection-error retry path recreates the aiohttp session; without
+    re-injection the OMV login-notification cookie would be lost and OMV would
+    email again on the next login (Issue #62).
+    """
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api.set_login_cookie_name("OPENMEDIAVAULT-LOGIN-seed")
+
+    await api._async_ensure_session()
+    assert "OPENMEDIAVAULT-LOGIN-seed" in _login_cookie_names(api)
+
+    # A second recreation (as happens during connection-error recovery) must
+    # still carry the cookie.
+    await api._async_ensure_session()
+    assert "OPENMEDIAVAULT-LOGIN-seed" in _login_cookie_names(api)
+    await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_seeded_login_cookie_present_for_first_login(
+    mock_aiohttp: aioresponses,
+) -> None:
+    """A persisted cookie name is replayed into the jar before the first login.
+
+    This is what suppresses OMV's repeated login-notification email after an
+    HA restart: the cookie is already in the jar when ``Session.login`` is
+    sent (Issue #62).
+    """
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": {"authenticated": True, "sessionid": "session123"}, "error": None},
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": {"version": "8.1.2", "hostname": "nas"}, "error": None},
+    )
+
+    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api.set_login_cookie_name("OPENMEDIAVAULT-LOGIN-restored")
+    await api.async_connect()
+
+    # After connect the restored cookie is still in the jar (was sent with the
+    # login request) and remains captured for persistence.
+    assert "OPENMEDIAVAULT-LOGIN-restored" in _login_cookie_names(api)
+    assert api.get_login_cookie_name() == "OPENMEDIAVAULT-LOGIN-restored"
+    await api.async_close()

@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 
 from . import session_handoff
 from .const import (
@@ -28,6 +29,8 @@ from .const import (
     DEFAULT_SSL,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    LOGIN_COOKIE_STORAGE_KEY,
+    LOGIN_COOKIE_STORAGE_VERSION,
     PLATFORMS,
 )
 from .coordinator import OMVDataUpdateCoordinator
@@ -39,6 +42,50 @@ from .services import async_setup_services
 _LOGGER = logging.getLogger(__name__)
 
 type OMVConfigEntry = ConfigEntry[OMVDataUpdateCoordinator]
+
+
+def _login_cookie_store(hass: HomeAssistant, entry: OMVConfigEntry) -> Store:
+    """Return the per-entry Store for the OMV login-notification cookie name.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry the cookie belongs to.
+
+    Returns:
+        A :class:`Store` keyed by the entry id (Issue #62).
+    """
+    return Store(
+        hass,
+        LOGIN_COOKIE_STORAGE_VERSION,
+        f"{DOMAIN}.{LOGIN_COOKIE_STORAGE_KEY}.{entry.entry_id}",
+    )
+
+
+async def _async_persist_login_cookie(
+    hass: HomeAssistant,
+    entry: OMVConfigEntry,
+    api: OMVAPI,
+) -> None:
+    """Persist the OMV login-notification dedup cookie name for reuse.
+
+    Stores the ``OPENMEDIAVAULT-LOGIN-*`` cookie name OMV issued on first
+    login so a later HA restart can replay it and OMV does not re-send the
+    login-notification email (Issue #62). No-op when no cookie has been
+    captured yet or the stored value is already up to date.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry being set up.
+        api: The live OMV API client.
+    """
+    name = api.get_login_cookie_name()
+    if not isinstance(name, str) or not name:
+        return
+    store = _login_cookie_store(hass, entry)
+    stored = await store.async_load()
+    if isinstance(stored, dict) and stored.get("cookie_name") == name:
+        return
+    await store.async_save({"cookie_name": name})
 
 
 def _register_registry_cleanup_listener(
@@ -148,6 +195,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
             totp_secret=entry.data.get(CONF_TOTP_SECRET),
         )
 
+        # Replay a previously captured OMV login-notification dedup cookie so
+        # the first login after an HA restart does not trigger another
+        # security-notification email (Issue #62).
+        stored_cookie = await _login_cookie_store(hass, entry).async_load()
+        if isinstance(stored_cookie, dict) and stored_cookie.get("cookie_name"):
+            api.set_login_cookie_name(stored_cookie["cookie_name"])
+
         try:
             system_info = await api.async_connect()
         except OMVAuthError as err:
@@ -165,6 +219,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     )
     await coordinator.async_init(system_info)
     await coordinator.async_config_entry_first_refresh()
+    await _async_persist_login_cookie(hass, entry, api)
     entry.runtime_data = coordinator
     await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -190,6 +245,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool
         if not session_handoff.pending_api_is(entry.unique_id, entry.runtime_data.api):
             await entry.runtime_data.api.async_close()
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> None:
+    """Remove the persisted OMV login-notification cookie on entry deletion.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry being removed.
+    """
+    await _login_cookie_store(hass, entry).async_remove()
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: OMVConfigEntry) -> None:

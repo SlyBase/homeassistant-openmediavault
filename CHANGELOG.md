@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- OMV no longer sends a "login from browser" notification email on every re-login / HA restart (Issue #62). OMV suppresses repeat login notifications when the requesting browser resends the persistent `OPENMEDIAVAULT-LOGIN-*` dedup cookie it sets on first login; the integration now captures that cookie, persists its name per config entry in an HA `Store`, and replays it into the aiohttp cookie jar on every session (re)creation and after HA restarts (`omv_api.py`, `__init__.py`, `const.py`). The first login of a fresh setup still notifies, as intended.
+- HA Smoke Test no longer fails on Dependabot PRs. Dependabot `pull_request` runs cannot read Actions secrets, so the Infisical credential fetch always failed with "Missing universal auth credentials"; the deploy/verify job is now skipped for `dependabot[bot]` (`.github/workflows/smoke-test.yml`).
+
 ## [2.6.3] - 2026-07-05
 
 ### Added

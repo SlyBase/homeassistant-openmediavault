@@ -20,6 +20,15 @@ from .exceptions import (
 
 _LOGGER = logging.getLogger(__name__)
 _SESSION_EXPIRED_CODES = {5001, 5002}
+# OMV sets a persistent (60-day) browser-dedup cookie named
+# ``OPENMEDIAVAULT-LOGIN-<hex(bcrypt(username))>`` on the first login from a
+# given browser and emails a security notification only when it is absent
+# (see openmediavault ``rpc/session.inc::handleSuccessfulLogin``). Persisting
+# and replaying this cookie makes OMV treat the integration like the same
+# browser, so the login-notification email is not re-sent on every re-login /
+# HA restart (Issue #62). Only the cookie *name* is checked by OMV, not its
+# value.
+_LOGIN_NOTIFICATION_COOKIE_PREFIX = "OPENMEDIAVAULT-LOGIN-"
 _REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=30)
 _INVALID_LOGIN_MESSAGES = (
     "incorrect username or password",
@@ -54,6 +63,7 @@ class OMVAPI:
         self._session_id: str | None = None
         self._session: aiohttp.ClientSession | None = None
         self._lock = asyncio.Lock()
+        self._login_cookie_name: str | None = None
 
     def set_totp_secret(self, totp_secret: str | None) -> None:
         """Set the TOTP secret used to answer 2FA challenges automatically.
@@ -67,6 +77,31 @@ class OMVAPI:
                 automatic challenge answering.
         """
         self._totp_secret = totp_secret
+
+    def get_login_cookie_name(self) -> str | None:
+        """Return the OMV login-notification dedup cookie name, if known.
+
+        Returns:
+            The ``OPENMEDIAVAULT-LOGIN-*`` cookie name captured from a previous
+            successful login, or ``None`` if it has not been observed yet.
+            Used by the config-entry setup to persist the name across HA
+            restarts (Issue #62).
+        """
+        return self._login_cookie_name
+
+    def set_login_cookie_name(self, name: str | None) -> None:
+        """Seed the OMV login-notification dedup cookie name.
+
+        Called before :meth:`async_connect` with a value persisted from a
+        prior HA run so the very first ``Session.login`` after a restart
+        replays the cookie and OMV suppresses the login-notification email
+        (Issue #62). The cookie is injected into the jar on the next session
+        (re)creation via :meth:`_inject_login_cookie`.
+
+        Args:
+            name: The ``OPENMEDIAVAULT-LOGIN-*`` cookie name, or ``None``.
+        """
+        self._login_cookie_name = name
 
     @property
     def base_url(self) -> str:
@@ -114,13 +149,60 @@ class OMVAPI:
         return any(fragment in lowered for fragment in _INVALID_LOGIN_MESSAGES)
 
     async def _async_ensure_session(self) -> None:
-        """Create or recreate the aiohttp session."""
+        """Create or recreate the aiohttp session.
+
+        Re-injects the OMV login-notification dedup cookie (if known) into the
+        fresh cookie jar so recreating the session — e.g. on the connection
+        error retry path — does not drop it and cause OMV to re-send the login
+        notification email (Issue #62).
+        """
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = aiohttp.ClientSession(
             cookie_jar=aiohttp.CookieJar(unsafe=True),
             timeout=_REQUEST_TIMEOUT,
         )
+        self._inject_login_cookie()
+
+    def _inject_login_cookie(self) -> None:
+        """Replay the OMV login-notification dedup cookie into the current jar.
+
+        OMV only checks the cookie *name* (``OPENMEDIAVAULT-LOGIN-*``), so a
+        placeholder value is sufficient. The cookie is added without a
+        ``SameSite`` attribute so aiohttp always sends it on the
+        ``POST /rpc.php`` requests, independent of same-site heuristics that
+        could otherwise suppress OMV's own ``SameSite=Strict`` cookie
+        (Issue #62).
+        """
+        if not self._login_cookie_name or not self._session or self._session.closed:
+            return
+        self._session.cookie_jar.update_cookies(
+            {self._login_cookie_name: "1"},
+            response_url=URL(self.base_url),
+        )
+
+    def _capture_login_cookie(self) -> None:
+        """Capture the OMV login-notification dedup cookie name from the jar.
+
+        Scans the active cookie jar for a cookie whose name starts with
+        :data:`_LOGIN_NOTIFICATION_COOKIE_PREFIX` (set by OMV on the first
+        login from a new browser) and records it so it can be persisted and
+        replayed on later logins / HA restarts (Issue #62). Existing values
+        are only overwritten when OMV issued a (new) cookie.
+        """
+        if not self._session or self._session.closed:
+            return
+        cookies = self._session.cookie_jar.filter_cookies(URL(f"{self.base_url}/rpc.php"))
+        for name in cookies:
+            if name.upper().startswith(_LOGIN_NOTIFICATION_COOKIE_PREFIX):
+                self._login_cookie_name = name
+                _LOGGER.debug(
+                    "Captured OMV login-notification cookie [%s] host=%r name=%r",
+                    self._source,
+                    self._host,
+                    name,
+                )
+                return
 
     async def _async_login(self) -> None:
         """Authenticate with OMV and initialize the session cookie jar.
@@ -178,6 +260,7 @@ class OMVAPI:
                     session_id = data.get("sessionid")
                     if isinstance(session_id, str) and session_id:
                         self._session_id = session_id
+                    self._capture_login_cookie()
                     _LOGGER.debug(
                         "Automatically answered OMV TOTP challenge for %s [%s]; sessionid_present=%s",
                         self._host,
@@ -195,6 +278,7 @@ class OMVAPI:
         if isinstance(session_id, str) and session_id:
             self._session_id = session_id
 
+        self._capture_login_cookie()
         _LOGGER.debug(
             "Successfully authenticated with OMV at %s [%s]; sessionid_present=%s cookie_names=%s",
             self._host,
@@ -290,6 +374,7 @@ class OMVAPI:
         if isinstance(session_id, str) and session_id:
             self._session_id = session_id
 
+        self._capture_login_cookie()
         response = await self.async_call("System", "getInformation")
         return response if isinstance(response, dict) else {}
 
