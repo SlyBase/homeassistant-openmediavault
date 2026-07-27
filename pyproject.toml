@@ -19,7 +19,7 @@ test = [
 dev = [
   "ruff==0.15.22",
   "mypy==2.3.0",
-  "pre-commit==4.6.0",
+  "pre-commit==4.6.1",
 ]
 
 [tool.setuptools]
