@@ -795,7 +795,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         system_info = await self.api.async_call("System", "getInformation")
         hwinfo = self._normalize_hwinfo(system_info if isinstance(system_info, dict) else {})
 
-        cpu_temp = await self._fetch_optional("CpuTemp", "get")
+        # max_retries=0: cpu-temp fails permanently (exit code 1, no sensors)
+        # on virtualized OMV hosts (e.g. Proxmox VMs) — retrying with backoff
+        # every poll just delays the update and spams ERROR logs (Issue #67).
+        cpu_temp = await self._fetch_optional("CpuTemp", "get", max_retries=0)
         if isinstance(cpu_temp, dict):
             temp = self._coerce_optional_float(cpu_temp.get("cputemp"))
             if temp:
@@ -1276,10 +1279,22 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         service: str,
         method: str,
         params: dict[str, Any] | None = None,
+        *,
+        max_retries: int = 3,
     ) -> Any:
-        """Fetch optional plugin data and suppress plugin-specific failures."""
+        """Fetch optional plugin data and suppress plugin-specific failures.
+
+        Args:
+            service: OMV RPC service name.
+            method: OMV RPC method name.
+            params: Optional parameters to pass to the RPC call.
+            max_retries: Forwarded to :meth:`OMVAPI.async_call`. Pass ``0`` for
+                calls known to fail permanently on some setups (e.g. missing
+                hardware sensors) so they neither retry with backoff nor log
+                at ERROR on every poll (Issue #67).
+        """
         try:
-            return await self.api.async_call(service, method, params)
+            return await self.api.async_call(service, method, params, max_retries=max_retries)
         except (OMVApiError, OMVConnectionError) as err:
             _LOGGER.debug(
                 "Optional RPC unavailable or failed: %s.%s params=%s error=%s",

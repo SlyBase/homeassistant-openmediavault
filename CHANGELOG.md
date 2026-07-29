@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.6.5] - 2026-07-30
+
+### Fixed
+
+- `CpuTemp.get` no longer retries with exponential backoff and logs an ERROR on every coordinator poll when the OMV `cpu-temp` command fails permanently (e.g. no hardware sensors on virtualized/Proxmox OMV hosts) — it now fails fast (`max_retries=0`) and logs at DEBUG instead (Issue #67).
+
 ## [2.6.4] - 2026-07-14
 
 ### Fixed

@@ -148,7 +148,7 @@ async def test_compose_system_button_calls_do_command_and_refresh(coordinator) -
 async def test_compose_project_button_reads_background_output_when_present(coordinator) -> None:
     """Test compose project commands resolve OMV background output files."""
 
-    async def async_call(service, method, params=None):
+    async def async_call(service, method, params=None, **kwargs):
         if (service, method) == ("Compose", "doCommand"):
             return {"filename": "compose-up.log"}
         if (service, method) == ("Exec", "getOutput"):
