@@ -121,6 +121,71 @@ def _register_reboot_repair_listener(
     entry.async_on_unload(coordinator.async_add_listener(_sync_reboot_repair))
 
 
+async def _async_migrate_container_registry_keys(
+    hass: HomeAssistant,
+    entry: OMVConfigEntry,
+    coordinator: OMVDataUpdateCoordinator,
+) -> None:
+    """Rename container devices/entities from the old id-keyed scheme to the name-keyed one.
+
+    ``container_key`` used to default to the Docker runtime container id,
+    which Docker reassigns on every recreate (e.g. an image pull followed by
+    ``compose down && up``). That silently dropped the container from
+    ``selected_containers`` and reset any entity customization (name,
+    enabled state) on every image update (Issue #71). ``container_key`` is
+    now derived from the stable compose/container name instead, but existing
+    installs still have their container devices/entities registered under
+    the old id-keyed identifiers. Rename those in place — matched via the
+    device's stored integration name (``Container <name>``), which was
+    always the real container name even under the old scheme — instead of
+    letting :func:`_async_cleanup_stale_registry_entries` drop them and
+    recreate fresh ones.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry being set up.
+        coordinator: The coordinator, already refreshed with current data.
+    """
+    current_keys = {str(container.get("container_key") or "") for container in coordinator.data.get("compose", [])}
+    current_keys.discard("")
+    if not current_keys:
+        return
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    prefix = f"{entry.entry_id}:container:"
+
+    for device_entry in dr.async_entries_for_config_entry(device_registry, entry.entry_id):
+        old_key = next(
+            (
+                identifier[1].removeprefix(prefix)
+                for identifier in device_entry.identifiers
+                if identifier[0] == DOMAIN and identifier[1].startswith(prefix)
+            ),
+            None,
+        )
+        if not old_key or old_key in current_keys:
+            continue
+
+        new_key = (device_entry.name or "").removeprefix("Container ").strip()
+        if not new_key or new_key not in current_keys:
+            continue
+
+        new_identifiers = {
+            (DOMAIN, f"{prefix}{new_key}") if identifier == (DOMAIN, f"{prefix}{old_key}") else identifier
+            for identifier in device_entry.identifiers
+        }
+        device_registry.async_update_device(device_entry.id, new_identifiers=new_identifiers)
+
+        for registry_entry in er.async_entries_for_device(
+            entity_registry, device_entry.id, include_disabled_entities=True
+        ):
+            if not registry_entry.unique_id.endswith(f"-{old_key}"):
+                continue
+            new_unique_id = f"{registry_entry.unique_id[: -len(old_key)]}{new_key}"
+            entity_registry.async_update_entity(registry_entry.entity_id, new_unique_id=new_unique_id)
+
+
 async def _async_cleanup_stale_registry_entries(
     hass: HomeAssistant,
     entry: OMVConfigEntry,
@@ -221,6 +286,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     await _async_persist_login_cookie(hass, entry, api)
     entry.runtime_data = coordinator
+    await _async_migrate_container_registry_keys(hass, entry, coordinator)
     await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _register_registry_cleanup_listener(hass, entry, coordinator)

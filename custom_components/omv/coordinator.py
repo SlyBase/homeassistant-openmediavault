@@ -2283,7 +2283,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
 
             container_id = self._extract_container_id(record)
-            container_key = container_id or name
+            # Docker assigns a new container_id on every recreate (image pull + down/up),
+            # while the compose-assigned name stays constant. Keying on name keeps the
+            # HA entity/selection identity stable across image updates (Issue #71).
+            container_key = name or container_id
             project_name = self._extract_compose_project(record)
             service_name = self._extract_compose_service(record)
 
@@ -2802,7 +2805,13 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return ""
 
     def _extract_container_id(self, record: dict[str, Any]) -> str:
-        """Return a stable container identifier when the payload provides one."""
+        """Return the runtime container id when the payload provides one.
+
+        Note: this id is reassigned by Docker whenever the container is
+        recreated (e.g. image pull + compose down/up), so it must not be
+        used as the stable identity key — see ``container_key`` in
+        ``_normalize_compose``.
+        """
         return self._extract_text_value(
             record,
             "container_id",

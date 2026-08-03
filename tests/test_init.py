@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from homeassistant.const import (
@@ -13,14 +13,18 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.omv import (
+    _async_migrate_container_registry_keys,
     _async_persist_login_cookie,
     _login_cookie_store,
     session_handoff,
 )
 from custom_components.omv.const import CONF_SCAN_INTERVAL, DOMAIN
+from custom_components.omv.coordinator import OMVDataUpdateCoordinator
 
 ENTRY_DATA = {
     CONF_HOST: "192.0.2.10",
@@ -334,3 +338,105 @@ async def test_options_update_reuses_live_session_without_relogin(hass) -> None:
     mock_connect.assert_awaited_once()
     mock_close.assert_not_awaited()
     assert entry.runtime_data.api is live_api
+
+
+@pytest.mark.asyncio
+async def test_migrate_container_registry_keys_renames_old_id_based_entries(hass) -> None:
+    """Existing container devices/entities move from the old id-keyed scheme to the name-keyed one.
+
+    Regression test for Issue #71: ``container_key`` used to default to the
+    ephemeral Docker runtime id, so recreating a container (image pull +
+    ``compose down && up``) changed its unique_id/device identifier on every
+    update, silently dropping it from ``selected_containers`` and resetting
+    any entity customization. The migration must retarget the *existing*
+    registry entries onto the new name-keyed identifiers, preserving user
+    customizations, instead of leaving them for the stale-cleanup pass to
+    drop and recreate from scratch.
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:container:abc123")},
+        name="Container paperless-app",
+    )
+    switch_entry = entity_registry.async_get_or_create(
+        DOMAIN,
+        "switch",
+        f"{entry.entry_id}-container-abc123",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="paperless-app",
+    )
+    entity_registry.async_update_entity(switch_entry.entity_id, name="My Paperless")
+    button_entry = entity_registry.async_get_or_create(
+        DOMAIN,
+        "button",
+        f"{entry.entry_id}-container_restart-abc123",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="paperless-app restart",
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    coordinator.data = {
+        "compose": [{"container_key": "paperless-app", "container_id": "def456", "name": "paperless-app"}],
+    }
+
+    await _async_migrate_container_registry_keys(hass, entry, coordinator)
+
+    migrated_device = device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:container:paperless-app")})
+    assert migrated_device is not None
+    assert migrated_device.id == old_device.id
+    assert device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:container:abc123")}) is None
+
+    switch_entity_id = entity_registry.async_get_entity_id(
+        DOMAIN, "switch", f"{entry.entry_id}-container-paperless-app"
+    )
+    assert switch_entity_id == switch_entry.entity_id
+    assert entity_registry.async_get(switch_entity_id).name == "My Paperless"
+
+    button_entity_id = entity_registry.async_get_entity_id(
+        DOMAIN, "button", f"{entry.entry_id}-container_restart-paperless-app"
+    )
+    assert button_entity_id == button_entry.entity_id
+
+
+@pytest.mark.asyncio
+async def test_migrate_container_registry_keys_ignores_removed_containers(hass) -> None:
+    """A stale device whose container no longer exists at all must be left alone.
+
+    Only containers that are still present (recreated under the same name)
+    are migrated; containers genuinely removed from OMV must still be
+    cleaned up by ``_async_cleanup_stale_registry_entries`` as before.
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:container:abc123")},
+        name="Container removed-app",
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    coordinator.data = {
+        "compose": [{"container_key": "paperless-app", "container_id": "def456", "name": "paperless-app"}],
+    }
+
+    await _async_migrate_container_registry_keys(hass, entry, coordinator)
+
+    unchanged_device = device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:container:abc123")})
+    assert unchanged_device is not None
+    assert unchanged_device.id == old_device.id

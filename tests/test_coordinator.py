@@ -203,7 +203,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
     assert data["disk"][0]["raid_level"] == "unknown"
     assert data["disk"][0]["smart_details"]["temperature"] == 32
     assert data["disk"][0]["smart_attributes"]["Raw_Read_Error_Rate"] == "0"
-    assert data["compose"][0]["container_key"] == "ctr-paperless-app"
+    assert data["compose"][0]["container_key"] == "paperless-app"
     assert data["compose"][0]["project_key"] == "paperless"
     assert data["compose"][0]["version"] == "2.15.3"
     assert data["compose"][0]["status_detail"] == "Up 5 minutes"
@@ -614,6 +614,43 @@ async def test_compose_inspect_targets_includes_containers_without_project_key(h
     assert "ctr-paperless-app" not in target_keys
     # other is in neither selection
     assert "other" not in target_keys
+
+
+@pytest.mark.asyncio
+async def test_normalize_compose_keys_by_name_stable_across_container_recreate(hass, config_entry) -> None:
+    """container_key must stay stable when a container is recreated (Issue #71).
+
+    Docker/compose assigns a brand-new container id on every recreate (e.g.
+    image pull + `compose down && up`), while the compose-assigned name is
+    unchanged. Keying entities/selections on the ephemeral id caused selected
+    containers to silently disappear and their entities to be re-created
+    (losing custom names / enabled state) on every image update.
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+    )
+
+    before = coordinator._normalize_compose(
+        {"data": [{"id": "abc123", "name": "paperless-app", "project": "paperless", "service": "webserver"}]}
+    )
+    # Container recreated with a new runtime id (e.g. after an image pull) but the same name.
+    after = coordinator._normalize_compose(
+        {"data": [{"id": "def456", "name": "paperless-app", "project": "paperless", "service": "webserver"}]}
+    )
+
+    assert before[0]["container_key"] == "paperless-app"
+    assert before[0]["container_key"] == after[0]["container_key"]
+    # The raw runtime id is still tracked separately for docker commands.
+    assert before[0]["container_id"] == "abc123"
+    assert after[0]["container_id"] == "def456"
 
 
 @pytest.mark.asyncio

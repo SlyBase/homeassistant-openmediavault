@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Compose containers no longer drop out of `selected_containers` (losing custom entity names/enabled state) after an image update recreates them. Docker assigns a new runtime container id on every recreate (`compose down && up`), but the compose-assigned name is unchanged; `container_key` is now derived from the name instead of the ephemeral id (`coordinator.py`, Issue #71).
+- Existing container devices/entities registered under the old id-keyed scheme are migrated in place to the new name-keyed one on first setup after upgrade, preserving custom names/enabled state instead of losing them a final time (`__init__.py`, Issue #71).
+
 ## [2.6.5] - 2026-07-30
 
 ### Fixed
