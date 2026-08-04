@@ -179,6 +179,39 @@ async def test_async_install_treats_http500_from_bgproc_as_done(coordinator) -> 
 
 
 @pytest.mark.asyncio
+async def test_async_install_raises_when_bgproc_command_itself_failed(coordinator) -> None:
+    """Test that an HTTP 500 carrying a real command failure is NOT swallowed.
+
+    OMV also deletes the bgproc status file when the underlying command
+    failed (e.g. apt-get exiting non-zero because dpkg was interrupted on
+    the host). The 500 response body still contains the actual error in
+    that case, so it must propagate instead of being treated as "bgproc
+    completed successfully" — otherwise a failed upgrade would silently
+    report success with nothing actually installed.
+    """
+
+    async def _mock_call(service: str, method: str, params: dict | None = None, **_: object) -> object:
+        if service == "Apt":
+            return "/tmp/bgstatus"
+        raise OMVConnectionError(
+            'OMV returned HTTP 500: {"response":null,"error":{"code":0,'
+            '"message":"Failed to execute command \'apt-get ... dist-upgrade\' '
+            "with exit code '100': E: dpkg was interrupted, you mus"
+        )
+
+    coordinator.api.async_call = _mock_call
+    coordinator.async_request_refresh = AsyncMock()
+
+    entity = OMVUpdateEntity(coordinator)
+
+    with (
+        patch("custom_components.omv.update.asyncio.sleep", new_callable=AsyncMock),
+        pytest.raises(OMVConnectionError, match="Failed to execute command"),
+    ):
+        await entity.async_install(version=None, backup=False)
+
+
+@pytest.mark.asyncio
 async def test_async_install_stops_polling_after_timeout(coordinator) -> None:
     """Test _wait_for_bgproc stops after _MAX_POLLS when process never finishes."""
     still_running = {"filename": "/tmp/bgstatus", "running": True}
