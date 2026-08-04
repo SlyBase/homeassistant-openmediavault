@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- The update-entity install action no longer reports success when the OMV-side `apt-get`/`dpkg` command itself failed (e.g. a host with an interrupted dpkg state). `Exec.isRunning` returns HTTP 500 both when the bgproc status file was cleaned up after a successful run and when the underlying command failed; only the former is now treated as "completed" — the latter's real error message is surfaced to HA instead of being silently swallowed (`update.py`).
+
 ## [2.6.6] - 2026-08-04
 
 ### Fixed
