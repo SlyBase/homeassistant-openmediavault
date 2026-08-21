@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import CONF_UPDATE_TRACKING_DISABLED
 from .coordinator import OMVDataUpdateCoordinator
 from .entity import OMVEntity, build_host_object_id
 from .exceptions import OMVConnectionError
@@ -29,8 +30,11 @@ def get_expected_update_unique_ids(entry: ConfigEntry) -> set[str]:
         entry: The config entry.
 
     Returns:
-        Set of unique ID strings for all update entities.
+        Set of unique ID strings for all update entities, or an empty set
+        when ``CONF_UPDATE_TRACKING_DISABLED`` is set (Issue #66).
     """
+    if entry.options.get(CONF_UPDATE_TRACKING_DISABLED, False):
+        return set()
     return {f"{entry.entry_id}-omv_system_update"}
 
 

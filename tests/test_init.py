@@ -12,6 +12,7 @@ from homeassistant.const import (
     CONF_SSL,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
+    Platform,
 )
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -23,7 +24,7 @@ from custom_components.omv import (
     _login_cookie_store,
     session_handoff,
 )
-from custom_components.omv.const import CONF_SCAN_INTERVAL, DOMAIN
+from custom_components.omv.const import CONF_SCAN_INTERVAL, CONF_UPDATE_TRACKING_DISABLED, DOMAIN
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
 
 ENTRY_DATA = {
@@ -154,6 +155,48 @@ async def test_async_setup_entry_connects_fresh_without_handoff(hass) -> None:
     assert result is True
     mock_connect.assert_awaited_once()
     mock_async_init.assert_awaited_once_with(system_info)
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_skips_update_platform_when_tracking_disabled(hass) -> None:
+    """No `update` platform is forwarded when update tracking is disabled (Issue #66)."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        unique_id="nas",
+        data=ENTRY_DATA,
+        options={CONF_UPDATE_TRACKING_DISABLED: True},
+    )
+    entry.add_to_hass(hass)
+
+    system_info = {"hostname": "nas", "version": "8.1.2-1"}
+
+    with (
+        patch(
+            "custom_components.omv.OMVAPI.async_connect",
+            new=AsyncMock(return_value=system_info),
+        ),
+        patch("custom_components.omv.OMVAPI.async_close", new=AsyncMock()),
+        patch(
+            "custom_components.omv.OMVDataUpdateCoordinator.async_init",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.omv.OMVDataUpdateCoordinator._async_update_data",
+            new=AsyncMock(return_value={}),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new=AsyncMock(return_value=True),
+        ) as mock_forward,
+    ):
+        result = await hass.config_entries.async_setup(entry.entry_id)
+
+    assert result is True
+    forwarded_platforms = mock_forward.call_args.args[1]
+    assert Platform.UPDATE not in forwarded_platforms
+    assert Platform.SENSOR in forwarded_platforms
 
 
 @pytest.mark.asyncio

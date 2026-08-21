@@ -54,6 +54,7 @@
         "data": {
           "scan_interval": "Abfrageintervall (Sekunden)",
           "reboot_repair_disabled": "Neustart-Benachrichtigung deaktivieren",
+          "update_tracking_disabled": "Update-Tracking deaktivieren",
           "smart_interval": "SMART-Abfrageintervall (Sekunden)",
           "smart_polling_disabled": "SMART-Abfrage deaktivieren",
           "selected_disks": "Ausgewählte Festplatten",
@@ -69,6 +70,7 @@
         },
         "data_description": {
           "reboot_repair_disabled": "Wenn aktiviert, wird die Home Assistant Repair-Benachrichtigung für einen ausstehenden OMV-Neustart unterdrückt. Nützlich, wenn ein Neustart nicht sofort möglich ist, z. B. weil VMs auf dem NAS laufen.",
+          "update_tracking_disabled": "Wenn aktiviert, wird keine Home Assistant Update-Entität für OMV-Paketaktualisierungen erstellt. Der Sensor „Verfügbare Paketaktualisierungen“ zeigt die Anzahl weiterhin an.",
           "smart_interval": "Wie oft SMART-Daten (Status, Attribute, Festplattentemperatur) gelesen werden. Das Lesen von SMART weckt Festplatten aus dem Standby, daher lässt ein größerer Wert die Festplatten zum Energiesparen herunterfahren. Standard: das Abfrageintervall.",
           "smart_polling_disabled": "Wenn aktiviert, wird SMART nie abgefragt. Festplatten werden von dieser Integration nicht geweckt, aber die Entitäten für SMART-Status, SMART-Attribute und Festplattentemperatur werden nicht verfügbar.",
           "selected_cron_jobs": "Erstellt einen Button für jeden ausgewählten benutzerdefinierten Cron-Job. Achtung: Das Drücken eines solchen Buttons führt das beliebige Shell-Kommando des Jobs auf dem NAS aus. Standard: keine."

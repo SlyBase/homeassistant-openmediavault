@@ -43,6 +43,7 @@ from .const import (
     CONF_SMART_INTERVAL,
     CONF_SMART_POLLING_DISABLED,
     CONF_TOTP_SECRET,
+    CONF_UPDATE_TRACKING_DISABLED,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SSL,
@@ -382,6 +383,10 @@ class OMVOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_REBOOT_REPAIR_DISABLED,
                     default=self._entry.options.get(CONF_REBOOT_REPAIR_DISABLED, False),
+                ): bool,
+                vol.Optional(
+                    CONF_UPDATE_TRACKING_DISABLED,
+                    default=self._entry.options.get(CONF_UPDATE_TRACKING_DISABLED, False),
                 ): bool,
                 vol.Optional(
                     CONF_SMART_INTERVAL,

@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- Per-instance option to disable the Home Assistant `update` entity for OMV package updates while keeping the pending-update-count sensor working (Issue #66).
+
 ## [2.6.7] - 2026-08-04
 
 ### Fixed

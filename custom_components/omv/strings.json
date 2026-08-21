@@ -54,6 +54,7 @@
                 "data": {
                     "scan_interval": "Scan interval (seconds)",
                     "reboot_repair_disabled": "Disable reboot required notification",
+                    "update_tracking_disabled": "Disable update tracking",
                     "smart_interval": "SMART polling interval (seconds)",
                     "smart_polling_disabled": "Disable SMART polling",
                     "selected_disks": "Selected disks",
@@ -69,6 +70,7 @@
                 },
                 "data_description": {
                     "reboot_repair_disabled": "When enabled, the Home Assistant repair notification for a pending OMV reboot is suppressed. Useful when a reboot cannot be performed immediately, e.g. because VMs are running on the NAS.",
+                    "update_tracking_disabled": "When enabled, no Home Assistant update entity is created for OMV package updates. The 'Available package updates' sensor keeps reporting the pending count regardless.",
                     "smart_interval": "How often SMART data (status, attributes, disk temperature) is read. Reading SMART wakes disks from standby, so a larger value lets disks spin down for power saving. Defaults to the scan interval.",
                     "smart_polling_disabled": "When enabled, SMART is never polled. Disks are never woken by this integration, but SMART status, SMART attributes and disk temperature entities become unavailable.",
                     "selected_cron_jobs": "Creates a button for each selected user-defined cron job. Warning: pressing such a button runs the job's arbitrary shell command on the NAS. Default: none."

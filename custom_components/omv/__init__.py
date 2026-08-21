@@ -13,6 +13,7 @@ from homeassistant.const import (
     CONF_SSL,
     CONF_USERNAME,
     CONF_VERIFY_SSL,
+    Platform,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
@@ -24,6 +25,7 @@ from . import session_handoff
 from .const import (
     CONF_SCAN_INTERVAL,
     CONF_TOTP_SECRET,
+    CONF_UPDATE_TRACKING_DISABLED,
     DEFAULT_PORT,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_SSL,
@@ -42,6 +44,25 @@ from .services import async_setup_services
 _LOGGER = logging.getLogger(__name__)
 
 type OMVConfigEntry = ConfigEntry[OMVDataUpdateCoordinator]
+
+
+def _platforms_for_entry(entry: OMVConfigEntry) -> list[Platform]:
+    """Return the platforms to forward/unload for a config entry.
+
+    Excludes ``Platform.UPDATE`` when ``CONF_UPDATE_TRACKING_DISABLED`` is
+    set (Issue #66), so no HA `update` entity is created for OMV package
+    updates. The pending-update-count sensor and its underlying hwinfo data
+    are unaffected.
+
+    Args:
+        entry: The config entry.
+
+    Returns:
+        The list of platforms to set up or tear down for this entry.
+    """
+    if entry.options.get(CONF_UPDATE_TRACKING_DISABLED, False):
+        return [platform for platform in PLATFORMS if platform != Platform.UPDATE]
+    return PLATFORMS
 
 
 def _login_cookie_store(hass: HomeAssistant, entry: OMVConfigEntry) -> Store:
@@ -288,7 +309,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     entry.runtime_data = coordinator
     await _async_migrate_container_registry_keys(hass, entry, coordinator)
     await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, _platforms_for_entry(entry))
     _register_registry_cleanup_listener(hass, entry, coordinator)
     _register_reboot_repair_listener(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -298,7 +319,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     """Unload the OMV config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, _platforms_for_entry(entry))
     if unload_ok:
         async_delete_reboot_repair_issue(hass, entry.entry_id)
         # If _async_update_listener just stashed THIS live, already-authenticated

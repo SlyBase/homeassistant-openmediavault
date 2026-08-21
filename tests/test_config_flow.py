@@ -31,6 +31,7 @@ from custom_components.omv.const import (
     CONF_SMART_INTERVAL,
     CONF_SMART_POLLING_DISABLED,
     CONF_TOTP_SECRET,
+    CONF_UPDATE_TRACKING_DISABLED,
     DOMAIN,
 )
 from custom_components.omv.exceptions import OMVAuthError, OMVTwoFactorRequiredError
@@ -709,6 +710,44 @@ async def test_options_flow_honors_stored_smart_polling_controls(hass) -> None:
 
     assert defaults[CONF_SMART_INTERVAL] == 3600
     assert defaults[CONF_SMART_POLLING_DISABLED] is True
+
+
+@pytest.mark.asyncio
+async def test_options_flow_exposes_update_tracking_control(hass, config_entry) -> None:
+    """The options flow exposes the update-tracking disable toggle, off by default (#66)."""
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: {}},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+
+    assert defaults[CONF_UPDATE_TRACKING_DISABLED] is False
+
+
+@pytest.mark.asyncio
+async def test_options_flow_honors_stored_update_tracking_disabled(hass) -> None:
+    """A stored update-tracking disable flag is reflected as the schema default (#66)."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        data=USER_INPUT,
+        options={CONF_UPDATE_TRACKING_DISABLED: True},
+    )
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: {}},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+
+    assert defaults[CONF_UPDATE_TRACKING_DISABLED] is True
 
 
 @pytest.mark.asyncio

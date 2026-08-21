@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.components.update import UpdateEntityFeature
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.omv.const import DOMAIN
+from custom_components.omv.const import CONF_UPDATE_TRACKING_DISABLED, DOMAIN
 from custom_components.omv.exceptions import OMVConnectionError
 from custom_components.omv.update import (
     OMVUpdateEntity,
@@ -280,6 +281,17 @@ def test_get_expected_update_unique_ids(config_entry) -> None:
     """Test get_expected_update_unique_ids returns the correct unique ID set."""
     result = get_expected_update_unique_ids(config_entry)
     assert result == {f"{config_entry.entry_id}-omv_system_update"}
+
+
+def test_get_expected_update_unique_ids_empty_when_tracking_disabled() -> None:
+    """No update unique IDs are expected when update tracking is disabled (#66)."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        options={CONF_UPDATE_TRACKING_DISABLED: True},
+    )
+    result = get_expected_update_unique_ids(config_entry)
+    assert result == set()
 
 
 def test_unique_id(coordinator, config_entry) -> None:

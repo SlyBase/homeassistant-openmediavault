@@ -34,6 +34,10 @@ CONF_REBOOT_REPAIR_DISABLED = "reboot_repair_disabled"
 # disks can spin down. CONF_SMART_INTERVAL defaults to the scan interval.
 CONF_SMART_INTERVAL = "smart_interval"
 CONF_SMART_POLLING_DISABLED = "smart_polling_disabled"
+# Disable the HA `update` entity for OMV package updates (Issue #66). Only
+# hides the update entity — the available-update-count sensor and the
+# underlying hwinfo data keep working unchanged.
+CONF_UPDATE_TRACKING_DISABLED = "update_tracking_disabled"
 CONF_SELECTED_DISKS = "selected_disks"
 CONF_SELECTED_FILESYSTEMS = "selected_filesystems"
 CONF_SELECTED_SERVICES = "selected_services"
