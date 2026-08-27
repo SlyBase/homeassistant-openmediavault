@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=83.0.0", "wheel"]
+requires = ["setuptools>=84.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -17,9 +17,9 @@ test = [
   "aioresponses==0.7.9",
 ]
 dev = [
-  "ruff==0.16.1",
-  "mypy==2.3.0",
-  "pre-commit==4.6.1",
+  "ruff==0.16.4",
+  "mypy==2.3.1",
+  "pre-commit==4.6.2",
 ]
 
 [tool.setuptools]
