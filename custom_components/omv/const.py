@@ -16,6 +16,9 @@ DEFAULT_PORT = 80
 DEFAULT_SCAN_INTERVAL = 60
 DEFAULT_SSL = False
 DEFAULT_VERIFY_SSL = True
+# Cached-data fallback grace window (Issue #82): number of consecutive failed
+# polls served from cache before entities go unavailable.
+DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
 
 
 # Optionales TOTP-Secret (entry.data) für automatische Re-Logins bei 2FA (Issue #55)
@@ -34,6 +37,10 @@ CONF_REBOOT_REPAIR_DISABLED = "reboot_repair_disabled"
 # disks can spin down. CONF_SMART_INTERVAL defaults to the scan interval.
 CONF_SMART_INTERVAL = "smart_interval"
 CONF_SMART_POLLING_DISABLED = "smart_polling_disabled"
+# Bounds the Issue #26 cached-data fallback (Issue #82) — after this many
+# consecutive failed polls, the coordinator raises UpdateFailed instead of
+# serving _last_valid_data indefinitely.
+CONF_MAX_CONSECUTIVE_FAILURES = "max_consecutive_failures"
 # Disable the HA `update` entity for OMV package updates (Issue #66). Only
 # hides the update entity — the available-update-count sensor and the
 # underlying hwinfo data keep working unchanged.

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -62,6 +66,7 @@ def get_expected_binary_sensor_unique_ids(
     """Return the binary sensor unique IDs for the current runtime data."""
     entry_id = coordinator.config_entry.entry_id
     unique_ids = {f"{entry_id}-{description.key}" for description in SYSTEM_BINARY_SENSORS}
+    unique_ids.add(f"{entry_id}-reachable")
 
     for service in coordinator.data.get("service", []):
         if not isinstance(service, dict):
@@ -113,9 +118,10 @@ async def async_setup_entry(
 ) -> None:
     """Set up OMV binary sensors."""
     coordinator: OMVDataUpdateCoordinator = entry.runtime_data
-    entities: list[OMVBinarySensor] = [
+    entities: list[OMVBinarySensor | OMVReachableBinarySensor] = [
         OMVBinarySensor(coordinator, description) for description in SYSTEM_BINARY_SENSORS
     ]
+    entities.append(OMVReachableBinarySensor(coordinator))
 
     for service in coordinator.data.get("service", []):
         if not isinstance(service, dict):
@@ -318,3 +324,36 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
         if self.entity_description is SERVICE_BINARY_SENSOR and self._is_container_service(data):
             attributes = {**attributes, **self._container_stats()}
         return {key: value for key, value in attributes.items() if value not in (None, "")}
+
+
+class OMVReachableBinarySensor(OMVEntity, BinarySensorEntity):
+    """Reflect whether the most recent poll of the OMV host actually succeeded.
+
+    Reads ``coordinator.reachable`` directly instead of ``coordinator.data``,
+    so it updates on every poll cycle (including failed ones) independent of
+    the bounded cached-data fallback (Issue #82). Always available so it
+    can't hide behind its own unavailability.
+    """
+
+    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "reachable"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator) -> None:
+        """Initialize the reachability binary sensor.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+        """
+        super().__init__(coordinator, "reachable")
+        self._attr_suggested_object_id = build_host_object_id(coordinator, "reachable")
+
+    @property
+    def available(self) -> bool:
+        """Always available — this entity IS the connectivity indicator."""
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        """Return True when the most recent poll succeeded."""
+        return self.coordinator.reachable

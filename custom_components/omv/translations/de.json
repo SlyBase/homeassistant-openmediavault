@@ -57,6 +57,7 @@
           "update_tracking_disabled": "Update-Tracking deaktivieren",
           "smart_interval": "SMART-Abfrageintervall (Sekunden)",
           "smart_polling_disabled": "SMART-Abfrage deaktivieren",
+          "max_consecutive_failures": "Max. aufeinanderfolgende fehlgeschlagene Abfragen",
           "selected_disks": "Ausgewählte Festplatten",
           "selected_filesystems": "Ausgewählte Dateisysteme",
           "selected_services": "Ausgewählte Dienste",
@@ -73,6 +74,7 @@
           "update_tracking_disabled": "Wenn aktiviert, wird keine Home Assistant Update-Entität für OMV-Paketaktualisierungen erstellt. Der Sensor „Verfügbare Paketaktualisierungen“ zeigt die Anzahl weiterhin an.",
           "smart_interval": "Wie oft SMART-Daten (Status, Attribute, Festplattentemperatur) gelesen werden. Das Lesen von SMART weckt Festplatten aus dem Standby, daher lässt ein größerer Wert die Festplatten zum Energiesparen herunterfahren. Standard: das Abfrageintervall.",
           "smart_polling_disabled": "Wenn aktiviert, wird SMART nie abgefragt. Festplatten werden von dieser Integration nicht geweckt, aber die Entitäten für SMART-Status, SMART-Attribute und Festplattentemperatur werden nicht verfügbar.",
+          "max_consecutive_failures": "Wie viele aufeinanderfolgende fehlgeschlagene Abfragen mit zwischengespeicherten Daten überbrückt werden, bevor Entitäten nicht mehr verfügbar sind. Hoch einstellen, um das vorherige unbegrenzte Verhalten wiederherzustellen.",
           "selected_cron_jobs": "Erstellt einen Button für jeden ausgewählten benutzerdefinierten Cron-Job. Achtung: Das Drücken eines solchen Buttons führt das beliebige Shell-Kommando des Jobs auf dem NAS aus. Standard: keine."
         }
       }
@@ -246,6 +248,9 @@
       },
       "reboot_required": {
         "name": "Neustart erforderlich"
+      },
+      "reachable": {
+        "name": "Erreichbar"
       },
       "service": {
         "name": "{resource} Dienst"

@@ -5,6 +5,12 @@
 ### Added
 
 - Per-instance option to disable the Home Assistant `update` entity for OMV package updates while keeping the pending-update-count sensor working (Issue #66).
+- New "Reachable" connectivity binary sensor reflecting the live per-poll success/failure state of the most recent OMV connection attempt, independent of the cached-data fallback below (Issue #82).
+- New `max_consecutive_failures` option (default 3) bounding how many consecutive failed polls are bridged with cached data before entities go unavailable (Issue #82).
+
+### Changed
+
+- The cached-data fallback introduced for Issue #26 is now bounded to `max_consecutive_failures` consecutive failed polls instead of serving stale data indefinitely; entities go `unavailable` once the threshold is exceeded, and recover automatically on the next successful poll. The Wake-on-LAN button remains always available (it sends a local UDP broadcast and never touches the OMV API), but the Standby button now correctly follows normal availability since it requires a live connection (Issue #82).
 
 ## [2.6.7] - 2026-08-04
 

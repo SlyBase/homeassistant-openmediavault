@@ -18,6 +18,7 @@ from homeassistant.helpers import selector
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.omv.const import (
+    CONF_MAX_CONSECUTIVE_FAILURES,
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
@@ -32,6 +33,7 @@ from custom_components.omv.const import (
     CONF_SMART_POLLING_DISABLED,
     CONF_TOTP_SECRET,
     CONF_UPDATE_TRACKING_DISABLED,
+    DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DOMAIN,
 )
 from custom_components.omv.exceptions import OMVAuthError, OMVTwoFactorRequiredError
@@ -748,6 +750,41 @@ async def test_options_flow_honors_stored_update_tracking_disabled(hass) -> None
     defaults = result["data_schema"]({})
 
     assert defaults[CONF_UPDATE_TRACKING_DISABLED] is True
+
+
+@pytest.mark.asyncio
+async def test_options_flow_exposes_max_consecutive_failures_control(hass, config_entry) -> None:
+    """The options flow exposes the cached-data grace window, defaulting to 3 (#82)."""
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: {}},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    defaults = result["data_schema"]({})
+
+    assert defaults[CONF_MAX_CONSECUTIVE_FAILURES] == DEFAULT_MAX_CONSECUTIVE_FAILURES
+
+
+@pytest.mark.asyncio
+async def test_options_flow_max_consecutive_failures_saves_correctly(hass, config_entry) -> None:
+    """Submitting a custom grace window persists it into the config entry options (#82)."""
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: {}},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_MAX_CONSECUTIVE_FAILURES: 10},
+    )
+
+    assert result["data"][CONF_MAX_CONSECUTIVE_FAILURES] == 10
 
 
 @pytest.mark.asyncio

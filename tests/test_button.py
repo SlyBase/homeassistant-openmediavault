@@ -645,6 +645,27 @@ async def test_wol_button_raises_translated_error_on_failure(coordinator) -> Non
     assert err.value.translation_placeholders == {"interface": "eth0"}
 
 
+@pytest.mark.asyncio
+async def test_wol_button_available_when_coordinator_unreachable(coordinator) -> None:
+    """WoL button must stay pressable even once other entities go unavailable (Issue #82)."""
+    coordinator.data["network"][0]["wol"] = True
+    button = OMVWolButton(coordinator, coordinator.data["network"][0])
+
+    coordinator.last_update_success = False
+
+    assert button.available is True
+
+
+@pytest.mark.asyncio
+async def test_standby_button_unavailable_when_coordinator_unreachable(coordinator) -> None:
+    """Standby button follows normal availability — it needs a live connection (Issue #82)."""
+    button = OMVStandbyButton(coordinator)
+
+    coordinator.last_update_success = False
+
+    assert button.available is False
+
+
 def test_get_expected_button_unique_ids_includes_standby_and_wol(coordinator, config_entry) -> None:
     """Test the registry whitelist covers standby always and WoL conditionally."""
     unique_ids = get_expected_button_unique_ids(config_entry, coordinator)

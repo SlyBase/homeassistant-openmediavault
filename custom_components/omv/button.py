@@ -584,14 +584,20 @@ class OMVWolButton(OMVEntity, ButtonEntity):
     """Button to wake the OMV host via a locally sent Wake-on-LAN packet.
 
     The magic packet is sent from the Home Assistant host because the OMV
-    API is down while the NAS is in standby. Availability relies on the
-    coordinator's cached-data fallback: updates keep "succeeding" with the
-    last known data while OMV is offline, so the button stays pressable
-    with the cached MAC address.
+    API is down while the NAS is in standby. Unlike other entities, this
+    button stays available even once the coordinator's cached-data fallback
+    (Issue #82) has been exhausted and other entities go unavailable — it
+    sends a plain local UDP broadcast using the last known MAC address and
+    never touches the OMV API, so it is exactly how the host gets woken up.
     """
 
     _attr_translation_key = "wake_on_lan"
     _attr_icon = "mdi:lan-pending"
+
+    @property
+    def available(self) -> bool:
+        """Stay pressable even when the host is unreachable — this is how it gets woken up."""
+        return True
 
     def __init__(self, coordinator: OMVDataUpdateCoordinator, iface: dict[str, Any]) -> None:
         """Initialize the Wake-on-LAN button.

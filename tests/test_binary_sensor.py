@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.omv.binary_sensor import OMVBinarySensor, async_setup_entry
+from custom_components.omv.binary_sensor import (
+    OMVBinarySensor,
+    OMVReachableBinarySensor,
+    async_setup_entry,
+    get_expected_binary_sensor_unique_ids,
+)
 from custom_components.omv.binary_sensor_types import (
     DISK_BAD_SECTORS_BINARY_SENSOR,
     DISK_CRC_ERRORS_BINARY_SENSOR,
@@ -34,6 +39,35 @@ async def test_async_setup_entry_adds_binary_sensors(coordinator, config_entry) 
     assert any(entity.unique_id.endswith("ups_on_battery") for entity in added)
     assert any(entity.unique_id.endswith("rsync_job_enabled-rsync-uuid-0001") for entity in added)
     assert any(entity.unique_id.endswith("rsync_job_enabled-rsync-uuid-0002") for entity in added)
+    assert any(isinstance(entity, OMVReachableBinarySensor) for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_reachable_binary_sensor_mirrors_coordinator_reachable(coordinator) -> None:
+    """Test the reachable sensor reflects the live per-poll success/failure state."""
+    sensor = OMVReachableBinarySensor(coordinator)
+
+    coordinator.reachable = True
+    assert sensor.is_on is True
+
+    coordinator.reachable = False
+    assert sensor.is_on is False
+
+
+@pytest.mark.asyncio
+async def test_reachable_binary_sensor_always_available(coordinator) -> None:
+    """Test the reachable sensor stays available even when the coordinator is not."""
+    sensor = OMVReachableBinarySensor(coordinator)
+
+    coordinator.last_update_success = False
+
+    assert sensor.available is True
+
+
+def test_get_expected_binary_sensor_unique_ids_includes_reachable(coordinator, config_entry) -> None:
+    """Test the registry whitelist always includes the reachable sensor."""
+    unique_ids = get_expected_binary_sensor_unique_ids(coordinator)
+    assert f"{config_entry.entry_id}-reachable" in unique_ids
 
 
 @pytest.mark.asyncio

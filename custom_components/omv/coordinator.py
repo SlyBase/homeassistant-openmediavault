@@ -17,6 +17,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
+    CONF_MAX_CONSECUTIVE_FAILURES,
     CONF_SCAN_INTERVAL,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
@@ -30,6 +31,7 @@ from .const import (
     CONF_SELECTED_ZFS_POOLS,
     CONF_SMART_INTERVAL,
     CONF_SMART_POLLING_DISABLED,
+    DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
@@ -136,6 +138,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_stable_gpu: dict[str, Any] = {}
         self._gpu_load_counter: int = 0
         self._last_valid_data: dict[str, Any] = {}
+        # Issue #82: bound the cached-data fallback below to
+        # CONF_MAX_CONSECUTIVE_FAILURES consecutive failures, and expose live
+        # per-poll reachability independent of the bounded fallback so it can
+        # be surfaced even while other entities are still frozen on cache.
+        self._consecutive_failures: int = 0
+        self.reachable: bool = True
         # Canonical device paths for which getAttributes permanently fails
         # (e.g. NVMe or other non-ATA disks that return HTTP 500). Populated on
         # first failure; skipped on all subsequent polls to avoid log spam.
@@ -351,7 +359,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return response
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch all coordinator data from OMV with fallback to cached data on recoverable errors."""
+        """Fetch all coordinator data from OMV, bridging brief recoverable errors with cached data.
+
+        See _handle_update_failure for the bounded cached-data fallback policy.
+        """
         try:
             self._hwinfo_counter += 1
             if self._hwinfo_counter >= _HWINFO_REFRESH_MULTIPLIER or not self._hwinfo:
@@ -480,6 +491,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._inventory_source = unfiltered_data
             # Cache valid data for fallback on next failure (Issue #26)
             self._last_valid_data = unfiltered_data
+            self._consecutive_failures = 0
+            self.reachable = True
             return self.filter_data_by_selection(
                 unfiltered_data,
                 dict(self.config_entry.options),
@@ -500,30 +513,54 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # prompting the user to reauthenticate.
             raise ConfigEntryAuthFailed(f"OMV authentication failed: {err}") from err
         except (OMVConnectionError, OMVApiError) as err:
-            # Issue #26: If we have cached data, use it as fallback instead of failing.
-            # On first refresh there is no cache yet, so we must propagate the error
-            # to let HA show a proper setup failure instead of hanging.
-            if self._last_valid_data:
-                _LOGGER.warning(
-                    "API error occurred, using cached data as fallback: %s",
-                    err,
-                )
-                return self.filter_data_by_selection(
-                    self._last_valid_data,
-                    dict(self.config_entry.options),
-                )
+            # Issue #26 / #82: bounded cached-data fallback — see
+            # _handle_update_failure. On first refresh there is no cache yet,
+            # so the error is propagated to let HA show a proper setup
+            # failure instead of hanging.
             if isinstance(err, OMVConnectionError):
-                raise UpdateFailed(f"Cannot connect to OMV: {err}") from err
-            raise UpdateFailed(f"OMV API error: {err}") from err
+                message = f"Cannot connect to OMV: {err}"
+            else:
+                message = f"OMV API error: {err}"
+            return self._handle_update_failure(err, message)
         except Exception as err:
             # Catch-all for unexpected errors (e.g. asyncio.CancelledError from lock contention)
             _LOGGER.error("Unexpected error during OMV data update: %s", err, exc_info=True)
-            if self._last_valid_data:
-                return self.filter_data_by_selection(
-                    self._last_valid_data,
-                    dict(self.config_entry.options),
-                )
-            raise UpdateFailed(f"Unexpected error: {err}") from err
+            return self._handle_update_failure(err, f"Unexpected error: {err}")
+
+    def _handle_update_failure(self, err: Exception, message: str) -> dict[str, Any]:
+        """Serve cached data within the configured grace window, else raise.
+
+        Args:
+            err: The exception that caused this update to fail.
+            message: Human-readable message to raise via UpdateFailed if the
+                grace window (CONF_MAX_CONSECUTIVE_FAILURES) is exceeded or no
+                cached data exists yet.
+
+        Returns:
+            The last known good data, filtered by the current resource
+            selection, when still within the grace window.
+
+        Raises:
+            UpdateFailed: When there is no cached data yet, or the number of
+                consecutive failures exceeds CONF_MAX_CONSECUTIVE_FAILURES —
+                lets HA mark entities unavailable instead of freezing them on
+                stale data indefinitely (Issue #82).
+        """
+        self.reachable = False
+        self._consecutive_failures += 1
+        max_failures = self.config_entry.options.get(CONF_MAX_CONSECUTIVE_FAILURES, DEFAULT_MAX_CONSECUTIVE_FAILURES)
+        if self._last_valid_data and self._consecutive_failures <= max_failures:
+            _LOGGER.warning(
+                "API error occurred (%d/%d consecutive failures), using cached data as fallback: %s",
+                self._consecutive_failures,
+                max_failures,
+                err,
+            )
+            return self.filter_data_by_selection(
+                self._last_valid_data,
+                dict(self.config_entry.options),
+            )
+        raise UpdateFailed(message) from err
 
     def get_live_inventory(self, data: dict[str, Any] | None = None) -> dict[str, list[dict[str, str]]]:
         """Return the current unfiltered resources for the options flow."""

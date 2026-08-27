@@ -11,6 +11,7 @@ from homeassistant.helpers import entity_registry as er
 
 from custom_components.omv import _async_cleanup_stale_registry_entries
 from custom_components.omv.const import (
+    CONF_MAX_CONSECUTIVE_FAILURES,
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
     CONF_SELECTED_DISKS,
@@ -22,10 +23,160 @@ from custom_components.omv.const import (
     CONF_SELECTED_ZFS_POOLS,
     CONF_SMART_INTERVAL,
     CONF_SMART_POLLING_DISABLED,
+    DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DOMAIN,
 )
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
 from custom_components.omv.exceptions import OMVApiError, OMVConnectionError
+
+
+async def _success_async_call(service, method, params=None, **kwargs):
+    """Mock a full successful round of OMV RPCs for coordinator update tests."""
+    if (service, method) == ("Compose", "getVolumesBg"):
+        return {"filename": "compose-volumes.json"}
+    if (service, method) == ("Compose", "doContainerCommand"):
+        return {"filename": f"inspect-{params['id']}.json"}
+    if (service, method) == ("Exec", "getOutput"):
+        outputs = {
+            "compose-volumes.json": json.dumps(
+                {
+                    "total": 1,
+                    "data": [
+                        {
+                            "name": "paperless_data",
+                            "size": 12300000000,
+                            "mountpoint": "/var/lib/docker/volumes/paperless_data/_data",
+                            "driver": "local",
+                        }
+                    ],
+                }
+            ),
+            "inspect-ctr-paperless-app.json": json.dumps(
+                [
+                    {
+                        "Mounts": [
+                            {
+                                "Type": "volume",
+                                "Name": "paperless_data",
+                                "Destination": "/usr/src/paperless/data",
+                            }
+                        ],
+                        "Config": {
+                            "Labels": {
+                                "com.docker.compose.project": "paperless",
+                                "com.docker.compose.service": "webserver",
+                                "org.opencontainers.image.version": "2.15.3",
+                            }
+                        },
+                    }
+                ]
+            ),
+        }
+        return {"running": False, "output": outputs[params["filename"]]}
+
+    responses = {
+        ("System", "getInformation"): {
+            "hostname": "nas",
+            "version": "8.1.2-1",
+            "cpuModelName": "Intel(R) N100",
+            "kernel": "Linux 6.6.0-omv",
+            "cpuUtilization": 25.4,
+            "memTotal": 100,
+            "memUsed": 50,
+            "uptime": 3600,
+            "loadAverage": {"1min": 1.0, "5min": 0.5, "15min": 0.25},
+            "rebootRequired": True,
+            "availablePkgUpdates": 2,
+        },
+        ("CpuTemp", "get"): {"cputemp": 47.5},
+        ("FileSystemMgmt", "enumerateFilesystems"): [
+            {
+                "uuid": "fs-1",
+                "label": "data",
+                "type": "ext4",
+                "mounted": True,
+                "devicefile": "/dev/sda1",
+                "canonicaldevicefile": "/dev/sda1",
+                "parentdevicefile": "/dev/sda",
+                "available": 50 * 1073741824,
+                "size": 100 * 1073741824,
+                "percentage": 50,
+                "mountdir": "/srv/data",
+            }
+        ],
+        ("Services", "getStatus"): [
+            {"name": "ssh", "title": "SSH", "running": True, "enabled": True},
+            {"name": "compose", "title": "Docker", "running": True, "enabled": True},
+        ],
+        ("Network", "enumerateDevices"): [
+            {
+                "uuid": "net-1",
+                "devicename": "eth0",
+                "type": "ethernet",
+                "stats": {"rx_bytes": 1000, "tx_bytes": 500},
+            }
+        ],
+        ("DiskMgmt", "enumerateDevices"): [
+            {
+                "devicename": "sda",
+                "canonicaldevicefile": "/dev/sda",
+                "devicefile": "/dev/sda",
+                "model": "Disk",
+            }
+        ],
+        ("Smart", "getListBg"): [{"devicename": "sda", "temperature": 32, "overallstatus": "PASSED"}],
+        ("Smart", "getAttributes"): [{"attrname": "Raw_Read_Error_Rate", "rawvalue": "0 0 0"}],
+        ("compose", "getContainerList"): {
+            "data": [
+                {
+                    "id": "ctr-paperless-app",
+                    "name": "paperless-app",
+                    "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
+                    "state": "running",
+                    "status": "Up 5 minutes",
+                    "createdAt": "2026-03-13T10:00:00Z",
+                    "startedAt": "2026-03-13T10:05:00Z",
+                    "project": "paperless",
+                    "service": "webserver",
+                }
+            ]
+        },
+        ("compose", "getFileList"): {
+            "data": [
+                {
+                    "uuid": "proj-paperless",
+                    "name": "paperless",
+                    "status": "UP",
+                    "uptime": "Up 5 minutes",
+                    "svcname": "webserver",
+                    "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
+                }
+            ]
+        },
+        ("Kvm", "getVmList"): {"data": []},
+        ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+        ("zfs", "listPools"): [{"name": "tank", "state": "ONLINE"}],
+        ("Apt", "getUpgradedList"): {
+            "total": 1,
+            "data": [
+                {
+                    "name": "docker-ce",
+                    "version": "5:29.4.2-1~debian.12~bookworm",
+                    "summary": "Docker: the open-source application container engine",
+                    "maintainer": "Docker <support@docker.com>",
+                    "homepage": "https://www.docker.com",
+                    "repository": "Docker CE/bookworm",
+                    "installedsize": 22735244,
+                }
+            ],
+        },
+        ("Nut", "getStats"): "Service disabled",
+        ("Rsync", "getList"): [],
+        ("Cron", "getList"): [],
+        ("zfs", "listDatasets"): [],
+        ("zfs", "getAllSnapshots"): [],
+    }
+    return responses[(service, method)]
 
 
 @pytest.mark.asyncio
@@ -34,155 +185,7 @@ async def test_coordinator_fetches_expected_data(hass, config_entry) -> None:
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
-
-    async def async_call(service, method, params=None, **kwargs):
-        if (service, method) == ("Compose", "getVolumesBg"):
-            return {"filename": "compose-volumes.json"}
-        if (service, method) == ("Compose", "doContainerCommand"):
-            return {"filename": f"inspect-{params['id']}.json"}
-        if (service, method) == ("Exec", "getOutput"):
-            outputs = {
-                "compose-volumes.json": json.dumps(
-                    {
-                        "total": 1,
-                        "data": [
-                            {
-                                "name": "paperless_data",
-                                "size": 12300000000,
-                                "mountpoint": "/var/lib/docker/volumes/paperless_data/_data",
-                                "driver": "local",
-                            }
-                        ],
-                    }
-                ),
-                "inspect-ctr-paperless-app.json": json.dumps(
-                    [
-                        {
-                            "Mounts": [
-                                {
-                                    "Type": "volume",
-                                    "Name": "paperless_data",
-                                    "Destination": "/usr/src/paperless/data",
-                                }
-                            ],
-                            "Config": {
-                                "Labels": {
-                                    "com.docker.compose.project": "paperless",
-                                    "com.docker.compose.service": "webserver",
-                                    "org.opencontainers.image.version": "2.15.3",
-                                }
-                            },
-                        }
-                    ]
-                ),
-            }
-            return {"running": False, "output": outputs[params["filename"]]}
-
-        responses = {
-            ("System", "getInformation"): {
-                "hostname": "nas",
-                "version": "8.1.2-1",
-                "cpuModelName": "Intel(R) N100",
-                "kernel": "Linux 6.6.0-omv",
-                "cpuUtilization": 25.4,
-                "memTotal": 100,
-                "memUsed": 50,
-                "uptime": 3600,
-                "loadAverage": {"1min": 1.0, "5min": 0.5, "15min": 0.25},
-                "rebootRequired": True,
-                "availablePkgUpdates": 2,
-            },
-            ("CpuTemp", "get"): {"cputemp": 47.5},
-            ("FileSystemMgmt", "enumerateFilesystems"): [
-                {
-                    "uuid": "fs-1",
-                    "label": "data",
-                    "type": "ext4",
-                    "mounted": True,
-                    "devicefile": "/dev/sda1",
-                    "canonicaldevicefile": "/dev/sda1",
-                    "parentdevicefile": "/dev/sda",
-                    "available": 50 * 1073741824,
-                    "size": 100 * 1073741824,
-                    "percentage": 50,
-                    "mountdir": "/srv/data",
-                }
-            ],
-            ("Services", "getStatus"): [
-                {"name": "ssh", "title": "SSH", "running": True, "enabled": True},
-                {"name": "compose", "title": "Docker", "running": True, "enabled": True},
-            ],
-            ("Network", "enumerateDevices"): [
-                {
-                    "uuid": "net-1",
-                    "devicename": "eth0",
-                    "type": "ethernet",
-                    "stats": {"rx_bytes": 1000, "tx_bytes": 500},
-                }
-            ],
-            ("DiskMgmt", "enumerateDevices"): [
-                {
-                    "devicename": "sda",
-                    "canonicaldevicefile": "/dev/sda",
-                    "devicefile": "/dev/sda",
-                    "model": "Disk",
-                }
-            ],
-            ("Smart", "getListBg"): [{"devicename": "sda", "temperature": 32, "overallstatus": "PASSED"}],
-            ("Smart", "getAttributes"): [{"attrname": "Raw_Read_Error_Rate", "rawvalue": "0 0 0"}],
-            ("compose", "getContainerList"): {
-                "data": [
-                    {
-                        "id": "ctr-paperless-app",
-                        "name": "paperless-app",
-                        "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
-                        "state": "running",
-                        "status": "Up 5 minutes",
-                        "createdAt": "2026-03-13T10:00:00Z",
-                        "startedAt": "2026-03-13T10:05:00Z",
-                        "project": "paperless",
-                        "service": "webserver",
-                    }
-                ]
-            },
-            ("compose", "getFileList"): {
-                "data": [
-                    {
-                        "uuid": "proj-paperless",
-                        "name": "paperless",
-                        "status": "UP",
-                        "uptime": "Up 5 minutes",
-                        "svcname": "webserver",
-                        "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
-                    }
-                ]
-            },
-            ("Kvm", "getVmList"): {"data": []},
-            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
-            ("zfs", "listPools"): [{"name": "tank", "state": "ONLINE"}],
-            ("Apt", "getUpgradedList"): {
-                "total": 1,
-                "data": [
-                    {
-                        "name": "docker-ce",
-                        "version": "5:29.4.2-1~debian.12~bookworm",
-                        "summary": "Docker: the open-source application container engine",
-                        "maintainer": "Docker <support@docker.com>",
-                        "homepage": "https://www.docker.com",
-                        "repository": "Docker CE/bookworm",
-                        "installedsize": 22735244,
-                    }
-                ],
-            },
-            ("Nut", "getStats"): "Service disabled",
-            ("Rsync", "getList"): [],
-            ("Cron", "getList"): [],
-            ("zfs", "listDatasets"): [],
-            ("zfs", "getAllSnapshots"): [],
-        }
-        return responses[(service, method)]
-
-    api.async_call = AsyncMock(side_effect=async_call)
+    api.async_call = AsyncMock(side_effect=_success_async_call)
     coordinator = OMVDataUpdateCoordinator(
         hass,
         config_entry,
@@ -253,6 +256,100 @@ async def test_update_data_raises_reauth_on_two_factor_challenge(hass, config_en
     await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
 
     with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_update_data_serves_cached_data_within_grace_window(coordinator, sample_data) -> None:
+    """Failures 1..N (default max_consecutive_failures) still return cached data."""
+    coordinator._last_valid_data = sample_data
+    coordinator.api.async_call = AsyncMock(side_effect=OMVConnectionError("down"))
+
+    for expected_failures in range(1, DEFAULT_MAX_CONSECUTIVE_FAILURES + 1):
+        result = await coordinator._async_update_data()
+        assert result["hwinfo"]["hostname"] == "nas"
+        assert coordinator._consecutive_failures == expected_failures
+        assert coordinator.reachable is False
+
+
+@pytest.mark.asyncio
+async def test_update_data_raises_after_grace_window_exceeded(coordinator, sample_data) -> None:
+    """The (N+1)th consecutive failure raises UpdateFailed instead of serving cache."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator._last_valid_data = sample_data
+    coordinator.api.async_call = AsyncMock(side_effect=OMVConnectionError("down"))
+
+    for _ in range(DEFAULT_MAX_CONSECUTIVE_FAILURES):
+        await coordinator._async_update_data()
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator.reachable is False
+
+
+@pytest.mark.asyncio
+async def test_update_data_success_resets_failure_counter(hass, config_entry, sample_data) -> None:
+    """A successful poll resets the failure counter and reachable flag."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.168.1.10:80"
+    api.async_call = AsyncMock(side_effect=OMVConnectionError("down"))
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+    coordinator._last_valid_data = sample_data
+
+    await coordinator._async_update_data()
+    await coordinator._async_update_data()
+    assert coordinator._consecutive_failures == 2
+    assert coordinator.reachable is False
+
+    api.async_call = AsyncMock(side_effect=_success_async_call)
+    data = await coordinator._async_update_data()
+
+    assert coordinator._consecutive_failures == 0
+    assert coordinator.reachable is True
+    assert data["hwinfo"]["cpuModel"] == "Intel(R) N100"
+
+
+@pytest.mark.asyncio
+async def test_update_data_raises_immediately_with_no_cache(coordinator) -> None:
+    """The first-ever failure with no cached data raises immediately, ignoring the threshold."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    coordinator._last_valid_data = {}
+    coordinator.api.async_call = AsyncMock(side_effect=OMVConnectionError("down"))
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()
+    assert coordinator._consecutive_failures == 1
+    assert coordinator.reachable is False
+
+
+@pytest.mark.asyncio
+async def test_update_data_threshold_reads_from_options(hass, config_entry, sample_data) -> None:
+    """The grace window length is read from CONF_MAX_CONSECUTIVE_FAILURES."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_MAX_CONSECUTIVE_FAILURES: 1},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.168.1.10:80"
+    api.async_call = AsyncMock(side_effect=OMVConnectionError("down"))
+
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+    coordinator._last_valid_data = sample_data
+
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    result = await coordinator._async_update_data()
+    assert result["hwinfo"]["hostname"] == "nas"
+
+    with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
 
 
