@@ -311,10 +311,7 @@ async def test_container_sensors_use_container_device_and_project_parent(coordin
     assert sensor.device_info["identifiers"] == {
         (DOMAIN, f"{coordinator.config_entry.entry_id}:container:ctr-paperless-app")
     }
-    assert sensor.device_info["via_device"] == (
-        DOMAIN,
-        f"{coordinator.config_entry.entry_id}:compose_project:paperless",
-    )
+    assert sensor.device_info["via_device_id"] == coordinator.project_device_ids["paperless"]
 
 
 @pytest.mark.asyncio
@@ -346,7 +343,7 @@ async def test_vm_state_sensor_exposes_state_and_device(coordinator) -> None:
     assert sensor.extra_state_attributes["memory"] == 2048.0
     assert sensor.extra_state_attributes["vcpu"] == 2.0
     assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:vm:vm-uuid-1234")}
-    assert sensor.device_info["via_device"] == (DOMAIN, coordinator.config_entry.entry_id)
+    assert sensor.device_info["via_device_id"] == coordinator.hub_device_id
 
 
 @pytest.mark.asyncio
@@ -358,7 +355,7 @@ async def test_disk_sensor_exposes_smart_attributes_and_disk_device_info(coordin
     assert sensor.extra_state_attributes["overall_status"] == "PASSED"
     assert sensor.extra_state_attributes["smart_attributes"] == {"Raw_Read_Error_Rate": "0"}
     assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sda")}
-    assert sensor.device_info["via_device"] == (DOMAIN, coordinator.config_entry.entry_id)
+    assert sensor.device_info["via_device_id"] == coordinator.hub_device_id
 
 
 @pytest.mark.asyncio

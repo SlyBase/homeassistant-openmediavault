@@ -1588,7 +1588,7 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(hass, coord
     stale_container = device_registry.async_get_or_create(
         config_entry_id=config_entry.entry_id,
         identifiers={(DOMAIN, f"{config_entry.entry_id}:container:legacy-app")},
-        via_device=(DOMAIN, f"{config_entry.entry_id}:compose_project:legacy"),
+        via_device_id=stale_project.id,
         name="legacy-app",
     )
     entity_registry.async_get_or_create(

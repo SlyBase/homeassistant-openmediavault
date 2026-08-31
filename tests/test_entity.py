@@ -97,10 +97,7 @@ def test_container_device_info_uses_name_image_and_project_parent(coordinator) -
     assert info["manufacturer"] == "Docker"
     assert info["model"] == "ghcr.io/paperless-ngx/paperless-ngx:latest"
     assert info["sw_version"] == "2.15.3"
-    assert info["via_device"] == (
-        DOMAIN,
-        f"{coordinator.config_entry.entry_id}:compose_project:paperless",
-    )
+    assert info["via_device_id"] == coordinator.project_device_ids["paperless"]
     assert "serial_number" not in info
 
 
@@ -139,7 +136,7 @@ def test_filesystem_without_disk_gets_standalone_device(coordinator) -> None:
     assert info["name"] == "Mergerfs (mergerfs_test)"
     assert info["model"] == "fuse.mergerfs"
     assert info["manufacturer"] == "OpenMediaVault"
-    assert info["via_device"] == (DOMAIN, entry_id)
+    assert info["via_device_id"] == coordinator.hub_device_id
 
 
 def test_filesystem_without_disk_uses_mountdir_when_no_label(coordinator) -> None:

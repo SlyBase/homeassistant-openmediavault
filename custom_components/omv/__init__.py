@@ -36,6 +36,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import OMVDataUpdateCoordinator
+from .entity import get_compose_project_device_info, get_hub_device_info
 from .exceptions import OMVApiError, OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
 from .repairs import async_delete_reboot_repair_issue, async_sync_reboot_repair_issue
@@ -140,6 +141,45 @@ def _register_reboot_repair_listener(
 
     _sync_reboot_repair()
     entry.async_on_unload(coordinator.async_add_listener(_sync_reboot_repair))
+
+
+async def _async_register_hierarchy_devices(
+    hass: HomeAssistant,
+    entry: OMVConfigEntry,
+    coordinator: OMVDataUpdateCoordinator,
+) -> None:
+    """Pre-register the hub and compose-project devices, caching their registry ids.
+
+    ``DeviceInfo.via_device_id`` (Issue #83) needs the *parent* device to
+    already exist in the registry at the moment a child entity's
+    ``DeviceInfo`` is built, unlike the deprecated ``via_device`` identifier
+    tuple which HA resolved lazily. Registering the hub device and every
+    compose-project device here, before ``async_forward_entry_setups`` sets
+    up any platform, guarantees that invariant for every disk/filesystem/
+    container/VM device created afterwards.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry being set up.
+        coordinator: The coordinator, already refreshed with current data.
+    """
+    device_registry = dr.async_get(hass)
+
+    hub_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        **get_hub_device_info(coordinator),
+    )
+    coordinator.hub_device_id = hub_device.id
+
+    for project in coordinator.data.get("compose_projects", []):
+        project_key = str(project.get("project_key") or project.get("name") or "")
+        if not project_key:
+            continue
+        project_device = device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            **get_compose_project_device_info(coordinator, project),
+        )
+        coordinator.project_device_ids[project_key] = project_device.id
 
 
 async def _async_migrate_container_registry_keys(
@@ -307,6 +347,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     await _async_persist_login_cookie(hass, entry, api)
     entry.runtime_data = coordinator
+    await _async_register_hierarchy_devices(hass, entry, coordinator)
     await _async_migrate_container_registry_keys(hass, entry, coordinator)
     await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, _platforms_for_entry(entry))

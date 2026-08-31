@@ -51,10 +51,15 @@ def _mock_handoff_api() -> AsyncMock:
 
     ``get_login_cookie_name`` is a synchronous stub returning ``None`` so the
     login-cookie persistence in ``async_setup_entry`` is a no-op and does not
-    try to serialise an ``AsyncMock`` coroutine (Issue #62).
+    try to serialise an ``AsyncMock`` coroutine (Issue #62). ``base_url`` is a
+    real string because ``_async_register_hierarchy_devices`` (Issue #83)
+    now reads it eagerly during setup to build the hub device's
+    ``configuration_url``, and the device registry rejects a non-string
+    value.
     """
     api = AsyncMock()
     api.get_login_cookie_name = MagicMock(return_value=None)
+    api.base_url = "http://192.0.2.10:80"
     return api
 
 
@@ -197,6 +202,89 @@ async def test_async_setup_entry_skips_update_platform_when_tracking_disabled(ha
     forwarded_platforms = mock_forward.call_args.args[1]
     assert Platform.UPDATE not in forwarded_platforms
     assert Platform.SENSOR in forwarded_platforms
+
+
+@pytest.mark.asyncio
+async def test_async_setup_entry_registers_hub_device_before_platform_setup(hass) -> None:
+    """The hub and compose-project devices exist before any platform is forwarded (Issue #83).
+
+    ``DeviceInfo.via_device_id`` requires the parent device to already be in
+    the registry when a child entity's ``DeviceInfo`` is built, so
+    ``_async_register_hierarchy_devices`` must run before
+    ``async_forward_entry_setups`` sets up the sensor/binary_sensor/etc.
+    platforms.
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    system_info = {"hostname": "nas", "version": "8.1.2-1"}
+    coordinator_data = {
+        "hwinfo": {
+            "hostname": "nas",
+            "cpuModel": "Intel(R) N100",
+            "kernel": "Linux 6.6.0-omv",
+            "version": "8.1.2-1",
+        },
+        "compose_projects": [
+            {
+                "project_key": "paperless",
+                "name": "paperless",
+                "uuid": "proj-paperless",
+                "status": "UP",
+                "uptime": "Up 5 minutes",
+                "service_name": "webserver",
+                "image": "ghcr.io/paperless-ngx/paperless-ngx:latest",
+                "container_total": 2,
+                "container_running": 1,
+                "container_not_running": 1,
+            }
+        ],
+    }
+
+    hub_device_id_at_forward_time: str | None = None
+
+    async def _fake_forward(target_entry: object, platforms: object) -> bool:
+        nonlocal hub_device_id_at_forward_time
+        hub_device_id_at_forward_time = target_entry.runtime_data.hub_device_id  # type: ignore[attr-defined]
+        return True
+
+    with (
+        patch(
+            "custom_components.omv.OMVAPI.async_connect",
+            new=AsyncMock(return_value=system_info),
+        ),
+        patch("custom_components.omv.OMVAPI.async_close", new=AsyncMock()),
+        patch(
+            "custom_components.omv.OMVDataUpdateCoordinator.async_init",
+            new=AsyncMock(),
+        ),
+        patch(
+            "custom_components.omv.OMVDataUpdateCoordinator._async_update_data",
+            new=AsyncMock(return_value=coordinator_data),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new=AsyncMock(side_effect=_fake_forward),
+        ),
+    ):
+        result = await hass.config_entries.async_setup(entry.entry_id)
+
+    assert result is True
+    coordinator: OMVDataUpdateCoordinator = entry.runtime_data
+    assert coordinator.hub_device_id is not None
+    # The hub device already existed when the platforms were forwarded.
+    assert hub_device_id_at_forward_time == coordinator.hub_device_id
+
+    device_registry = dr.async_get(hass)
+    hub_device = device_registry.async_get_device({(DOMAIN, entry.entry_id)})
+    assert hub_device is not None
+    assert hub_device.id == coordinator.hub_device_id
+
+    project_device = device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:compose_project:paperless")})
+    assert project_device is not None
+    assert project_device.id == coordinator.project_device_ids["paperless"]
+    assert project_device.via_device_id == hub_device.id
 
 
 @pytest.mark.asyncio

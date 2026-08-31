@@ -159,6 +159,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._smart_attributes_cache: dict[str, dict[str, Any]] = {}
         self._smart_nvme_cache: dict[str, dict[str, Any]] = {}
         self._smart_last_poll: float | None = None
+        # Device-registry bookkeeping (Issue #83): the HA device id (not the
+        # OMV identifier tuple) of the pre-registered hub device and each
+        # compose-project device, used as `via_device_id` by entity.py.
+        # Populated by __init__.py's _async_register_hierarchy_devices()
+        # after the first refresh, before entity setup — not OMV data, so it
+        # is intentionally outside _async_update_data/filter_data_by_selection.
+        self.hub_device_id: str | None = None
+        self.project_device_ids: dict[str, str] = {}
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""

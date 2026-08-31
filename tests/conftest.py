@@ -19,12 +19,44 @@ from homeassistant.const import (
     CONF_USERNAME,
     CONF_VERIFY_SSL,
 )
+from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 import custom_components
 from custom_components.omv import session_handoff
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+from custom_components.omv.entity import get_compose_project_device_info, get_hub_device_info
+
+
+def _patch_aioresponses_for_aiohttp_314() -> None:
+    """Work around aioresponses 0.7.9 missing aiohttp 3.14's ``stream_writer`` kwarg.
+
+    aiohttp 3.14 made ``ClientResponse.__init__`` require a keyword-only
+    ``stream_writer`` argument; aioresponses 0.7.9 (latest on PyPI) does not
+    pass it yet, so every mocked response raises ``TypeError``. Mirrors the
+    unreleased upstream fix (pnuckowski/aioresponses#288) until a compatible
+    release ships — remove this once ``aioresponses`` is bumped past 0.7.9.
+    """
+    import inspect as _inspect
+    from typing import Any as _Any
+    from unittest.mock import Mock as _Mock
+
+    from aioresponses import core as _aioresponses_core
+
+    if "stream_writer" not in _inspect.signature(_aioresponses_core.ClientResponse.__init__).parameters:
+        return
+
+    _original_response_init = _aioresponses_core.ClientResponse.__init__
+
+    def _patched_response_init(self: _Any, *args: _Any, **kwargs: _Any) -> None:
+        kwargs.setdefault("stream_writer", _Mock(output_size=0))
+        _original_response_init(self, *args, **kwargs)
+
+    _aioresponses_core.ClientResponse.__init__ = _patched_response_init
+
+
+_patch_aioresponses_for_aiohttp_314()
 
 
 @pytest.fixture(autouse=True)
@@ -661,4 +693,24 @@ async def coordinator(
     coordinator.data = sample_data
     coordinator._inventory_source = sample_data
     config_entry.runtime_data = coordinator
+
+    # Mirror __init__.py's _async_register_hierarchy_devices() so entity.py's
+    # via_device_id lookups resolve against real device registry ids, the
+    # same way production setup guarantees them (Issue #83).
+    device_registry = dr.async_get(hass)
+    hub_device = device_registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        **get_hub_device_info(coordinator),
+    )
+    coordinator.hub_device_id = hub_device.id
+    for project in sample_data.get("compose_projects", []):
+        project_key = str(project.get("project_key") or project.get("name") or "")
+        if not project_key:
+            continue
+        project_device = device_registry.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            **get_compose_project_device_info(coordinator, project),
+        )
+        coordinator.project_device_ids[project_key] = project_device.id
+
     return coordinator

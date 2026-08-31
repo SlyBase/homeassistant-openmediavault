@@ -129,6 +129,28 @@ def _get_disk_by_key(
     return None
 
 
+def _require_device_id(device_id: str | None) -> str:
+    """Return a pre-registered device registry id.
+
+    ``coordinator.hub_device_id``/``project_device_ids`` are populated by
+    ``__init__._async_register_hierarchy_devices`` before any platform is set
+    up (Issue #83), so every ``DeviceInfo`` built afterwards must find a real
+    id here — a ``None`` means that setup ordering was violated.
+
+    Args:
+        device_id: The cached hub or compose-project device id.
+
+    Returns:
+        The device id.
+
+    Raises:
+        RuntimeError: If the device hierarchy has not been registered yet.
+    """
+    if device_id is None:
+        raise RuntimeError("Device hierarchy not registered before entity setup")
+    return device_id
+
+
 def get_hub_device_info(coordinator: OMVDataUpdateCoordinator) -> DeviceInfo:
     """Return the OMV hub device info."""
     hwinfo = coordinator.data.get("hwinfo", {})
@@ -191,7 +213,7 @@ def get_disk_device_info(
 
     return DeviceInfo(
         identifiers={get_disk_device_identifier(coordinator, disk_key)},
-        via_device=(DOMAIN, coordinator.config_entry.entry_id),
+        via_device_id=_require_device_id(coordinator.hub_device_id),
         name=_build_disk_device_name(disk, disk_key),
         manufacturer=manufacturer,
         model=_build_disk_device_model(disk),
@@ -235,7 +257,7 @@ def _build_standalone_filesystem_device_info(
 
     return DeviceInfo(
         identifiers={get_filesystem_device_identifier(coordinator, fs_uuid)},
-        via_device=(DOMAIN, coordinator.config_entry.entry_id),
+        via_device_id=_require_device_id(coordinator.hub_device_id),
         name=name,
         manufacturer="OpenMediaVault",
         model=fs_type,
@@ -296,7 +318,7 @@ def get_compose_project_device_info(
     project_name = _normalized_device_value(project.get("name")) or project_key
     return DeviceInfo(
         identifiers={get_compose_project_device_identifier(coordinator, project_key)},
-        via_device=(DOMAIN, coordinator.config_entry.entry_id),
+        via_device_id=_require_device_id(coordinator.hub_device_id),
         name=f"Compose {project_name}",
         manufacturer="Docker Compose",
         model="Compose Project",
@@ -316,15 +338,15 @@ def get_container_device_info(
     """Return device info for a Docker container entity."""
     container_key = str(container.get("container_key") or container.get("name") or "")
     project_key = str(container.get("project_key") or "")
-    via_device = (
-        get_compose_project_device_identifier(coordinator, project_key)
+    via_device_id = _require_device_id(
+        coordinator.project_device_ids.get(project_key, coordinator.hub_device_id)
         if project_key
-        else (DOMAIN, coordinator.config_entry.entry_id)
+        else coordinator.hub_device_id
     )
     display_name = _container_display_name(container)
     return DeviceInfo(
         identifiers={get_container_device_identifier(coordinator, container_key)},
-        via_device=via_device,
+        via_device_id=via_device_id,
         name=f"Container {display_name or container_key}",
         manufacturer="Docker",
         model=_normalized_device_value(container.get("image")) or "Docker Container",
@@ -342,7 +364,7 @@ def get_vm_device_info(
     display_name = _normalized_device_value(vm.get("name")) or vm_key
     return DeviceInfo(
         identifiers={get_vm_device_identifier(coordinator, vm_key)},
-        via_device=(DOMAIN, coordinator.config_entry.entry_id),
+        via_device_id=_require_device_id(coordinator.hub_device_id),
         name=f"VM {display_name}",
         manufacturer="QEMU/KVM",
         model="Virtual Machine",

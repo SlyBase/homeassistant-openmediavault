@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Replaced the deprecated `via_device` device-registry parameter with `via_device_id` across all disk, filesystem, compose project, container, and VM devices; the hub device and every compose-project device are now pre-registered before platform setup so their real registry ids are available when child `DeviceInfo` objects are built (Issue #83).
+
+### Changed
+
+- Raised the minimum supported Home Assistant version to 2026.8.0 (`hacs.json`), which is required for `via_device_id` support and, as a consequence, itself now needs Python 3.14.2+ to run.
+
 ## [2.7.0] - 2026-08-27
 
 ### Added
