@@ -54,7 +54,7 @@ jobs:
           chmod +x /usr/local/bin/yq
 
       - name: Fetch SSH key from Infisical
-        uses: Infisical/secrets-action@v1.0.16
+        uses: Infisical/secrets-action@v1.0.17
         with:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
@@ -64,7 +64,7 @@ jobs:
           secret-path: /ci/ssh
 
       - name: Fetch HA URL/token from Infisical
-        uses: Infisical/secrets-action@v1.0.16
+        uses: Infisical/secrets-action@v1.0.17
         with:
           client-id: ${{ secrets.INFISICAL_CLIENT_ID }}
           client-secret: ${{ secrets.INFISICAL_CLIENT_SECRET }}
