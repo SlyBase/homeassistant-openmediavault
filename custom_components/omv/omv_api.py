@@ -489,8 +489,10 @@ class OMVAPI:
             payload["options"] = {"updatelastaccess": True}
 
         # ssl=False means "SSL enabled, skip certificate verification" in aiohttp;
-        # for plain http:// URLs the parameter is ignored.
-        ssl_param: bool | None = False if (self._ssl and not self._verify_ssl) else None
+        # for plain http:// URLs the parameter is ignored. True is aiohttp's own
+        # default (verify certificates), so the non-skip branch just states it
+        # explicitly instead of relying on the parameter being omitted.
+        ssl_param: bool = not (self._ssl and not self._verify_ssl)
         try:
             async with self._session.post(
                 f"{self.base_url}/rpc.php",

@@ -12,6 +12,7 @@ from homeassistant.config_entries import (
     SOURCE_RECONFIGURE,
     ConfigEntry,
     ConfigFlow,
+    ConfigFlowResult,
     OptionsFlow,
 )
 from homeassistant.const import (
@@ -23,7 +24,6 @@ from homeassistant.const import (
     CONF_VERIFY_SSL,
 )
 from homeassistant.core import callback
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
 from . import session_handoff, totp
@@ -127,7 +127,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             }
         )
 
-    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_reconfigure(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle reconfiguration of an existing OMV entry (e.g. switching to HTTPS or 2FA)."""
         entry = self._get_reconfigure_entry()
         if user_input is None:
@@ -142,7 +142,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
             )
         return await self.async_step_user(user_input)
 
-    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> FlowResult:
+    async def async_step_reauth(self, entry_data: Mapping[str, Any]) -> ConfigFlowResult:
         """Handle reauthentication triggered by HA (e.g. a changed password or newly required 2FA)."""
         entry = self._get_reauth_entry()
         self._user_form_values.update(
@@ -162,7 +162,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         data: dict[str, Any],
         api: OMVAPI,
         system_info: dict[str, Any],
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Create/update the entry after a successful login.
 
         Hands off the already-authenticated ``api``/``system_info`` to the
@@ -199,7 +199,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         session_handoff.store(hostname, api, system_info)
         return self.async_create_entry(title=f"OMV ({hostname})", data=data)
 
-    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial user step."""
         errors: dict[str, str] = {}
 
@@ -291,7 +291,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
         secret = entry.data.get(CONF_TOTP_SECRET)
         return secret if isinstance(secret, str) and secret else None
 
-    async def async_step_totp(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_totp(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the second step of a two-factor OMV login.
 
         Accepts either a one-time verification code or the Base32 TOTP secret
@@ -366,7 +366,7 @@ class OMVOptionsFlow(OptionsFlow):
         """Initialize the options flow."""
         self._entry = entry
 
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options flow."""
         if user_input is not None:
             data = dict(user_input)
@@ -530,7 +530,7 @@ class OMVOptionsFlow(OptionsFlow):
         merged = {str(option["value"]): str(option["label"]) for option in options}
         return selector.SelectSelector(
             selector.SelectSelectorConfig(
-                options=[{"value": value, "label": label} for value, label in merged.items()],
+                options=[selector.SelectOptionDict(value=value, label=label) for value, label in merged.items()],
                 multiple=True,
                 mode=selector.SelectSelectorMode.DROPDOWN,
             )

@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import time
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -578,7 +579,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     @staticmethod
     def build_inventory(data: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
         """Build option lists from normalized coordinator data."""
-        inventory = {
+        inventory: dict[str, list[dict[str, str]]] = {
             CONF_SELECTED_DISKS: [],
             CONF_SELECTED_FILESYSTEMS: [],
             CONF_SELECTED_SERVICES: [],
@@ -1498,7 +1499,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         uptime_raw = info.get("uptime", 0)
         uptime_seconds = self._parse_uptime_seconds(uptime_raw)
         available_updates = int(self._coerce_float(info.get("availablePkgUpdates", 0)))
-        load_average = info.get("loadAverage") if isinstance(info.get("loadAverage"), dict) else {}
+        raw_load_average = info.get("loadAverage")
+        load_average: dict[str, Any] = raw_load_average if isinstance(raw_load_average, dict) else {}
 
         cpu_model = str(info.get("cpuModelName") or info.get("cpuModel") or info.get("cpu") or "unknown")
         kernel = str(info.get("kernel") or info.get("utsname") or "unknown")
@@ -1608,6 +1610,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         network: list[dict[str, Any]] = []
         seen_uuids: set[str] = set()
+        # update_interval is always set in __init__ — DataUpdateCoordinator just
+        # types the attribute as optional for subclasses that don't poll on a timer.
+        assert self.update_interval is not None
         interval_seconds = max(int(self.update_interval.total_seconds()), 1)
         raw_records = self._records_from_response(response)
         _LOGGER.debug("_normalize_network: received %d raw records", len(raw_records))
@@ -1637,7 +1642,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             seen_uuids.add(uuid)
 
-            stats = record.get("stats") if isinstance(record.get("stats"), dict) else {}
+            raw_stats = record.get("stats")
+            stats: dict[str, Any] = raw_stats if isinstance(raw_stats, dict) else {}
             current_rx = self._coerce_float(stats.get("rx_bytes", stats.get("rx_packets", 0)))
             current_tx = self._coerce_float(stats.get("tx_bytes", stats.get("tx_packets", 0)))
             previous = self._network_counters.get(uuid)
@@ -3195,10 +3201,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         for disk in disks:
             disk_key = str(disk.get("disk_key") or "")
-            candidate = best_by_disk.get(disk_key)
-            if candidate is None:
+            stored_candidate = best_by_disk.get(disk_key)
+            if stored_candidate is None:
                 continue
-            disk.update(candidate)
+            disk.update(stored_candidate)
 
     def _set_best_storage_candidate(
         self,
@@ -3355,7 +3361,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _selected_values(
         self,
-        options: dict[str, Any],
+        options: Mapping[str, Any],
         key: str,
         *,
         empty_means_all: bool = False,
@@ -3378,7 +3384,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         collection: Any,
         selected: set[str] | None,
-        key_fn,
+        key_fn: Callable[[dict[str, Any]], str],
     ) -> list[dict[str, Any]]:
         """Filter a normalized collection using its selection set."""
         items = [item for item in collection if isinstance(item, dict)] if isinstance(collection, list) else []

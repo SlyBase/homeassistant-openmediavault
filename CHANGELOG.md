@@ -5,6 +5,7 @@
 ### Fixed
 
 - Replaced the deprecated `via_device` device-registry parameter with `via_device_id` across all disk, filesystem, compose project, container, and VM devices; the hub device and every compose-project device are now pre-registered before platform setup so their real registry ids are available when child `DeviceInfo` objects are built (Issue #83).
+- Fixed 22 latent mypy type errors in `omv_api.py`, `coordinator.py`, `sensor.py`, and `config_flow.py` (unrelated to Issue #83, previously hidden by a mypy parser crash on the installed Home Assistant package) — includes a genuine `ClientSession.post(ssl=...)` type-safety fix and migrating `config_flow.py`'s step return types from the deprecated generic `FlowResult` to `ConfigFlowResult`.
 
 ### Changed
 

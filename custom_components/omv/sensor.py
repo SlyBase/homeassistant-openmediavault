@@ -7,6 +7,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import OMVDataUpdateCoordinator
@@ -168,7 +169,7 @@ def _sensor_suggested_object_id(
     return build_host_object_id(coordinator, description.data_path, item_key, metric)
 
 
-def _collect_device_identifiers(device_info, expected_identifiers: set[tuple[str, str]]) -> None:
+def _collect_device_identifiers(device_info: DeviceInfo | None, expected_identifiers: set[tuple[str, str]]) -> None:
     """Collect device registry identifiers from a DeviceInfo mapping."""
     if not device_info:
         return
@@ -619,7 +620,7 @@ class OMVSensor(OMVEntity, SensorEntity):
         coordinator: OMVDataUpdateCoordinator,
         description: OMVSensorDescription,
         item_key: str | None = None,
-        device_info=None,
+        device_info: DeviceInfo | None = None,
     ) -> None:
         """Initialize the sensor."""
         uid = f"{description.key}-{item_key}" if item_key else description.key
