@@ -6,6 +6,7 @@
 
 - Replaced the deprecated `via_device` device-registry parameter with `via_device_id` across all disk, filesystem, compose project, container, and VM devices; the hub device and every compose-project device are now pre-registered before platform setup so their real registry ids are available when child `DeviceInfo` objects are built (Issue #83).
 - Fixed 22 latent mypy type errors in `omv_api.py`, `coordinator.py`, `sensor.py`, and `config_flow.py` (unrelated to Issue #83, previously hidden by a mypy parser crash on the installed Home Assistant package) — includes a genuine `ClientSession.post(ssl=...)` type-safety fix and migrating `config_flow.py`'s step return types from the deprecated generic `FlowResult` to `ConfigFlowResult`.
+- CI's `lint` and `test` jobs (`.github/workflows/ci.yml`) still set up Python 3.13, so the `test` job failed to install `pytest-homeassistant-custom-component==0.13.355` (which now requires Python ≥3.14) after the Python 3.14.2+ floor was introduced above — blocking the `release` job that depends on it. Both jobs now set up Python 3.14, and `requires-python` in `pyproject.toml` is raised to `>=3.14.2` to match.
 
 ### Changed
 

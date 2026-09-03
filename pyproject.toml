@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "homeassistant-omv"
 version = "0.1.0"
-requires-python = ">=3.13.2"
+requires-python = ">=3.14.2"
 
 [project.optional-dependencies]
 test = [
@@ -39,7 +39,7 @@ asyncio_default_fixture_loop_scope = "function"
 timeout = 60
 
 [tool.ruff]
-target-version = "py313"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]

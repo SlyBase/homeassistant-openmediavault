@@ -153,12 +153,12 @@ The Tier 2 live probe run (2026-06-12) was **skipped** — `OMV_PASSWORD` was no
 - Domain: `omv`
 - Platforms: `sensor`, `binary_sensor`, `button`, `switch`, `update`
 - Custom services (registered domain-globally in `services.py` from `async_setup_entry`, idempotent, never deregistered on unload): `container_command`, `compose_command`, `apply_config`, `run_rsync_job`. Optional `config_entry_id` auto-resolves when exactly one entry is loaded; container/project/job inputs are matched against coordinator data by key/name/id — unknown projects/jobs raise `ServiceValidationError`, unknown containers pass through verbatim.
-- Minimum HA: 2025.5
-- Python: ≥ 3.13.2
+- Minimum HA: 2026.8.0
+- Python: ≥ 3.14.2
 
 ## Lint / Style
 
-- Ruff with rules `E, F, I, W, UP, B, SIM, RUF`, target Python 3.13, line-length 88.
+- Ruff with rules `E, F, I, W, UP, B, SIM, RUF`, target Python 3.14, line-length 88.
 - `check_untyped_defs = true`, `disallow_untyped_defs = true` in mypy — all new code needs type annotations.
 
 ## Documentation Policy
