@@ -654,7 +654,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             try:
                 total = int(float(project.get("container_total") or 0))
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 total = 0
             label = value if total <= 0 else f"{value} ({total})"
             inventory[CONF_SELECTED_COMPOSE_PROJECTS].append({"value": value, "label": label})

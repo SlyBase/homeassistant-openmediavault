@@ -36,7 +36,7 @@ def _smart_attribute_problem(data: dict[str, Any], attr_name: str) -> bool | Non
         return None
     try:
         return float(raw_value) > 0
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
