@@ -151,6 +151,26 @@ def _require_device_id(device_id: str | None) -> str:
     return device_id
 
 
+def _hub_device_id(coordinator: OMVDataUpdateCoordinator) -> str | None:
+    """Return the pre-registered hub device registry id, tolerating a missing attribute.
+
+    ``hub_device_id`` was added to :class:`OMVDataUpdateCoordinator` in 2.8.0. If a
+    stale pre-2.8.0 ``coordinator.py`` is loaded next to the 2.8.0 ``entity.py``
+    (incomplete HACS update, orphaned ``__pycache__``), reading the attribute
+    directly would crash entry setup with ``AttributeError`` before any cleanup
+    or logging could run. ``getattr`` maps that mixed-version scenario onto the
+    controlled ``RuntimeError`` from :func:`_require_device_id` instead
+    (Issue #88).
+
+    Args:
+        coordinator: The data update coordinator.
+
+    Returns:
+        The hub device registry id, or ``None`` if the attribute is absent or unset.
+    """
+    return getattr(coordinator, "hub_device_id", None)
+
+
 def get_hub_device_info(coordinator: OMVDataUpdateCoordinator) -> DeviceInfo:
     """Return the OMV hub device info."""
     hwinfo = coordinator.data.get("hwinfo", {})
@@ -213,7 +233,7 @@ def get_disk_device_info(
 
     return DeviceInfo(
         identifiers={get_disk_device_identifier(coordinator, disk_key)},
-        via_device_id=_require_device_id(coordinator.hub_device_id),
+        via_device_id=_require_device_id(_hub_device_id(coordinator)),
         name=_build_disk_device_name(disk, disk_key),
         manufacturer=manufacturer,
         model=_build_disk_device_model(disk),
@@ -257,7 +277,7 @@ def _build_standalone_filesystem_device_info(
 
     return DeviceInfo(
         identifiers={get_filesystem_device_identifier(coordinator, fs_uuid)},
-        via_device_id=_require_device_id(coordinator.hub_device_id),
+        via_device_id=_require_device_id(_hub_device_id(coordinator)),
         name=name,
         manufacturer="OpenMediaVault",
         model=fs_type,
@@ -318,7 +338,7 @@ def get_compose_project_device_info(
     project_name = _normalized_device_value(project.get("name")) or project_key
     return DeviceInfo(
         identifiers={get_compose_project_device_identifier(coordinator, project_key)},
-        via_device_id=_require_device_id(coordinator.hub_device_id),
+        via_device_id=_require_device_id(_hub_device_id(coordinator)),
         name=f"Compose {project_name}",
         manufacturer="Docker Compose",
         model="Compose Project",
@@ -339,9 +359,9 @@ def get_container_device_info(
     container_key = str(container.get("container_key") or container.get("name") or "")
     project_key = str(container.get("project_key") or "")
     via_device_id = _require_device_id(
-        coordinator.project_device_ids.get(project_key, coordinator.hub_device_id)
+        coordinator.project_device_ids.get(project_key, _hub_device_id(coordinator))
         if project_key
-        else coordinator.hub_device_id
+        else _hub_device_id(coordinator)
     )
     display_name = _container_display_name(container)
     return DeviceInfo(
@@ -364,7 +384,7 @@ def get_vm_device_info(
     display_name = _normalized_device_value(vm.get("name")) or vm_key
     return DeviceInfo(
         identifiers={get_vm_device_identifier(coordinator, vm_key)},
-        via_device_id=_require_device_id(coordinator.hub_device_id),
+        via_device_id=_require_device_id(_hub_device_id(coordinator)),
         name=f"VM {display_name}",
         manufacturer="QEMU/KVM",
         model="Virtual Machine",

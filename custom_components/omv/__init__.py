@@ -66,6 +66,34 @@ def _platforms_for_entry(entry: OMVConfigEntry) -> list[Platform]:
     return PLATFORMS
 
 
+def _check_coordinator_version_consistency(coordinator: OMVDataUpdateCoordinator) -> None:
+    """Fail fast when the loaded coordinator class predates 2.8.0 (Issue #88).
+
+    An incomplete HACS update or an orphaned ``__pycache__`` can load a
+    pre-2.8.0 ``coordinator.py`` next to the 2.8.0 ``entity.py``/``sensor.py``.
+    Reading ``hub_device_id`` in that mixed setup previously aborted entry setup
+    with a cryptic ``AttributeError`` deep inside the registry cleanup. The
+    ``hasattr`` probes catch the stale class up front so setup can abort with a
+    clear, actionable message instead.
+
+    Args:
+        coordinator: The freshly constructed data update coordinator.
+
+    Raises:
+        RuntimeError: If ``hub_device_id`` or ``project_device_ids`` are absent
+            from the coordinator class, i.e. the loaded ``coordinator.py``
+            predates 2.8.0 — with an instruction to reinstall the integration.
+    """
+    if not (hasattr(coordinator, "hub_device_id") and hasattr(coordinator, "project_device_ids")):
+        raise RuntimeError(
+            "OpenMediaVault installation is inconsistent: the loaded "
+            "coordinator.py predates integration 2.8.0 while the other files "
+            "do not (Issue #88). Remove the custom_components/omv folder "
+            "including its __pycache__ and reinstall the integration, then "
+            "restart Home Assistant."
+        )
+
+
 def _login_cookie_store(hass: HomeAssistant, entry: OMVConfigEntry) -> Store:
     """Return the per-entry Store for the OMV login-notification cookie name.
 
@@ -301,6 +329,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     Raises:
         ConfigEntryAuthFailed: If OMV authentication fails (no pending hand-off).
         ConfigEntryNotReady: If OMV cannot be reached (no pending hand-off).
+        RuntimeError: If the loaded coordinator class predates 2.8.0
+            (mixed-version installation, Issue #88) — setup aborts early with a
+            clear reinstall instruction instead of crashing deeper in.
     """
     handoff = session_handoff.pop(entry.unique_id)
     if handoff is not None:
@@ -346,6 +377,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     await coordinator.async_init(system_info)
     await coordinator.async_config_entry_first_refresh()
     await _async_persist_login_cookie(hass, entry, api)
+    _check_coordinator_version_consistency(coordinator)
     entry.runtime_data = coordinator
     await _async_register_hierarchy_devices(hass, entry, coordinator)
     await _async_migrate_container_registry_keys(hass, entry, coordinator)

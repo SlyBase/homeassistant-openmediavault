@@ -21,6 +21,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.omv import (
     _async_migrate_container_registry_keys,
     _async_persist_login_cookie,
+    _check_coordinator_version_consistency,
     _login_cookie_store,
     session_handoff,
 )
@@ -125,6 +126,24 @@ async def test_async_setup_entry_reuses_handed_off_session(hass) -> None:
     assert entry.runtime_data.api is handed_off_api
     # The stashed session was consumed and is gone from the registry.
     assert session_handoff.pop("nas") is None
+
+
+def test_coordinator_version_consistency_passes_for_current_coordinator(coordinator) -> None:
+    """A current (2.8.0+) coordinator carries both attributes, so the check is a no-op."""
+    _check_coordinator_version_consistency(coordinator)
+
+
+def test_coordinator_version_consistency_fails_fast_for_stale_pre_280_coordinator(coordinator) -> None:
+    """A stale pre-2.8.0 coordinator (missing hub_device_id) aborts setup with a clear message.
+
+    Regression for Issue #88: an incomplete HACS update / orphaned __pycache__ loads a
+    coordinator.py that predates hub_device_id. The check must raise a RuntimeError
+    naming the fix, so setup fails fast instead of crashing deep in the registry cleanup.
+    """
+    del coordinator.hub_device_id
+
+    with pytest.raises(RuntimeError, match="Remove the custom_components/omv folder"):
+        _check_coordinator_version_consistency(coordinator)
 
 
 @pytest.mark.asyncio
