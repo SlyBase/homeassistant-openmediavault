@@ -4,12 +4,42 @@ from __future__ import annotations
 
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.entity import (
+    _hub_device_id,
     get_compose_project_device_info,
     get_container_device_info,
     get_disk_device_info,
     get_filesystem_device_identifier,
     get_filesystem_device_info,
 )
+
+
+def test_hub_device_id_helper_returns_none_for_stale_pre_280_coordinator(coordinator) -> None:
+    """A stale pre-2.8.0 coordinator lacking hub_device_id yields None, not AttributeError.
+
+    Regression for Issue #88: an incomplete HACS update (or orphaned __pycache__)
+    can load a coordinator.py that predates the hub_device_id attribute while
+    entity.py already reads it. The getattr-based helper must map that onto the
+    controlled RuntimeError from _require_device_id instead of an uncaught
+    AttributeError that aborts entry setup.
+    """
+    # Simulate the stale class: the attribute simply does not exist.
+    del coordinator.hub_device_id
+
+    # getattr-based access must not raise AttributeError.
+    assert _hub_device_id(coordinator) is None
+
+    # And the disk device builder must raise the controlled RuntimeError.
+    disk = coordinator.data["disk"][0]
+    try:
+        get_disk_device_info(coordinator, disk)
+    except AttributeError as exc:  # pragma: no cover - guards the regression
+        raise AssertionError(
+            "stale coordinator.py must surface as RuntimeError, not AttributeError (Issue #88)"
+        ) from exc
+    except RuntimeError:
+        pass
+    else:  # pragma: no cover - guards the regression
+        raise AssertionError("expected RuntimeError for missing hub_device_id")
 
 
 def test_physical_disk_device_info_uses_vendor_model_and_storage_label(coordinator) -> None:

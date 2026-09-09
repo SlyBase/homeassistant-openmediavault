@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.8.1] - 2026-09-09
+
+### Fixed
+
+- Hardened `entity.py`'s `hub_device_id` lookups (disk, filesystem, compose project, container, VM devices) behind a `getattr`-based helper so a stale pre-2.8.0 `coordinator.py` loaded alongside the 2.8.0 files — an incomplete HACS update or an orphaned `__pycache__` — surfaces as a controlled `RuntimeError` from `_require_device_id` instead of an uncaught `AttributeError` that aborts entry setup before any cleanup or logging runs (Issue #88).
+- Added a startup integrity check in `async_setup_entry` that fails fast with a clear, actionable message (remove `custom_components/omv` including its `__pycache__` and reinstall, then restart) when the loaded coordinator class predates 2.8.0, closing the OMV API session on that path (Issue #88).
+- Added regression tests covering the missing-attribute scenario and the consistency-check failure path.
+
 ## [2.8.0] - 2026-09-03
 
 ### Fixed
