@@ -1,19 +1,18 @@
 name: Beta Release
 
-# Händisch ausgelöster Beta-Release aus einem (noch offenen) PR-Head.
-# Mehrere Betas aus demselben PR: einfach mehrfach auslösen — die Beta-
-# Nummer wird automatisch hochgezählt (v2.8.2-beta.1, -beta.2, ...).
-# Jeder Run erzeugt ein eigenes Pre-Release; HACS-User (Beta-Channel
-# aktiviert) sehen jede Beta-Revision als eigenen Eintrag.
+# Manually triggerable beta release from an (open) PR head.
+# Multiple betas from the same PR: simply re-run - the beta number is
+# auto-incremented per base version (v2.8.2-beta.1, -beta.2, ...).
+
 on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "PR-Nummer, aus deren Head der Beta-Release gebaut wird"
+        description: "PR number whose head is used to build the beta release"
         required: true
         type: number
       base_version:
-        description: "Optionale Basissversion, z.B. 2.9.0. Leer = auto: letzter stable Tag +1 (oder PR-Body-Metadatum beta-base)"
+        description: "Optional base version, e.g. 2.9.0. Empty = auto: last stable tag +1 minor bump (or PR body metadata beta-base)"
         required: false
         type: string
 
@@ -34,35 +33,35 @@ jobs:
           set -euo pipefail
           REPO="${{ github.repository }}"
 
-          # 1) PR-Head: SHA + Branch + Reviewer-Status
+          # 1) PR head: SHA + branch + owning repo
           head_sha=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.sha)
           head_ref=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.ref)
           head_branch=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.repo.full_name)
           echo "PR#$PR head: $head_ref @ $head_sha (repo $head_branch)"
 
-          # 2) Optional: PR-Body-Metadatum "beta-base: X.Y.Z" gewinnt vor dem Dispatch-Input
+          # 2) Optional: PR body metadata line "beta-base: X.Y.Z" wins over the dispatch input
           body_base=$(gh api repos/"$REPO"/pulls/"$PR" --jq .body | awk -F'beta-base: *' 'NF>1{print $2}' | awk '{print $1}')
-          echo "PR-Body-Metadatum beta-base: ${body_base:-<kein>}"
+          echo "PR body metadata beta-base: ${body_base:-<none>}"
 
-          # 3) Basissversion bestimmen: Body > Input > Auto (letzter stable Tag +1)
+          # 3) Determine base version: PR body > dispatch input > auto (last stable tag + minor bump)
           latest_stable=$(git ls-remote --tags origin 'v*' | awk -F/ '{print $NF}' | grep -vE '\-(beta|alpha|rc)\.' | sed 's/^v//' | sort -V | tail -1)
-          echo "Letzter stable Tag: v$latest_stable"
+          echo "Latest stable tag: v$latest_stable"
           base="${BASE:-${body_base:-}}"
           if [ -z "$base" ]; then
-            # minor-bump: X.Y.Z -> X.(Y+1).0 — Beta aus offener PR = nächste Feature-Vorversion
+            # minor bump: X.Y.Z -> X.(Y+1).0 - a beta from an open PR = next feature pre-release
             IFS=. read -r MAJ MIN PAT <<<"$latest_stable"
             base="$MAJ.$((MIN+1)).0"
-            echo "Auto-Basis: v$base (minor-bump über v$latest_stable)"
+            echo "Auto base: v$base (minor bump over v$latest_stable)"
           fi
 
-          # 4) Beta-Nummer: höchste existierende <base>-beta.N + 1 (sonst 1)
+          # 4) Beta number: highest existing <base>-beta.N + 1 (else 1)
           existing=$(git ls-remote --tags origin "v${base}-beta.*" | awk -F/ '{print $NF}' | sed "s/^v${base}-beta\.//" | sort -n | tail -1)
           if [ -n "$existing" ]; then
             beta=$((existing + 1))
-            echo "Höchste existierende Beta: v${base}-beta.${existing} → neue Beta: v${base}-beta.${beta}"
+            echo "Highest existing beta: v${base}-beta.${existing} -> new beta: v${base}-beta.${beta}"
           else
             beta=1
-            echo "Keine Beta für v${base} vorhanden → neue Beta: v${base}-beta.${beta}"
+            echo "No existing beta for v${base} -> new beta: v${base}-beta.${beta}"
           fi
 
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
@@ -71,7 +70,7 @@ jobs:
           echo "version=${base}-beta.${beta}" >> "$GITHUB_OUTPUT"
           echo "base=$base" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout PR-Head (kein Tag — kein Doppel-Trigger in CI)
+      - name: Checkout PR head (by SHA - no tag push first = no CI double-trigger)
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.head_sha }}
@@ -83,15 +82,15 @@ jobs:
             custom_components/omv/manifest.json > tmp.json
           mv tmp.json custom_components/omv/manifest.json
 
-      - name: Release notes (PR-Beschreibung — Changelog-Abhänigkeit vermeiden)
+      - name: Release notes (PR body - avoid changelog dependency)
         run: |
           gh api repos/"${{ github.repository }}" /pulls/"${{ github.event.inputs.pr_number }}" --jq .body > release-notes.md
           if [ ! -s release-notes.md ]; then
-            echo "PR-Beschreibung leer — verwende Changelog [Unreleased]" >&2
+            echo "PR body empty - using changelog [Unreleased]" >&2
             awk '/^## \[Unreleased\]/{f=1;next} f && /^## /{exit} f' CHANGELOG.md > release-notes.md
           fi
           if [ ! -s release-notes.md ]; then
-            echo "Keine Release Notes (leere PR-Beschreibung, kein [Unreleased])" >&2
+            echo "No release notes (empty PR body, no [Unreleased])" >&2
             exit 1
           fi
 
@@ -113,7 +112,7 @@ jobs:
           replacesArtifacts: true
           artifactErrorsFailBuild: true
 
-      - name: Publish Beta-Tag (remote)
+      - name: Publish beta tag (remote)
         run: |
           git config user.name "slydlake"
           git config user.email "sly.dlake@gmail.com"
@@ -122,4 +121,4 @@ jobs:
 
       - name: Summary
         run: |
-          echo "::notice::Beta-Release ${{ steps.resolve.outputs.tag }} aus PR#${{ github.event.inputs.pr_number }} (head ${{ steps.resolve.outputs.head_ref }}) erstellt"
+          echo "::notice::Beta release ${{ steps.resolve.outputs.tag }} from PR#${{ github.event.inputs.pr_number }} (head ${{ steps.resolve.outputs.head_ref }}) created"
