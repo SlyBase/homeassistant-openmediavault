@@ -71,6 +71,7 @@ jobs:
           fi
 
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "head_ref=$head_ref" >> "$GITHUB_OUTPUT"
           echo "tag=v${base}-beta.${beta}" >> "$GITHUB_OUTPUT"
           echo "version=${base}-beta.${beta}" >> "$GITHUB_OUTPUT"
@@ -111,6 +112,10 @@ jobs:
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:
           tag: ${{ steps.resolve.outputs.tag }}
+          # Pin the tag to the PR head SHA - without `commit`, release-action
+          # defaults to github.sha (the workflow's own commit, here main),
+          # which would mis-tag the release (run 35627456210).
+          commit: ${{ steps.resolve.outputs.sha }}
           name: ${{ steps.resolve.outputs.tag }}
           prerelease: true
           bodyFile: release-notes.md
@@ -120,12 +125,9 @@ jobs:
           replacesArtifacts: true
           artifactErrorsFailBuild: true
 
-      - name: Publish beta tag (remote)
-        run: |
-          git config user.name "slydlake"
-          git config user.email "sly.dlake@gmail.com"
-          git tag "${{ steps.resolve.outputs.tag }}"
-          git push origin "${{ steps.resolve.outputs.tag }}"
+      # NOTE: no explicit tag push - release-action (above) creates/pushes
+      # the tag itself; a second `git push origin <tag>` fails with
+      # "already exists" (run 35627456210).
 
       - name: Summary
         run: |
