@@ -88,7 +88,9 @@ jobs:
 
       - name: Release notes (PR body - avoid changelog dependency)
         run: |
-          gh api repos/"${{ github.repository }}" /pulls/"${{ github.event.inputs.pr_number }}" --jq .body > release-notes.md
+          # Single combined endpoint argument (gh api accepts exactly one;
+          # a split repo/endpoint -> "accepts 1 arg(s), received 2").
+          gh api "repos/${{ github.repository }}/pulls/${{ github.event.inputs.pr_number }}" --jq .body > release-notes.md
           if [ ! -s release-notes.md ]; then
             echo "PR body empty - using changelog [Unreleased]" >&2
             awk '/^## \[Unreleased\]/{f=1;next} f && /^## /{exit} f' CHANGELOG.md > release-notes.md
