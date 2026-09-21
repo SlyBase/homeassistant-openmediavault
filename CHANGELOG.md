@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Switched GitHub issue templates to the repository issue types (`bug` / `enhancement`) instead of the `bug` / `enhancement` / `question` labels, removed the label-only `question` template and the orphaned `issue_label_bot.yaml` config, and refreshed the stale Home Assistant version placeholder in the bug report template.
+
 ## [2.8.1] - 2026-09-09
 
 ### Fixed

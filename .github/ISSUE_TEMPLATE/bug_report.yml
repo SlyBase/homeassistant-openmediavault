@@ -1,7 +1,6 @@
 name: 🐞 Bug Report
 description: Create a report to help us improve
-title: "[Bug]: "
-labels: ["bug"]
+type: bug
 assignees:
   - slydlake
 body:
@@ -42,7 +41,7 @@ body:
     id: ha-version
     attributes:
       label: Home Assistant version
-      placeholder: "e.g. 2024.12.0"
+      placeholder: "e.g. 2026.8.0"
     validations:
       required: false
 
@@ -50,7 +49,7 @@ body:
     id: integration-version
     attributes:
       label: openmediavault integration version
-      placeholder: "e.g. v1.0.0"
+      placeholder: "e.g. v2.8.1"
     validations:
       required: false
 
