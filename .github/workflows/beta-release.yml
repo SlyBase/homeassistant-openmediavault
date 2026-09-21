@@ -1,0 +1,125 @@
+name: Beta Release
+
+# Händisch ausgelöster Beta-Release aus einem (noch offenen) PR-Head.
+# Mehrere Betas aus demselben PR: einfach mehrfach auslösen — die Beta-
+# Nummer wird automatisch hochgezählt (v2.8.2-beta.1, -beta.2, ...).
+# Jeder Run erzeugt ein eigenes Pre-Release; HACS-User (Beta-Channel
+# aktiviert) sehen jede Beta-Revision als eigenen Eintrag.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR-Nummer, aus deren Head der Beta-Release gebaut wird"
+        required: true
+        type: number
+      base_version:
+        description: "Optionale Basissversion, z.B. 2.9.0. Leer = auto: letzter stable Tag +1 (oder PR-Body-Metadatum beta-base)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  beta-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR head + base version
+        id: resolve
+        env:
+          PR: ${{ github.event.inputs.pr_number }}
+          BASE: ${{ github.event.inputs.base_version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+
+          # 1) PR-Head: SHA + Branch + Reviewer-Status
+          head_sha=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.sha)
+          head_ref=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.ref)
+          head_branch=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.repo.full_name)
+          echo "PR#$PR head: $head_ref @ $head_sha (repo $head_branch)"
+
+          # 2) Optional: PR-Body-Metadatum "beta-base: X.Y.Z" gewinnt vor dem Dispatch-Input
+          body_base=$(gh api repos/"$REPO"/pulls/"$PR" --jq .body | awk -F'beta-base: *' 'NF>1{print $2}' | awk '{print $1}')
+          echo "PR-Body-Metadatum beta-base: ${body_base:-<kein>}"
+
+          # 3) Basissversion bestimmen: Body > Input > Auto (letzter stable Tag +1)
+          latest_stable=$(git ls-remote --tags origin 'v*' | awk -F/ '{print $NF}' | grep -vE '\-(beta|alpha|rc)\.' | sed 's/^v//' | sort -V | tail -1)
+          echo "Letzter stable Tag: v$latest_stable"
+          base="${BASE:-${body_base:-}}"
+          if [ -z "$base" ]; then
+            # minor-bump: X.Y.Z -> X.(Y+1).0 — Beta aus offener PR = nächste Feature-Vorversion
+            IFS=. read -r MAJ MIN PAT <<<"$latest_stable"
+            base="$MAJ.$((MIN+1)).0"
+            echo "Auto-Basis: v$base (minor-bump über v$latest_stable)"
+          fi
+
+          # 4) Beta-Nummer: höchste existierende <base>-beta.N + 1 (sonst 1)
+          existing=$(git ls-remote --tags origin "v${base}-beta.*" | awk -F/ '{print $NF}' | sed "s/^v${base}-beta\.//" | sort -n | tail -1)
+          if [ -n "$existing" ]; then
+            beta=$((existing + 1))
+            echo "Höchste existierende Beta: v${base}-beta.${existing} → neue Beta: v${base}-beta.${beta}"
+          else
+            beta=1
+            echo "Keine Beta für v${base} vorhanden → neue Beta: v${base}-beta.${beta}"
+          fi
+
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "head_ref=$head_ref" >> "$GITHUB_OUTPUT"
+          echo "tag=v${base}-beta.${beta}" >> "$GITHUB_OUTPUT"
+          echo "version=${base}-beta.${beta}" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR-Head (kein Tag — kein Doppel-Trigger in CI)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.resolve.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Set version in manifest
+        run: |
+          jq --arg v "${{ steps.resolve.outputs.version }}" '.version = $v' \
+            custom_components/omv/manifest.json > tmp.json
+          mv tmp.json custom_components/omv/manifest.json
+
+      - name: Release notes (PR-Beschreibung — Changelog-Abhänigkeit vermeiden)
+        run: |
+          gh api repos/"${{ github.repository }}" /pulls/"${{ github.event.inputs.pr_number }}" --jq .body > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "PR-Beschreibung leer — verwende Changelog [Unreleased]" >&2
+            awk '/^## \[Unreleased\]/{f=1;next} f && /^## /{exit} f' CHANGELOG.md > release-notes.md
+          fi
+          if [ ! -s release-notes.md ]; then
+            echo "Keine Release Notes (leere PR-Beschreibung, kein [Unreleased])" >&2
+            exit 1
+          fi
+
+      - name: Create release ZIP
+        run: |
+          cd custom_components/omv
+          zip -r ../../omv.zip .
+
+      - name: Create/replace Pre-Release
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
+        with:
+          tag: ${{ steps.resolve.outputs.tag }}
+          name: ${{ steps.resolve.outputs.tag }}
+          prerelease: true
+          bodyFile: release-notes.md
+          generateReleaseNotes: true
+          artifacts: omv.zip
+          allowUpdates: true
+          replacesArtifacts: true
+          artifactErrorsFailBuild: true
+
+      - name: Publish Beta-Tag (remote)
+        run: |
+          git config user.name "slydlake"
+          git config user.email "sly.dlake@gmail.com"
+          git tag "${{ steps.resolve.outputs.tag }}"
+          git push origin "${{ steps.resolve.outputs.tag }}"
+
+      - name: Summary
+        run: |
+          echo "::notice::Beta-Release ${{ steps.resolve.outputs.tag }} aus PR#${{ github.event.inputs.pr_number }} (head ${{ steps.resolve.outputs.head_ref }}) erstellt"
