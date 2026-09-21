@@ -39,12 +39,16 @@ jobs:
           head_branch=$(gh api repos/"$REPO"/pulls/"$PR" --jq .head.repo.full_name)
           echo "PR#$PR head: $head_ref @ $head_sha (repo $head_branch)"
 
+          # Remote for tag queries: this step runs BEFORE checkout, so there is no
+          # `origin` remote yet - use the authed URL (token never echoed: no set -x).
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+
           # 2) Optional: PR body metadata line "beta-base: X.Y.Z" wins over the dispatch input
           body_base=$(gh api repos/"$REPO"/pulls/"$PR" --jq .body | awk -F'beta-base: *' 'NF>1{print $2}' | awk '{print $1}')
           echo "PR body metadata beta-base: ${body_base:-<none>}"
 
           # 3) Determine base version: PR body > dispatch input > auto (last stable tag + minor bump)
-          latest_stable=$(git ls-remote --tags origin 'v*' | awk -F/ '{print $NF}' | grep -vE '\-(beta|alpha|rc)\.' | sed 's/^v//' | sort -V | tail -1)
+          latest_stable=$(git ls-remote --tags "$REMOTE" 'v*' | awk -F/ '{print $NF}' | grep -vE '\-(beta|alpha|rc)\.' | sed 's/^v//' | sort -V | tail -1)
           echo "Latest stable tag: v$latest_stable"
           base="${BASE:-${body_base:-}}"
           if [ -z "$base" ]; then
@@ -55,7 +59,7 @@ jobs:
           fi
 
           # 4) Beta number: highest existing <base>-beta.N + 1 (else 1)
-          existing=$(git ls-remote --tags origin "v${base}-beta.*" | awk -F/ '{print $NF}' | sed "s/^v${base}-beta\.//" | sort -n | tail -1)
+          existing=$(git ls-remote --tags "$REMOTE" "v${base}-beta.*" | awk -F/ '{print $NF}' | sed "s/^v${base}-beta\.//" | sort -n | tail -1)
           if [ -n "$existing" ]; then
             beta=$((existing + 1))
             echo "Highest existing beta: v${base}-beta.${existing} -> new beta: v${base}-beta.${beta}"
