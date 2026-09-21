@@ -383,7 +383,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raw_network = await self._fetch_or_empty("Network", "enumerateDevices")
             raw_disks = await self._fetch_or_empty("DiskMgmt", "enumerateDevices")
             raw_md_raids: Any = []
-            if 7 <= self.omv_version < 8:
+            if self.omv_version >= 7:
+                # Fetch MdMgmt for OMV 7 *and* OMV 8. OMV 8's DiskMgmt
+                # enumerateDevices only returns physical disks (no md state
+                # field), so without MdMgmt a degraded array reports "clean"
+                # (Issue #93). MdMgmt.enumerateDevices is safe on hosts
+                # without the md plugin: _fetch_optional returns [] on failure.
                 _LOGGER.debug(
                     "OMV %d: supplementing disk inventory via MdMgmt.enumerateDevices",
                     self.omv_version,
