@@ -175,6 +175,7 @@ async def _success_async_call(service, method, params=None, **kwargs):
         ("Cron", "getList"): [],
         ("zfs", "listDatasets"): [],
         ("zfs", "getAllSnapshots"): [],
+        ("MdMgmt", "enumerateDevices"): [],
     }
     return responses[(service, method)]
 
@@ -425,6 +426,105 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
     assert md_disk["raid_member_disks"] == ["loop10", "loop11"]
     assert raid["health"] == "clean"
     assert raid["member_disks"] == ["loop10", "loop11"]
+
+
+@pytest.mark.asyncio
+async def test_coordinator_reports_degraded_md_array_on_omv8(hass, config_entry) -> None:
+    """Issue #93: a degraded md array on OMV 8 must not report 'clean'.
+
+    OMV 8's DiskMgmt.enumerateDevices only returns physical disks (no md
+    state field), so without MdMgmt a degraded array was forced to 'clean'.
+    The coordinator now fetches MdMgmt on OMV 8 too, so md0's mdadm state
+    ('clean, degraded') reaches the RAID record.
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.20:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        physical_disks = [
+            {"devicename": "sda", "devicefile": "/dev/sda", "israid": True, "overallstatus": "PASSED"},
+            {"devicename": "sdb", "devicefile": "/dev/sdb", "israid": True, "overallstatus": "PASSED"},
+            {"devicename": "sdc", "devicefile": "/dev/sdc", "israid": True, "overallstatus": "PASSED"},
+            {"devicename": "sde", "devicefile": "/dev/sde", "israid": True, "overallstatus": "PASSED"},
+            {"devicename": "sdf", "devicefile": "/dev/sdf", "israid": True, "overallstatus": "PASSED"},
+        ]
+        responses = {
+            ("System", "getInformation"): {
+                "hostname": "omv8",
+                "version": "8.5.8-1",
+                "cpuModelName": "Intel(R) Core(TM)",
+                "kernel": "Linux 6.1.0-omv",
+                "cpuUtilization": 12.5,
+                "memTotal": 100,
+                "memUsed": 25,
+                "uptime": 3600,
+                "loadAverage": {"1min": 0.1, "5min": 0.2, "15min": 0.3},
+                "rebootRequired": False,
+                "availablePkgUpdates": 0,
+            },
+            ("CpuTemp", "get"): {},
+            ("FileSystemMgmt", "enumerateFilesystems"): [
+                {
+                    "uuid": "fs-md0",
+                    "type": "ext4",
+                    "devicename": "md0",
+                    "devicefile": "/dev/md0",
+                    "size": "4883151360",
+                    "usedsize": "2000000000",
+                    "mountpoint": "/mnt/SaveData",
+                }
+            ],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            # OMV 8 DiskMgmt returns ONLY physical disks - no md0, no state field.
+            ("DiskMgmt", "enumerateDevices"): physical_disks,
+            # mdadm --detail reports 'clean, degraded' for the array.
+            ("MdMgmt", "enumerateDevices"): [
+                {
+                    "name": "openmediavault:0",
+                    "devicefile": "/dev/md0",
+                    "uuid": "8b63270d:21cd14fe:c34a4b49:4a02001a",
+                    "level": "raid5",
+                    "numdevices": 6,
+                    "devices": ["/dev/sdb", "/dev/sdc", "/dev/sde", "/dev/sdf", "/dev/sda"],
+                    "size": "4883151360",
+                    "state": "clean, degraded",
+                    "description": "Software RAID openmediavault:0 [/dev/md0, raid5, 4.55 TiB]",
+                }
+            ],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): [],
+            ("zfs", "listPools"): [],
+            ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+            ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [],
+            ("zfs", "getAllSnapshots"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    await coordinator.async_init(await async_call("System", "getInformation"))
+    data = await coordinator._async_update_data()
+
+    md_disk = next(disk for disk in data["disk"] if disk["disk_key"] == "md0")
+    raid = next(raid for raid in data["raid"] if raid["device"] == "md0")
+
+    assert md_disk["israid"] is True
+    assert md_disk["is_logical"] is True
+    # The degraded mdadm state must reach the disk record, not be lost.
+    assert md_disk["overallstatus"] == "clean, degraded"
+    # The bug: this used to be hardcoded to 'clean' on OMV 8.
+    assert raid["health"] == "clean, degraded"
+    assert raid["member_disks"] == ["sdb", "sdc", "sde", "sdf", "sda"]
 
 
 @pytest.mark.asyncio
@@ -961,6 +1061,7 @@ async def test_coordinator_uses_legacy_smart_method_for_omv6(hass, config_entry)
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -1008,6 +1109,7 @@ async def test_coordinator_falls_back_when_smart_get_list_bg_returns_task_id(has
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -1358,6 +1460,7 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -1431,6 +1534,7 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -1703,6 +1807,7 @@ async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -2575,6 +2680,7 @@ async def test_tempmon_sensors_normalized(hass, config_entry) -> None:
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -2627,6 +2733,7 @@ async def test_tempmon_absent_when_plugin_not_installed(hass, config_entry) -> N
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -2679,6 +2786,7 @@ async def test_tempmon_script_error_returns_none_temperature(hass, config_entry)
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -2738,6 +2846,7 @@ async def test_kvm_vms_normalized(hass, config_entry) -> None:
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
@@ -2797,6 +2906,7 @@ async def test_kvm_absent_when_plugin_not_installed(hass, config_entry) -> None:
             ("Cron", "getList"): [],
             ("zfs", "listDatasets"): [],
             ("zfs", "getAllSnapshots"): [],
+            ("MdMgmt", "enumerateDevices"): [],
         }
         return responses[(service, method)]
 
