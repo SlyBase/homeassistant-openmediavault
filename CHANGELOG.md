@@ -6,6 +6,10 @@
 
 - On OMV 8, md RAID arrays no longer report a hardcoded "clean" health when a member disk is removed: the `MdMgmt.enumerateDevices` fetch gate is widened from "7 <= omv_version < 8" to "omv_version >= 7", so OMV 8 now returns the real mdadm state (e.g. `degraded`) through the existing `MdMgmt` path instead of falling through to the synthetic logical-storage path (Issue #93, PR #97).
 
+### Changed
+
+- Migrated the test-suite's device-registry lookups from the deprecated `device_registry.async_get_device` to `async_get_device_by_identifier` (HA 2026.9+ reports the old API as an error), so `pytest-homeassistant-custom-component==0.13.365` runs clean again (PR #96).
+
 ## [2.8.1] - 2026-09-09
 
 ### Fixed

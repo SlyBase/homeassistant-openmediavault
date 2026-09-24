@@ -296,11 +296,13 @@ async def test_async_setup_entry_registers_hub_device_before_platform_setup(hass
     assert hub_device_id_at_forward_time == coordinator.hub_device_id
 
     device_registry = dr.async_get(hass)
-    hub_device = device_registry.async_get_device({(DOMAIN, entry.entry_id)})
+    hub_device = device_registry.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
     assert hub_device is not None
     assert hub_device.id == coordinator.hub_device_id
 
-    project_device = device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:compose_project:paperless")})
+    project_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:compose_project:paperless"), entry.entry_id
+    )
     assert project_device is not None
     assert project_device.id == coordinator.project_device_ids["paperless"]
     assert project_device.via_device_id == hub_device.id
@@ -542,10 +544,15 @@ async def test_migrate_container_registry_keys_renames_old_id_based_entries(hass
 
     await _async_migrate_container_registry_keys(hass, entry, coordinator)
 
-    migrated_device = device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:container:paperless-app")})
+    migrated_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:container:paperless-app"), entry.entry_id
+    )
     assert migrated_device is not None
     assert migrated_device.id == old_device.id
-    assert device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:container:abc123")}) is None
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:container:abc123"), entry.entry_id)
+        is None
+    )
 
     switch_entity_id = entity_registry.async_get_entity_id(
         DOMAIN, "switch", f"{entry.entry_id}-container-paperless-app"
@@ -587,6 +594,8 @@ async def test_migrate_container_registry_keys_ignores_removed_containers(hass) 
 
     await _async_migrate_container_registry_keys(hass, entry, coordinator)
 
-    unchanged_device = device_registry.async_get_device({(DOMAIN, f"{entry.entry_id}:container:abc123")})
+    unchanged_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:container:abc123"), entry.entry_id
+    )
     assert unchanged_device is not None
     assert unchanged_device.id == old_device.id

@@ -1746,7 +1746,12 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(hass, coord
         )
         is None
     )
-    assert device_registry.async_get_device({(DOMAIN, f"{config_entry.entry_id}:disk:sdx")}, set()) is None
+    assert (
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, f"{config_entry.entry_id}:disk:sdx"), config_entry.entry_id
+        )
+        is None
+    )
     assert (
         entity_registry.async_get_entity_id(
             "button",
@@ -1764,16 +1769,14 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(hass, coord
         is None
     )
     assert (
-        device_registry.async_get_device(
-            {(DOMAIN, f"{config_entry.entry_id}:compose_project:legacy")},
-            set(),
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, f"{config_entry.entry_id}:compose_project:legacy"), config_entry.entry_id
         )
         is None
     )
     assert (
-        device_registry.async_get_device(
-            {(DOMAIN, f"{config_entry.entry_id}:container:legacy-app")},
-            set(),
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, f"{config_entry.entry_id}:container:legacy-app"), config_entry.entry_id
         )
         is None
     )
