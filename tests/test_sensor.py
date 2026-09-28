@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.components.sensor import SensorStateClass
 from homeassistant.const import EntityCategory
 
 from custom_components.omv.const import DOMAIN
@@ -236,11 +237,12 @@ async def test_system_sensor_reads_native_value(coordinator) -> None:
 
 @pytest.mark.asyncio
 async def test_available_package_updates_sensor_exposes_numeric_count(coordinator) -> None:
-    """Test the package update count sensor exposes the exact update count."""
+    """Test the package update count sensor exposes the exact update count as a numeric state."""
     description = next(description for description in SYSTEM_SENSORS if description.key == "available_package_updates")
     sensor = OMVSensor(coordinator, description)
 
     assert sensor.native_value == 3
+    assert sensor.state_class == SensorStateClass.MEASUREMENT
     assert sensor._attr_suggested_object_id == "nas_available_package_updates"
 
 

@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- The `available_package_updates` sensor now declares `state_class=SensorStateClass.MEASUREMENT`, so its count is exposed as a numeric state that can be logged cleanly (Issue #106).
 - On OMV 8, md RAID arrays no longer report a hardcoded "clean" health when a member disk is removed: the `MdMgmt.enumerateDevices` fetch gate is widened from "7 <= omv_version < 8" to "omv_version >= 7", so OMV 8 now returns the real mdadm state (e.g. `degraded`) through the existing `MdMgmt` path instead of falling through to the synthetic logical-storage path (Issue #93, PR #97).
 
 ### Changed

@@ -141,6 +141,7 @@ SYSTEM_SENSORS: tuple[OMVSensorDescription, ...] = (
         key="available_package_updates",
         translation_key="available_package_updates",
         icon="mdi:package-up",
+        state_class=SensorStateClass.MEASUREMENT,
         data_path="hwinfo",
         value_fn=lambda data: data.get("availablePkgUpdates"),
         extra_attrs_fn=lambda data: {
