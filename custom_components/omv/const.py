@@ -14,6 +14,11 @@ PLATFORMS = [
 
 DEFAULT_PORT = 80
 DEFAULT_SCAN_INTERVAL = 60
+# Maximum main poll cadence (Issue #102). Raised from 3600 to one day so
+# spindown-friendly setups can outpace the hd-idle standby timeout (e.g.
+# 1800 s) and keep the disks in STANDBY between polls; matches the
+# CONF_SMART_INTERVAL ceiling.
+MAX_SCAN_INTERVAL = 86400
 DEFAULT_SSL = False
 DEFAULT_VERIFY_SSL = True
 # Cached-data fallback grace window (Issue #82): number of consecutive failed
