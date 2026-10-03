@@ -35,6 +35,7 @@ from custom_components.omv.const import (
     CONF_UPDATE_TRACKING_DISABLED,
     DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DOMAIN,
+    MAX_SCAN_INTERVAL,
 )
 from custom_components.omv.exceptions import OMVAuthError, OMVTwoFactorRequiredError
 
@@ -942,6 +943,73 @@ async def test_options_flow_scan_interval_saves_correctly(hass, config_entry) ->
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_SCAN_INTERVAL] == 300
+
+
+def _dummy_inventory():
+    """A runtime stub with empty inventories, so the options flow renders."""
+    return type(
+        "RuntimeCoordinator",
+        (),
+        {
+            "get_live_inventory": lambda self=None: {
+                field: []
+                for field in (
+                    CONF_SELECTED_DISKS,
+                    CONF_SELECTED_FILESYSTEMS,
+                    CONF_SELECTED_SERVICES,
+                    CONF_SELECTED_NETWORK_INTERFACES,
+                    CONF_SELECTED_RAIDS,
+                    CONF_SELECTED_ZFS_POOLS,
+                    CONF_SELECTED_COMPOSE_PROJECTS,
+                    CONF_SELECTED_CONTAINERS,
+                )
+            }
+        },
+    )()
+
+
+@pytest.mark.asyncio
+async def test_options_flow_scan_interval_allows_one_day(hass, config_entry) -> None:
+    """scan_interval accepts up to one day, so spindown setups can outpace the
+    hd-idle standby timeout (Issue #102; ceiling raised from 3600 to 86400).
+
+    The Range is enforced on the schema object, so this is the guard that
+    bites: pre-fix the one-day value raised vol.Invalid (max was 3600).
+    """
+    config_entry.runtime_data = _dummy_inventory()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    # Pre-fix this raised vol.Invalid; post-fix the schema accepts one day (86400 s).
+    assert result["data_schema"]({CONF_SCAN_INTERVAL: 86400})[CONF_SCAN_INTERVAL] == 86400
+
+    # And the value flows through end-to-end to the persisted options.
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_SCAN_INTERVAL: 86400},
+    )
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_SCAN_INTERVAL] == 86400
+
+
+@pytest.mark.asyncio
+async def test_options_flow_scan_interval_rejects_beyond_one_day(hass, config_entry) -> None:
+    """Values above the one-day ceiling stay rejected (Issue #102)."""
+    config_entry.runtime_data = _dummy_inventory()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    with pytest.raises(vol.Invalid):
+        result["data_schema"]({CONF_SCAN_INTERVAL: 86401})
+
+
+def test_scan_interval_constant_is_one_day() -> None:
+    """Lock MAX_SCAN_INTERVAL to one day so a regression to 3600 fails here.
+
+    Guards against the constant drifting back below the spindown timeout
+    (Issue #102); the schema-range tests above drive it end-to-end.
+    """
+    assert MAX_SCAN_INTERVAL == 86400
 
 
 @pytest.mark.asyncio

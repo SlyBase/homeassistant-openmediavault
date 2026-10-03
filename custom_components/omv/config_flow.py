@@ -51,6 +51,7 @@ from .const import (
     DEFAULT_SSL,
     DEFAULT_VERIFY_SSL,
     DOMAIN,
+    MAX_SCAN_INTERVAL,
 )
 from .coordinator import OMVDataUpdateCoordinator
 from .exceptions import OMVAuthError, OMVConnectionError, OMVTwoFactorRequiredError
@@ -381,7 +382,7 @@ class OMVOptionsFlow(OptionsFlow):
                 vol.Optional(
                     CONF_SCAN_INTERVAL,
                     default=self._entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-                ): vol.All(int, vol.Range(min=10, max=3600)),
+                ): vol.All(int, vol.Range(min=10, max=MAX_SCAN_INTERVAL)),
                 vol.Optional(
                     CONF_REBOOT_REPAIR_DISABLED,
                     default=self._entry.options.get(CONF_REBOOT_REPAIR_DISABLED, False),
