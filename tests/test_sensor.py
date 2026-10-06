@@ -412,7 +412,8 @@ async def test_zfs_sensor_uses_pool_state(coordinator) -> None:
     sensor = OMVSensor(coordinator, ZFS_POOL_SENSOR, item_key="tank")
 
     assert sensor.native_value == "ONLINE"
-    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    # The pool attaches to its own logical device, not a member disk (Issue #113).
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:tank")}
 
 
 @pytest.mark.asyncio
@@ -605,11 +606,12 @@ async def test_zfs_pool_extra_sensors_expose_scrub_and_counts(coordinator) -> No
 
 @pytest.mark.asyncio
 async def test_zfs_dataset_sensor_uses_pool_device(coordinator) -> None:
-    """Test dataset sensors expose usage and attach to the pool's disk device."""
+    """Test dataset sensors expose usage and attach to the pool's own device."""
     sensor = OMVSensor(coordinator, ZFS_DATASET_SENSORS[0], item_key="tank/media")
 
     assert sensor.native_value == 420.5
-    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    # Datasets attach to the pool's logical device, never a member disk (Issue #113).
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:tank")}
     assert sensor.extra_state_attributes["pool"] == "tank"
     assert sensor.extra_state_attributes["mountpoint"] == "/srv/tank/media"
     assert sensor.extra_state_attributes["compression"] == "lz4"

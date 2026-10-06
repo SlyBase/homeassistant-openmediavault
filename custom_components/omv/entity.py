@@ -211,6 +211,11 @@ def get_vm_device_identifier(coordinator: OMVDataUpdateCoordinator, vm_key: str)
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:vm:{vm_key}")
 
 
+def get_zfs_pool_device_identifier(coordinator: OMVDataUpdateCoordinator, pool_name: str) -> tuple[str, str]:
+    """Return the stable device registry identifier tuple for a ZFS pool."""
+    return (DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:{pool_name}")
+
+
 def disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
     """Return True if a disk should receive SMART-derived entities."""
     return not (
@@ -300,15 +305,54 @@ def get_filesystem_device_info(
     return get_hub_device_info(coordinator)
 
 
+def get_zfs_pool_device_info(
+    coordinator: OMVDataUpdateCoordinator,
+    pool: dict[str, Any],
+) -> DeviceInfo:
+    """Return device info for a ZFS pool — a logical device distinct from its members.
+
+    A ZFS pool spans a set of member disks, so it gets its own ``DeviceInfo``
+    (analogous to md RAID devices) instead of resolving to one member's
+    physical-disk device (Issue #113). The pool name is the stable key.
+    """
+    pool_name = str(pool.get("name") or "")
+    return DeviceInfo(
+        identifiers={get_zfs_pool_device_identifier(coordinator, pool_name)},
+        via_device_id=_require_device_id(_hub_device_id(coordinator)),
+        name=f"ZFS Pool {pool_name}",
+        manufacturer="OpenMediaVault",
+        model="ZFS Pool",
+        configuration_url=coordinator.api.base_url,
+    )
+
+
 def get_storage_device_info(
     coordinator: OMVDataUpdateCoordinator,
     item: dict[str, Any],
 ) -> DeviceInfo:
-    """Return the most specific storage device info for an item."""
+    """Return the most specific storage device info for an item.
+
+    ZFS pools get their own logical device (Issue #113) — a pool spans a
+    set of member disks, so attributing it to the first member's physical
+    disk would merge all of its entities into that one disk. Every other
+    storage item resolves its ``disk_key`` to the owning disk device.
+    """
+    if _is_zfs_pool_item(item):
+        return get_zfs_pool_device_info(coordinator, item)
     disk_key = str(item.get("disk_key") or "")
     if disk_key and (disk := _get_disk_by_key(coordinator, disk_key)) is not None:
         return get_disk_device_info(coordinator, disk)
     return get_hub_device_info(coordinator)
+
+
+def _is_zfs_pool_item(item: dict[str, Any]) -> bool:
+    """Return whether a normalized storage item is a ZFS pool record.
+
+    Only pool records carry the ``lastscrub`` field; RAID and network
+    collection records do not, so this is a precise discriminator for the
+    shared ``get_storage_device_info`` router (Issue #113).
+    """
+    return "lastscrub" in item
 
 
 def get_zfs_dataset_device_info(

@@ -436,7 +436,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 filesystems,
                 disks,
             )
-            self._apply_storage_metrics(disks, filesystems, zfs_pools)
+            self._apply_storage_metrics(disks, filesystems)
 
             # Dataset/snapshot RPCs only exist with the zfs plugin — gate on
             # pools so installations without ZFS pay no extra RPC round-trips.
@@ -659,7 +659,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             try:
                 total = int(float(project.get("container_total") or 0))
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 total = 0
             label = value if total <= 0 else f"{value} ({total})"
             inventory[CONF_SELECTED_COMPOSE_PROJECTS].append({"value": value, "label": label})
@@ -3160,9 +3160,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         disks: list[dict[str, Any]],
         filesystems: list[dict[str, Any]],
-        zfs_pools: list[dict[str, Any]],
     ) -> None:
-        """Project the most relevant logical storage metrics onto each disk-like device."""
+        """Project filesystem metrics onto each disk-like device.
+
+        ZFS pool metrics are intentionally NOT projected onto a member disk:
+        a pool spans a set of member disks and now has its own logical device
+        (Issue #113), so its storage metrics live on that pool device instead
+        of being merged into one member's physical-disk device.
+        """
         best_by_disk: dict[str, dict[str, Any]] = {}
 
         for filesystem in filesystems:
@@ -3179,30 +3184,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "free_percentage": filesystem.get("free_percentage"),
             }
             self._set_best_storage_candidate(best_by_disk, disk_key, candidate)
-
-        for pool in zfs_pools:
-            disk_key = str(pool.get("disk_key") or "")
-            if not disk_key:
-                continue
-            total_size_gb = self._coerce_float(pool.get("size"))
-            used_size_gb = self._coerce_float(pool.get("alloc"))
-            free_size_gb = self._coerce_float(pool.get("free") or pool.get("available"))
-            if not used_size_gb and total_size_gb and free_size_gb:
-                used_size_gb = round(max(0.0, total_size_gb - free_size_gb), 1)
-            if not free_size_gb and total_size_gb and used_size_gb:
-                free_size_gb = round(max(0.0, total_size_gb - used_size_gb), 1)
-            candidate = {
-                "storage_source": "zfs",
-                "storage_label": pool.get("name"),
-                "total_size_gb": total_size_gb or None,
-                "used_size_gb": used_size_gb or None,
-                "free_size_gb": free_size_gb or None,
-                "used_percentage": self._coerce_float(pool.get("capacity")) or None,
-                "free_percentage": round(max(0.0, 100.0 - self._coerce_float(pool.get("capacity"))), 1)
-                if self._coerce_float(pool.get("capacity"))
-                else None,
-            }
-            self._set_best_storage_candidate(best_by_disk, disk_key, candidate, prefer=True)
 
         for disk in disks:
             disk_key = str(disk.get("disk_key") or "")
