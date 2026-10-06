@@ -1551,7 +1551,9 @@ async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, confi
 
     md_disk = next(disk for disk in data["disk"] if disk["disk_key"] == "md127")
     assert md_disk["israid"] is True
-    assert md_disk["storage_source"] == "zfs"
+    # The pool now has its own device (Issue #113), so the md device reflects its
+    # own ext4 filesystem metrics rather than the pool's projected metrics.
+    assert md_disk["storage_source"] == "filesystem"
     assert md_disk["used_size_gb"] == 100.0
     assert md_disk["free_size_gb"] == 100.0
     assert data["fs"][0]["disk_key"] == "md127"
@@ -1622,6 +1624,58 @@ async def test_zfs_pool_mapping_uses_origin_or_id_device_references(hass, config
     )
 
     assert disk_key == "sdc"
+
+
+@pytest.mark.asyncio
+async def test_zfs_pool_metrics_not_projected_onto_member_disk(hass, config_entry) -> None:
+    """A ZFS pool's metrics must not be projected onto a member disk (Issue #113).
+
+    A pool spans a set of member disks and now has its own logical device, so
+    ``_apply_storage_metrics`` must leave member disks carrying only their own
+    filesystem metrics — the pool's ``storage_label``/``storage_source`` used to
+    be merged into the first member, renaming the physical disk.
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+    )
+
+    disks = [
+        {
+            "disk_key": "sdb",
+            "devicename": "sdb",
+            "devicefile": "/dev/sdb",
+            "canonicaldevicefile": "/dev/sdb",
+            "storage_source": None,
+            "storage_label": None,
+        }
+    ]
+    filesystems = [
+        {
+            "disk_key": "sdb",
+            "label": "data",
+            "mountdir": "/srv/data",
+            "uuid": "fs-1",
+            "size": 500.0,
+            "used": 100.0,
+            "available": 400.0,
+            "percentage": 20.0,
+            "free_percentage": 80.0,
+        }
+    ]
+
+    coordinator._apply_storage_metrics(disks, filesystems)
+
+    disk = disks[0]
+    # The member disk keeps its own filesystem metrics, never the pool's.
+    assert disk["storage_source"] == "filesystem"
+    assert disk["storage_label"] == "data"
 
 
 @pytest.mark.asyncio
