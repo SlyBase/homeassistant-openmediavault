@@ -659,7 +659,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             try:
                 total = int(float(project.get("container_total") or 0))
-            except (TypeError, ValueError):
+            # Multi-exception parens are mandatory in Python 3; ruff's formatter
+            # would strip them to Python-2 syntax, so opt this line out.
+            except (TypeError, ValueError):  # fmt: skip
                 total = 0
             label = value if total <= 0 else f"{value} ({total})"
             inventory[CONF_SELECTED_COMPOSE_PROJECTS].append({"value": value, "label": label})
