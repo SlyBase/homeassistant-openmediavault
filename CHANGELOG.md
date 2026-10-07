@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `DiskMgmt.enumerateDevices` is now cached on the SMART polling interval (`smart_interval`) instead of being fetched on every coordinator cycle. On OMV, this RPC triggers `smartctl` via `omv-engined`, which keeps disks active and prevents HDD spindown (Issue #115). CPU, RAM, temperature and service data continue to update at the normal scan interval; disk inventory refreshes at the longer SMART cadence.
+
 ## [2.8.2] - 2026-09-28
 
 ### Fixed
