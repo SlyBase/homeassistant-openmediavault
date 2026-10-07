@@ -1,14 +1,14 @@
 name: 🐞 Bug Report
 description: Create a report to help us improve
 title: "[Bug]: "
-labels: ["bug"]
+type: bug
 assignees:
   - slydlake
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please fill out the fields below as completely as possible.
+        Thanks for taking the time to report a bug! Please fill out the fields below as completely as possible. Tagging @slydlake for triage and follow-up.
 
   - type: textarea
     id: description
