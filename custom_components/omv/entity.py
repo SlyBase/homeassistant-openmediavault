@@ -216,6 +216,11 @@ def get_zfs_pool_device_identifier(coordinator: OMVDataUpdateCoordinator, pool_n
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:{pool_name}")
 
 
+def get_zfs_dataset_device_identifier(coordinator: OMVDataUpdateCoordinator, dataset_key: str) -> tuple[str, str]:
+    """Return the stable device registry identifier tuple for a ZFS dataset."""
+    return (DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_dataset:{dataset_key}")
+
+
 def disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
     """Return True if a disk should receive SMART-derived entities."""
     return not (
@@ -361,16 +366,28 @@ def get_zfs_dataset_device_info(
 ) -> DeviceInfo:
     """Return device info for a ZFS dataset entity.
 
-    Datasets attach to the device of their owning pool (looked up by the
-    dataset's ``pool`` field in ``coordinator.data["zfs"]``); when the pool
-    record is gone the hub device is used as fallback.
+    A dataset gets its own logical device carrying its full path
+    (e.g. ``pool1/containers/immich``), so the pool → dataset →
+    sub-dataset hierarchy stays visible and a dataset is never
+    mislabelled as a pool (Issue #113). The device nests under its
+    owning pool via ``via_device_id``; when the pool record is gone
+    it falls back to the hub device.
     """
+    dataset_key = str(dataset.get("dataset_key") or dataset.get("path") or "")
     pool_name = str(dataset.get("pool") or "")
-    if pool_name:
-        for pool in coordinator.data.get("zfs", []):
-            if str(pool.get("name") or "") == pool_name:
-                return get_storage_device_info(coordinator, pool)
-    return get_hub_device_info(coordinator)
+    via_device_id = _require_device_id(
+        coordinator.zfs_pool_device_ids.get(pool_name, _hub_device_id(coordinator))
+        if pool_name
+        else _hub_device_id(coordinator)
+    )
+    return DeviceInfo(
+        identifiers={get_zfs_dataset_device_identifier(coordinator, dataset_key)},
+        via_device_id=via_device_id,
+        name=f"ZFS Dataset {dataset_key}",
+        manufacturer="OpenMediaVault",
+        model="ZFS Dataset",
+        configuration_url=coordinator.api.base_url,
+    )
 
 
 def get_compose_project_device_info(

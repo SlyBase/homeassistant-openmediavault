@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- ZFS datasets now get their own logical device carrying their full path (e.g. `pool1/containers/immich`), nested under their owning pool via `via_device_id`, so the pool → dataset → sub-dataset hierarchy stays visible and a dataset is never mislabelled as a pool (Issue #113, PR #114).
+
+### Fixed
+
+- ZFS pools now get their own logical device (`zfs_pool:<name>`) instead of being merged into the first member disk's physical-disk device: pool sensors, scrub/remove buttons, and datasets no longer land on a member disk, and pool metrics are no longer projected onto the member disk's name (Issue #113, PR #114).
+- Restored the valid parenthesized form of `except (TypeError, ValueError)` in `coordinator.py` and `binary_sensor_types.py` (a Python-2-only syntax that was a hard `SyntaxError` in Python 3 and broke the `test` CI job), with `# fmt: skip` keeping `ruff format` green (PR #114).
+
 ## [2.8.2] - 2026-09-28
 
 ### Fixed

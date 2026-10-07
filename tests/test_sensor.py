@@ -605,13 +605,16 @@ async def test_zfs_pool_extra_sensors_expose_scrub_and_counts(coordinator) -> No
 
 
 @pytest.mark.asyncio
-async def test_zfs_dataset_sensor_uses_pool_device(coordinator) -> None:
-    """Test dataset sensors expose usage and attach to the pool's own device."""
+async def test_zfs_dataset_sensor_gets_own_device(coordinator) -> None:
+    """Test dataset sensors get their own device with the full path (Issue #113)."""
     sensor = OMVSensor(coordinator, ZFS_DATASET_SENSORS[0], item_key="tank/media")
 
     assert sensor.native_value == 420.5
-    # Datasets attach to the pool's logical device, never a member disk (Issue #113).
-    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:tank")}
+    # Datasets get their own logical device with the full path as name.
+    assert sensor.device_info["identifiers"] == {
+        (DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_dataset:tank/media")
+    }
+    assert sensor.device_info["name"] == "ZFS Dataset tank/media"
     assert sensor.extra_state_attributes["pool"] == "tank"
     assert sensor.extra_state_attributes["mountpoint"] == "/srv/tank/media"
     assert sensor.extra_state_attributes["compression"] == "lz4"
