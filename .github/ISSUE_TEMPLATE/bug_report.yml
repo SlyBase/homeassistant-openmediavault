@@ -8,7 +8,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please fill out the fields below as completely as possible.
+        Thanks for taking the time to report a bug! Please fill out the fields below as completely as possible. Tagging @slydlake for triage and follow-up.
 
   - type: textarea
     id: description
