@@ -168,6 +168,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # is intentionally outside _async_update_data/filter_data_by_selection.
         self.hub_device_id: str | None = None
         self.project_device_ids: dict[str, str] = {}
+        self.zfs_pool_device_ids: dict[str, str] = {}
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""
