@@ -429,6 +429,114 @@ async def test_coordinator_uses_mdmgmt_inventory_for_unmounted_md_arrays(hass, c
 
 
 @pytest.mark.asyncio
+async def test_coordinator_suppresses_pool_root_dataset(hass, config_entry) -> None:
+    """Issue #113: a pool's root dataset (path == pool name) is not a dataset.
+
+    ``zfs.listDatasets`` returns the pool's own root dataset as a
+    ``Filesystem`` record whose ``path`` carries no ``/`` (e.g. ``pool1``).
+    That record is the pool itself, not a dataset under it, so it must be
+    dropped — otherwise a duplicate ``ZFS Dataset pool1`` device appears
+    next to the ``ZFS Pool pool1`` device. Real sub-datasets (with a slash)
+    are kept.
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.30:80"
+
+    async def async_call(service, method, params=None, **kwargs):
+        responses = {
+            ("System", "getInformation"): {
+                "hostname": "omv8",
+                "version": "8.5.8-1",
+                "cpuModelName": "Intel(R) Core(TM)",
+                "kernel": "Linux 6.1.0-omv",
+                "cpuUtilization": 12.5,
+                "memTotal": 100,
+                "memUsed": 25,
+            },
+            ("CpuTemp", "get"): {},
+            ("DiskMgmt", "enumerateDevices"): [
+                {"devicename": "sdb", "devicefile": "/dev/sdb", "israid": False, "overallstatus": "PASSED"},
+                {"devicename": "sdc", "devicefile": "/dev/sdc", "israid": False, "overallstatus": "PASSED"},
+            ],
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): [],
+            ("Network", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): [],
+            ("zfs", "listPools"): [
+                {
+                    "name": "pool1",
+                    "state": "ONLINE",
+                    "mountpoint": "/pool1",
+                    "size": "2000000000000",
+                    "alloc": "1000000000000",
+                    "free": "1000000000000",
+                    "capacity": 50.0,
+                },
+            ],
+            ("Kvm", "getVmList"): {"data": []},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+            ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
+            ("zfs", "listDatasets"): [
+                {
+                    "name": "pool1",
+                    "path": "pool1",
+                    "type": "Filesystem",
+                    "used": "500000000000",
+                    "available": "1500000000000",
+                    "mountpoint": "/pool1",
+                },
+                {
+                    "name": "pool1/containers",
+                    "path": "pool1/containers",
+                    "type": "Filesystem",
+                    "used": "420000000000",
+                    "available": "579000000000",
+                    "mountpoint": "/pool1/containers",
+                },
+                {
+                    "name": "pool1/containers/immich",
+                    "path": "pool1/containers/immich",
+                    "type": "Filesystem",
+                    "used": "120000000000",
+                    "available": "579000000000",
+                    "mountpoint": "/pool1/containers/immich",
+                },
+                {"name": "pool1@first", "path": "pool1@first", "type": "Snapshot"},
+            ],
+            ("zfs", "getAllSnapshots"): [
+                {"name": "pool1@first", "path": "pool1@first", "type": "Snapshot"},
+            ],
+            ("MdMgmt", "enumerateDevices"): [],
+        }
+        return responses[(service, method)]
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    await coordinator.async_init(await async_call("System", "getInformation"))
+    data = await coordinator._async_update_data()
+
+    dataset_paths = [d["path"] for d in data["zfs_datasets"]]
+    # The pool's root dataset (path "pool1", no slash) is suppressed.
+    assert "pool1" not in dataset_paths
+    # Real sub-datasets (with a slash) are kept.
+    assert "pool1/containers" in dataset_paths
+    assert "pool1/containers/immich" in dataset_paths
+    # Pool-level capacity fields survive normalization on the pool record.
+    pool = data["zfs"][0]
+    assert pool["name"] == "pool1"
+    assert pool["size"] is not None
+    assert pool["alloc"] is not None
+
+
+@pytest.mark.asyncio
 async def test_coordinator_reports_degraded_md_array_on_omv8(hass, config_entry) -> None:
     """Issue #93: a degraded md array on OMV 8 must not report 'clean'.
 
@@ -1496,15 +1604,71 @@ async def test_coordinator_filters_omv8_pool_tree_levels_to_top_level_pools(hass
     # Mirrors bafforosso's diagnostics: 1 pool + 8 datasets, all with lastscrub,
     # all mapped to disk_key=sdb via parentdevicefile (Issue #113).
     raw_pool_records = [
-        {"name": "pool1", "mountpoint": "/mnt/pool1", "size": 23983.1e9, "alloc": 15294.0e9, "free": 8689.1e9, "capacity": 64.0},
+        {
+            "name": "pool1",
+            "mountpoint": "/mnt/pool1",
+            "size": 23983.1e9,
+            "alloc": 15294.0e9,
+            "free": 8689.1e9,
+            "capacity": 64.0,
+        },
         {"name": "pool1", "mountpoint": "/mnt/pool1", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "backups", "mountpoint": "/mnt/pool1/backups", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "bafforosso", "mountpoint": "/mnt/pool1/bafforosso", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "containers", "mountpoint": "/mnt/pool1/containers", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "immich", "mountpoint": "/mnt/pool1/containers/immich", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "paperless-ngx", "mountpoint": "/mnt/pool1/containers/paperless-ngx", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "proxmox", "mountpoint": "/mnt/pool1/proxmox", "size": None, "alloc": None, "free": None, "capacity": None},
-        {"name": "share", "mountpoint": "/mnt/pool1/share", "size": None, "alloc": None, "free": None, "capacity": None},
+        {
+            "name": "backups",
+            "mountpoint": "/mnt/pool1/backups",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
+        {
+            "name": "bafforosso",
+            "mountpoint": "/mnt/pool1/bafforosso",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
+        {
+            "name": "containers",
+            "mountpoint": "/mnt/pool1/containers",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
+        {
+            "name": "immich",
+            "mountpoint": "/mnt/pool1/containers/immich",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
+        {
+            "name": "paperless-ngx",
+            "mountpoint": "/mnt/pool1/containers/paperless-ngx",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
+        {
+            "name": "proxmox",
+            "mountpoint": "/mnt/pool1/proxmox",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
+        {
+            "name": "share",
+            "mountpoint": "/mnt/pool1/share",
+            "size": None,
+            "alloc": None,
+            "free": None,
+            "capacity": None,
+        },
     ]
 
     disks = [
@@ -1551,8 +1715,28 @@ async def test_zfs_filesystems_excluded_from_disk_storage_metrics(hass, config_e
         {"disk_key": "sdb", "devicename": "sdb", "storage_label": None, "used_size_gb": None, "storage_source": None},
     ]
     filesystems = [
-        {"type": "zfs", "disk_key": "sdb", "label": "pool1", "mountdir": "/mnt/pool1", "size": 23983.1, "used": 15294.0, "available": 8689.1, "percentage": 64.0, "free_percentage": 36.0},
-        {"type": "ext4", "disk_key": "sdb", "label": "/boot", "mountdir": "/boot", "size": 8.0, "used": 2.0, "available": 6.0, "percentage": 25.0, "free_percentage": 75.0},
+        {
+            "type": "zfs",
+            "disk_key": "sdb",
+            "label": "pool1",
+            "mountdir": "/mnt/pool1",
+            "size": 23983.1,
+            "used": 15294.0,
+            "available": 8689.1,
+            "percentage": 64.0,
+            "free_percentage": 36.0,
+        },
+        {
+            "type": "ext4",
+            "disk_key": "sdb",
+            "label": "/boot",
+            "mountdir": "/boot",
+            "size": 8.0,
+            "used": 2.0,
+            "available": 6.0,
+            "percentage": 25.0,
+            "free_percentage": 75.0,
+        },
     ]
 
     coordinator._apply_storage_metrics(disks, filesystems)

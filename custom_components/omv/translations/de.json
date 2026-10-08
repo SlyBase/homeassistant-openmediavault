@@ -220,6 +220,21 @@
       "zfs_pool_snapshot_count": {
         "name": "{resource} Snapshots"
       },
+      "zfs_pool_total_size": {
+        "name": "{resource} Gesamtgröße"
+      },
+      "zfs_pool_used_size": {
+        "name": "{resource} belegte Größe"
+      },
+      "zfs_pool_free_size": {
+        "name": "{resource} freie Größe"
+      },
+      "zfs_pool_used_percent": {
+        "name": "{resource} belegt (%)"
+      },
+      "zfs_pool_free_percent": {
+        "name": "{resource} frei (%)"
+      },
       "disk_smart_status": {
         "name": "SMART Status"
       },
@@ -240,6 +255,12 @@
       },
       "zfs_dataset_used": {
         "name": "{resource} belegt"
+      },
+      "zfs_dataset_free": {
+        "name": "{resource} frei"
+      },
+      "zfs_dataset_total": {
+        "name": "{resource} gesamt"
       }
     },
     "binary_sensor": {

@@ -2062,10 +2062,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not mp:
                 filtered.append(pool)
                 continue
-            has_parent = any(
-                other != mp and mp.startswith(other + "/")
-                for other in mountpoints
-            )
+            has_parent = any(other != mp and mp.startswith(other + "/") for other in mountpoints)
             if not has_parent:
                 filtered.append(pool)
         return filtered
@@ -2078,6 +2075,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         full dataset ``path`` (e.g. ``tank/media``), never the OMV8 tree
         ``id`` (``root/pool-…`` style), which differs between OMV 7 and 8.
 
+        A record whose path contains no ``/`` is the pool's root dataset
+        (e.g. ``pool1``) — it is the pool itself, not a dataset under it,
+        and is suppressed to avoid creating a duplicate device (Issue #113).
+
         Args:
             response: Raw response from ``zfs.listDatasets``. The plugin may
                 be absent, in which case ``_fetch_optional`` yields an empty
@@ -2086,8 +2087,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             List of dataset dicts with ``dataset_key`` (= full path),
             ``name``, ``path``, ``pool`` (first path segment), ``used_gb``/
-            ``available_gb`` (GB), ``mountpoint``, ``type``, ``compression``
-            and ``encrypted``.
+            ``available_gb``/``total_gb`` (GB), ``mountpoint``, ``type``,
+            ``compression`` and ``encrypted``.
         """
         datasets: list[dict[str, Any]] = []
         for record in self._records_from_response(response):
@@ -2097,14 +2098,22 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             path = str(record.get("path") or record.get("name") or "")
             if not path:
                 continue
+            # The pool's own root dataset (path == pool name, no slash) is
+            # not a dataset under the pool — suppress it (Issue #113).
+            if "/" not in path:
+                continue
+            used_gb = self._coerce_storage_gb(record.get("used"))
+            available_gb = self._coerce_storage_gb(record.get("available"))
+            total_gb = round(used_gb + available_gb, 1) if used_gb is not None and available_gb is not None else None
             datasets.append(
                 {
                     "dataset_key": path,
                     "name": str(record.get("name") or path),
                     "path": path,
                     "pool": path.split("/")[0],
-                    "used_gb": self._coerce_storage_gb(record.get("used")),
-                    "available_gb": self._coerce_storage_gb(record.get("available")),
+                    "used_gb": used_gb,
+                    "available_gb": available_gb,
+                    "total_gb": total_gb,
                     "mountpoint": str(record.get("mountpoint") or ""),
                     "type": dataset_type,
                     "compression": str(record.get("compression") or ""),
