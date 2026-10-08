@@ -2050,7 +2050,25 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             )
             pools.append(pool)
-        return pools
+
+        # OMV 8's listPools returns one record per tree level (pool + all
+        # datasets), not just top-level pools (Issue #113). A record is a
+        # true pool if its mountpoint is NOT a strict subpath of any other
+        # record's mountpoint — i.e. no other record is its parent.
+        mountpoints = [p["mountpoint"].rstrip("/") for p in pools if p.get("mountpoint")]
+        filtered: list[dict[str, Any]] = []
+        for pool in pools:
+            mp = pool.get("mountpoint", "").rstrip("/")
+            if not mp:
+                filtered.append(pool)
+                continue
+            has_parent = any(
+                other != mp and mp.startswith(other + "/")
+                for other in mountpoints
+            )
+            if not has_parent:
+                filtered.append(pool)
+        return filtered
 
     def _normalize_zfs_datasets(self, response: Any) -> list[dict[str, Any]]:
         """Normalize zfs.listDatasets records into stable dataset entries.
@@ -3174,6 +3192,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         best_by_disk: dict[str, dict[str, Any]] = {}
 
         for filesystem in filesystems:
+            # ZFS filesystems belong to pool/dataset devices (Issue #113),
+            # not to a member disk — skip them so their metrics and labels
+            # are not projected onto the first member disk.
+            if filesystem.get("type") == "zfs":
+                continue
             disk_key = str(filesystem.get("disk_key") or "")
             if not disk_key:
                 continue

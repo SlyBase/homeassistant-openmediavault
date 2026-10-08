@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- ZFS pool/dataset device grouping reworked (Issue #113, follow-up to PR #114): OMV 8's `zfs.listPools` returns one record per tree level (pool + all datasets), so the coordinator now filters out dataset records from `data["zfs"]` — only true top-level pools get their own logical device (scrub button, pool binary sensors), eliminating the duplicate "ZFS Pool <short name>" device per dataset. ZFS filesystem records from `enumerateFilesystems` are excluded from disk storage-metric projection and filesystem sensors, so pool labels and capacity metrics no longer leak onto the first member disk.
 - ZFS pools now get their own logical device (`zfs_pool:<name>`) instead of being merged into the first member disk's physical-disk device: pool sensors, scrub/remove buttons, and datasets no longer land on a member disk, and pool metrics are no longer projected onto the member disk's name (Issue #113, PR #114).
 - Restored the valid parenthesized form of `except (TypeError, ValueError)` in `coordinator.py` and `binary_sensor_types.py` (a Python-2-only syntax that was a hard `SyntaxError` in Python 3 and broke the `test` CI job), with `# fmt: skip` keeping `ruff format` green (PR #114).
 

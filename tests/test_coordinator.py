@@ -1480,6 +1480,90 @@ async def test_coordinator_maps_omv8_style_zfs_pool_to_disk(hass, config_entry) 
 
 
 @pytest.mark.asyncio
+async def test_coordinator_filters_omv8_pool_tree_levels_to_top_level_pools(hass, config_entry) -> None:
+    """OMV8 listPools returns one record per tree level; only true pools remain (Issue #113)."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+    )
+
+    # Mirrors bafforosso's diagnostics: 1 pool + 8 datasets, all with lastscrub,
+    # all mapped to disk_key=sdb via parentdevicefile (Issue #113).
+    raw_pool_records = [
+        {"name": "pool1", "mountpoint": "/mnt/pool1", "size": 23983.1e9, "alloc": 15294.0e9, "free": 8689.1e9, "capacity": 64.0},
+        {"name": "pool1", "mountpoint": "/mnt/pool1", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "backups", "mountpoint": "/mnt/pool1/backups", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "bafforosso", "mountpoint": "/mnt/pool1/bafforosso", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "containers", "mountpoint": "/mnt/pool1/containers", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "immich", "mountpoint": "/mnt/pool1/containers/immich", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "paperless-ngx", "mountpoint": "/mnt/pool1/containers/paperless-ngx", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "proxmox", "mountpoint": "/mnt/pool1/proxmox", "size": None, "alloc": None, "free": None, "capacity": None},
+        {"name": "share", "mountpoint": "/mnt/pool1/share", "size": None, "alloc": None, "free": None, "capacity": None},
+    ]
+
+    disks = [
+        {"disk_key": "sdb", "devicename": "sdb", "devicefile": "/dev/sdb", "canonicaldevicefile": "/dev/sdb"},
+        {"disk_key": "sdc", "devicename": "sdc", "devicefile": "/dev/sdc", "canonicaldevicefile": "/dev/sdc"},
+    ]
+    filesystems = [
+        {"type": "zfs", "mountdir": "/mnt/pool1", "disk_key": "sdb", "label": "pool1"},
+    ]
+
+    pools = coordinator._normalize_zfs_pools(raw_pool_records, filesystems, disks)
+
+    # No dataset record may survive: every remaining pool's mountpoint must
+    # not be a strict subpath of another record (the dataset filter).
+    surviving_mountpoints = {p["mountpoint"].rstrip("/") for p in pools}
+    for mp in surviving_mountpoints:
+        assert not any(
+            other != mp and mp.startswith(other + "/")
+            for other in {p["mountpoint"].rstrip("/") for p in raw_pool_records}
+        ), f"dataset-level record survived: {mp}"
+
+    # The top-level pool(s) survive; dataset names are gone.
+    assert "pool1" in {p["name"] for p in pools}
+    assert len(pools) >= 1
+    dataset_names = {"backups", "bafforosso", "containers", "immich", "paperless-ngx", "proxmox", "share"}
+    assert not dataset_names & {p["name"] for p in pools}
+
+
+@pytest.mark.asyncio
+async def test_zfs_filesystems_excluded_from_disk_storage_metrics(hass, config_entry) -> None:
+    """ZFS filesystems must not project storage metrics/labels onto a member disk (Issue #113)."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(
+        hass,
+        config_entry,
+        api,
+        scan_interval=60,
+    )
+
+    disks = [
+        {"disk_key": "sdb", "devicename": "sdb", "storage_label": None, "used_size_gb": None, "storage_source": None},
+    ]
+    filesystems = [
+        {"type": "zfs", "disk_key": "sdb", "label": "pool1", "mountdir": "/mnt/pool1", "size": 23983.1, "used": 15294.0, "available": 8689.1, "percentage": 64.0, "free_percentage": 36.0},
+        {"type": "ext4", "disk_key": "sdb", "label": "/boot", "mountdir": "/boot", "size": 8.0, "used": 2.0, "available": 6.0, "percentage": 25.0, "free_percentage": 75.0},
+    ]
+
+    coordinator._apply_storage_metrics(disks, filesystems)
+
+    # The ZFS filesystem is skipped; the ext4 /boot filesystem wins.
+    assert disks[0]["storage_source"] == "filesystem"
+    assert disks[0]["storage_label"] == "/boot"
+    assert disks[0]["used_size_gb"] == 2.0
+
+
+@pytest.mark.asyncio
 async def test_coordinator_creates_synthetic_md_devices_and_maps_zfs(hass, config_entry) -> None:
     """Test md arrays are synthesized from filesystems and reused by RAID/ZFS mapping."""
     config_entry.add_to_hass(hass)
