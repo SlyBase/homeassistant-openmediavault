@@ -412,7 +412,58 @@ async def test_zfs_sensor_uses_pool_state(coordinator) -> None:
     sensor = OMVSensor(coordinator, ZFS_POOL_SENSOR, item_key="tank")
 
     assert sensor.native_value == "ONLINE"
-    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    # The pool attaches to its own logical device, not a member disk (Issue #113).
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:tank")}
+
+
+@pytest.mark.asyncio
+async def test_zfs_pool_capacity_sensors(coordinator) -> None:
+    """Issue #113: pool devices expose dedicated capacity sensors.
+
+    beta.6 removed ZFS filesystem metrics from member disks without
+    relocating them onto the pool device — the capacity values were only
+    present in extra_attrs, not as first-class sensors. These tests pin
+    the restored pool-level capacity sensors to the pool's own device.
+    """
+    from custom_components.omv.sensor_types import ZFS_POOL_EXTRA_SENSORS
+
+    by_key = {d.key: d for d in ZFS_POOL_EXTRA_SENSORS}
+
+    total = OMVSensor(coordinator, by_key["zfs_pool_total_size"], item_key="tank")
+    used_size = OMVSensor(coordinator, by_key["zfs_pool_used_size"], item_key="tank")
+    free_size = OMVSensor(coordinator, by_key["zfs_pool_free_size"], item_key="tank")
+    used_pct = OMVSensor(coordinator, by_key["zfs_pool_used_percent"], item_key="tank")
+    free_pct = OMVSensor(coordinator, by_key["zfs_pool_free_percent"], item_key="tank")
+
+    assert total.native_value == 2000.4
+    assert used_size.native_value == 1000.2
+    assert free_size.native_value == 1000.2
+    assert used_pct.native_value == 50.0
+    assert free_pct.native_value == 50.0
+    # All capacity sensors attach to the pool's own logical device.
+    expected = {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:tank")}
+    for sensor in (total, used_size, free_size, used_pct, free_pct):
+        assert sensor.device_info["identifiers"] == expected
+
+
+@pytest.mark.asyncio
+async def test_zfs_dataset_capacity_sensors(coordinator) -> None:
+    """Issue #113: dataset devices expose used/free/total size sensors."""
+    from custom_components.omv.sensor_types import ZFS_DATASET_SENSORS
+
+    by_key = {d.key: d for d in ZFS_DATASET_SENSORS}
+
+    used = OMVSensor(coordinator, by_key["zfs_dataset_used"], item_key="tank/media")
+    free = OMVSensor(coordinator, by_key["zfs_dataset_free"], item_key="tank/media")
+    total = OMVSensor(coordinator, by_key["zfs_dataset_total"], item_key="tank/media")
+
+    assert used.native_value == 420.5
+    assert free.native_value == 579.5
+    assert total.native_value == 1000.0
+    # Dataset sensors attach to the dataset's own logical device.
+    expected = {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_dataset:tank/media")}
+    for sensor in (used, free, total):
+        assert sensor.device_info["identifiers"] == expected
 
 
 @pytest.mark.asyncio
@@ -604,12 +655,16 @@ async def test_zfs_pool_extra_sensors_expose_scrub_and_counts(coordinator) -> No
 
 
 @pytest.mark.asyncio
-async def test_zfs_dataset_sensor_uses_pool_device(coordinator) -> None:
-    """Test dataset sensors expose usage and attach to the pool's disk device."""
+async def test_zfs_dataset_sensor_gets_own_device(coordinator) -> None:
+    """Test dataset sensors get their own device with the full path (Issue #113)."""
     sensor = OMVSensor(coordinator, ZFS_DATASET_SENSORS[0], item_key="tank/media")
 
     assert sensor.native_value == 420.5
-    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    # Datasets get their own logical device with the full path as name.
+    assert sensor.device_info["identifiers"] == {
+        (DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_dataset:tank/media")
+    }
+    assert sensor.device_info["name"] == "ZFS Dataset tank/media"
     assert sensor.extra_state_attributes["pool"] == "tank"
     assert sensor.extra_state_attributes["mountpoint"] == "/srv/tank/media"
     assert sensor.extra_state_attributes["compression"] == "lz4"

@@ -168,6 +168,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # is intentionally outside _async_update_data/filter_data_by_selection.
         self.hub_device_id: str | None = None
         self.project_device_ids: dict[str, str] = {}
+        self.zfs_pool_device_ids: dict[str, str] = {}
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""
@@ -436,7 +437,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 filesystems,
                 disks,
             )
-            self._apply_storage_metrics(disks, filesystems, zfs_pools)
+            self._apply_storage_metrics(disks, filesystems)
 
             # Dataset/snapshot RPCs only exist with the zfs plugin — gate on
             # pools so installations without ZFS pay no extra RPC round-trips.
@@ -659,7 +660,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
             try:
                 total = int(float(project.get("container_total") or 0))
-            except TypeError, ValueError:
+            # Multi-exception parens are mandatory in Python 3; ruff's formatter
+            # would strip them to Python-2 syntax, so opt this line out.
+            except (TypeError, ValueError):  # fmt: skip
                 total = 0
             label = value if total <= 0 else f"{value} ({total})"
             inventory[CONF_SELECTED_COMPOSE_PROJECTS].append({"value": value, "label": label})
@@ -2047,7 +2050,22 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 }
             )
             pools.append(pool)
-        return pools
+
+        # OMV 8's listPools returns one record per tree level (pool + all
+        # datasets), not just top-level pools (Issue #113). A record is a
+        # true pool if its mountpoint is NOT a strict subpath of any other
+        # record's mountpoint — i.e. no other record is its parent.
+        mountpoints = [p["mountpoint"].rstrip("/") for p in pools if p.get("mountpoint")]
+        filtered: list[dict[str, Any]] = []
+        for pool in pools:
+            mp = pool.get("mountpoint", "").rstrip("/")
+            if not mp:
+                filtered.append(pool)
+                continue
+            has_parent = any(other != mp and mp.startswith(other + "/") for other in mountpoints)
+            if not has_parent:
+                filtered.append(pool)
+        return filtered
 
     def _normalize_zfs_datasets(self, response: Any) -> list[dict[str, Any]]:
         """Normalize zfs.listDatasets records into stable dataset entries.
@@ -2057,6 +2075,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         full dataset ``path`` (e.g. ``tank/media``), never the OMV8 tree
         ``id`` (``root/pool-…`` style), which differs between OMV 7 and 8.
 
+        A record whose path contains no ``/`` is the pool's root dataset
+        (e.g. ``pool1``) — it is the pool itself, not a dataset under it,
+        and is suppressed to avoid creating a duplicate device (Issue #113).
+
         Args:
             response: Raw response from ``zfs.listDatasets``. The plugin may
                 be absent, in which case ``_fetch_optional`` yields an empty
@@ -2065,8 +2087,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Returns:
             List of dataset dicts with ``dataset_key`` (= full path),
             ``name``, ``path``, ``pool`` (first path segment), ``used_gb``/
-            ``available_gb`` (GB), ``mountpoint``, ``type``, ``compression``
-            and ``encrypted``.
+            ``available_gb``/``total_gb`` (GB), ``mountpoint``, ``type``,
+            ``compression`` and ``encrypted``.
         """
         datasets: list[dict[str, Any]] = []
         for record in self._records_from_response(response):
@@ -2076,14 +2098,22 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             path = str(record.get("path") or record.get("name") or "")
             if not path:
                 continue
+            # The pool's own root dataset (path == pool name, no slash) is
+            # not a dataset under the pool — suppress it (Issue #113).
+            if "/" not in path:
+                continue
+            used_gb = self._coerce_storage_gb(record.get("used"))
+            available_gb = self._coerce_storage_gb(record.get("available"))
+            total_gb = round(used_gb + available_gb, 1) if used_gb is not None and available_gb is not None else None
             datasets.append(
                 {
                     "dataset_key": path,
                     "name": str(record.get("name") or path),
                     "path": path,
                     "pool": path.split("/")[0],
-                    "used_gb": self._coerce_storage_gb(record.get("used")),
-                    "available_gb": self._coerce_storage_gb(record.get("available")),
+                    "used_gb": used_gb,
+                    "available_gb": available_gb,
+                    "total_gb": total_gb,
                     "mountpoint": str(record.get("mountpoint") or ""),
                     "type": dataset_type,
                     "compression": str(record.get("compression") or ""),
@@ -3160,12 +3190,22 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self,
         disks: list[dict[str, Any]],
         filesystems: list[dict[str, Any]],
-        zfs_pools: list[dict[str, Any]],
     ) -> None:
-        """Project the most relevant logical storage metrics onto each disk-like device."""
+        """Project filesystem metrics onto each disk-like device.
+
+        ZFS pool metrics are intentionally NOT projected onto a member disk:
+        a pool spans a set of member disks and now has its own logical device
+        (Issue #113), so its storage metrics live on that pool device instead
+        of being merged into one member's physical-disk device.
+        """
         best_by_disk: dict[str, dict[str, Any]] = {}
 
         for filesystem in filesystems:
+            # ZFS filesystems belong to pool/dataset devices (Issue #113),
+            # not to a member disk — skip them so their metrics and labels
+            # are not projected onto the first member disk.
+            if filesystem.get("type") == "zfs":
+                continue
             disk_key = str(filesystem.get("disk_key") or "")
             if not disk_key:
                 continue
@@ -3179,30 +3219,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 "free_percentage": filesystem.get("free_percentage"),
             }
             self._set_best_storage_candidate(best_by_disk, disk_key, candidate)
-
-        for pool in zfs_pools:
-            disk_key = str(pool.get("disk_key") or "")
-            if not disk_key:
-                continue
-            total_size_gb = self._coerce_float(pool.get("size"))
-            used_size_gb = self._coerce_float(pool.get("alloc"))
-            free_size_gb = self._coerce_float(pool.get("free") or pool.get("available"))
-            if not used_size_gb and total_size_gb and free_size_gb:
-                used_size_gb = round(max(0.0, total_size_gb - free_size_gb), 1)
-            if not free_size_gb and total_size_gb and used_size_gb:
-                free_size_gb = round(max(0.0, total_size_gb - used_size_gb), 1)
-            candidate = {
-                "storage_source": "zfs",
-                "storage_label": pool.get("name"),
-                "total_size_gb": total_size_gb or None,
-                "used_size_gb": used_size_gb or None,
-                "free_size_gb": free_size_gb or None,
-                "used_percentage": self._coerce_float(pool.get("capacity")) or None,
-                "free_percentage": round(max(0.0, 100.0 - self._coerce_float(pool.get("capacity"))), 1)
-                if self._coerce_float(pool.get("capacity"))
-                else None,
-            }
-            self._set_best_storage_candidate(best_by_disk, disk_key, candidate, prefer=True)
 
         for disk in disks:
             disk_key = str(disk.get("disk_key") or "")

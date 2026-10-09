@@ -170,6 +170,21 @@
       "zfs_pool_snapshot_count": {
         "name": "{resource} ögonblicksbilder"
       },
+      "zfs_pool_total_size": {
+        "name": "{resource} total storlek"
+      },
+      "zfs_pool_used_size": {
+        "name": "{resource} använd storlek"
+      },
+      "zfs_pool_free_size": {
+        "name": "{resource} fri storlek"
+      },
+      "zfs_pool_used_percent": {
+        "name": "{resource} användt %"
+      },
+      "zfs_pool_free_percent": {
+        "name": "{resource} fritt %"
+      },
       "disk_smart_status": {
         "name": "SMART-status"
       },
@@ -186,7 +201,13 @@
         "name": "UPS-belastning"
       },
       "zfs_dataset_used": {
-        "name": "{resource} använt"
+        "name": "{resource} använd storlek"
+      },
+      "zfs_dataset_free": {
+        "name": "{resource} fri storlek"
+      },
+      "zfs_dataset_total": {
+        "name": "{resource} total storlek"
       }
     },
     "binary_sensor": {
