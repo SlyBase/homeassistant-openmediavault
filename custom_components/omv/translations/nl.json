@@ -201,13 +201,13 @@
         "name": "UPS-belasting"
       },
       "zfs_dataset_used": {
-        "name": "{resource} gebruikt"
+        "name": "{resource} gebruikte grootte"
       },
       "zfs_dataset_free": {
-        "name": "{resource} vrij"
+        "name": "{resource} vrije grootte"
       },
       "zfs_dataset_total": {
-        "name": "{resource} totaal"
+        "name": "{resource} totale grootte"
       }
     },
     "binary_sensor": {

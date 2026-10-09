@@ -254,13 +254,13 @@
         "name": "UPS load"
       },
       "zfs_dataset_used": {
-        "name": "{resource} used"
+        "name": "{resource} used size"
       },
       "zfs_dataset_free": {
-        "name": "{resource} free"
+        "name": "{resource} free size"
       },
       "zfs_dataset_total": {
-        "name": "{resource} total"
+        "name": "{resource} total size"
       }
     },
     "binary_sensor": {

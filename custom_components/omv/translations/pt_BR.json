@@ -201,13 +201,13 @@
         "name": "Carga do nobreak"
       },
       "zfs_dataset_used": {
-        "name": "{resource} usado"
+        "name": "{resource} tamanho usado"
       },
       "zfs_dataset_free": {
-        "name": "{resource} livre"
+        "name": "{resource} tamanho livre"
       },
       "zfs_dataset_total": {
-        "name": "{resource} total"
+        "name": "{resource} tamanho total"
       }
     },
     "binary_sensor": {

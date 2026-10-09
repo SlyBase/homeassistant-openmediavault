@@ -254,13 +254,13 @@
         "name": "USV-Last"
       },
       "zfs_dataset_used": {
-        "name": "{resource} belegt"
+        "name": "{resource} belegte Größe"
       },
       "zfs_dataset_free": {
-        "name": "{resource} frei"
+        "name": "{resource} freie Größe"
       },
       "zfs_dataset_total": {
-        "name": "{resource} gesamt"
+        "name": "{resource} Gesamtgröße"
       }
     },
     "binary_sensor": {

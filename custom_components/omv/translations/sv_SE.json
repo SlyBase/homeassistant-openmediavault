@@ -201,13 +201,13 @@
         "name": "UPS-belastning"
       },
       "zfs_dataset_used": {
-        "name": "{resource} använt"
+        "name": "{resource} använd storlek"
       },
       "zfs_dataset_free": {
-        "name": "{resource} fritt"
+        "name": "{resource} fri storlek"
       },
       "zfs_dataset_total": {
-        "name": "{resource} totalt"
+        "name": "{resource} total storlek"
       }
     },
     "binary_sensor": {
