@@ -169,6 +169,23 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hub_device_id: str | None = None
         self.project_device_ids: dict[str, str] = {}
         self.zfs_pool_device_ids: dict[str, str] = {}
+        # Issue #118: core inventories fetched through _fetch_or_empty whose
+        # RPC failed on the current refresh. A swallowed error collapses such a
+        # collection to [], which looks identical to a genuinely empty
+        # inventory — the registry cleanup must therefore not prune entries
+        # while this is non-empty.
+        self._degraded_collections: set[str] = set()
+
+    @property
+    def degraded_collections(self) -> frozenset[str]:
+        """Return the core collections that failed to fetch on the last refresh.
+
+        A non-empty result means the current ``data`` is not a verified
+        complete inventory (Issue #118), so stale-registry pruning must be
+        skipped for this refresh: entities stay registered and report
+        unavailable instead of being deleted.
+        """
+        return frozenset(self._degraded_collections)
 
     async def async_init(self, system_info: dict[str, Any]) -> None:
         """Initialize version metadata from the initial connect response."""
@@ -374,15 +391,18 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         See _handle_update_failure for the bounded cached-data fallback policy.
         """
         try:
+            self._degraded_collections = set()
             self._hwinfo_counter += 1
             if self._hwinfo_counter >= _HWINFO_REFRESH_MULTIPLIER or not self._hwinfo:
                 self._hwinfo = await self._async_get_hwinfo()
                 self._hwinfo_counter = 0
 
-            raw_filesystems = await self._fetch_or_empty("FileSystemMgmt", "enumerateFilesystems")
-            raw_services = await self._fetch_or_empty("Services", "getStatus")
-            raw_network = await self._fetch_or_empty("Network", "enumerateDevices")
-            raw_disks = await self._fetch_or_empty("DiskMgmt", "enumerateDevices")
+            raw_filesystems = await self._fetch_or_empty(
+                "FileSystemMgmt", "enumerateFilesystems", collection="filesystem"
+            )
+            raw_services = await self._fetch_or_empty("Services", "getStatus", collection="service")
+            raw_network = await self._fetch_or_empty("Network", "enumerateDevices", collection="network")
+            raw_disks = await self._fetch_or_empty("DiskMgmt", "enumerateDevices", collection="disk")
             raw_md_raids: Any = []
             if self.omv_version >= 7:
                 # Fetch MdMgmt for OMV 7 *and* OMV 8. OMV 8's DiskMgmt
@@ -1320,12 +1340,27 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         service: str,
         method: str,
         params: dict[str, Any] | None = None,
+        *,
+        collection: str | None = None,
     ) -> Any:
-        """Fetch data and return an empty collection on recoverable API failures."""
+        """Fetch data and return an empty collection on recoverable API failures.
+
+        Args:
+            service: OMV RPC service name.
+            method: OMV RPC method name.
+            params: Optional parameters to pass to the RPC call.
+            collection: Name of the core inventory this call feeds. Recorded in
+                :attr:`degraded_collections` when the call fails, so downstream
+                consumers (the stale-registry cleanup, Issue #118) can tell an
+                intentionally empty result apart from one an error collapsed
+                to ``[]``.
+        """
         try:
             return await self.api.async_call(service, method, params)
         except OMVApiError as err:
             _LOGGER.warning("Failed to fetch %s.%s: %s", service, method, err)
+            if collection is not None:
+                self._degraded_collections.add(collection)
             return []
 
     async def _fetch_optional(

@@ -307,6 +307,20 @@ async def _async_cleanup_stale_registry_entries(
     from .switch import get_expected_switch_unique_ids
     from .update import get_expected_update_unique_ids
 
+    # Issue #118: only prune against a verified complete inventory. A refresh
+    # whose core RPCs degraded (or that fell back to cached data) reports
+    # disks/filesystems as missing purely because the call was swallowed to
+    # [], so pruning here would delete still-present registry entries. Leave
+    # them registered — the entities report unavailable until a later complete
+    # refresh confirms whether the resource is really gone.
+    if not coordinator.reachable or coordinator.degraded_collections:
+        _LOGGER.debug(
+            "Skipping stale registry cleanup: inventory not verified complete (reachable=%s, degraded=%s)",
+            coordinator.reachable,
+            sorted(coordinator.degraded_collections),
+        )
+        return
+
     expected_entity_unique_ids, expected_device_identifiers = get_expected_sensor_registry_state(coordinator)
     expected_entity_unique_ids.update(get_expected_binary_sensor_unique_ids(coordinator))
     expected_entity_unique_ids.update(get_expected_button_unique_ids(entry, coordinator))
