@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- `DiskMgmt.enumerateDevices` is now cached on the SMART polling interval (`smart_interval`) instead of being fetched on every coordinator cycle. On OMV, this RPC triggers `smartctl` via `omv-engined`, which keeps disks active and prevents HDD spindown (Issue #115). CPU, RAM, temperature and service data continue to update at the normal scan interval; disk inventory refreshes at the longer SMART cadence.
 - Stale registry cleanup no longer deletes disk and filesystem devices and entities when a refresh's core inventory call (`DiskMgmt.enumerateDevices` or `FileSystemMgmt.enumerateFilesystems`) fails. Pruning now runs only against a verified complete inventory (Issue #118, PR #119).
 
 ## [2.9.0] - 2026-10-09

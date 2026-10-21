@@ -160,6 +160,14 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._smart_attributes_cache: dict[str, dict[str, Any]] = {}
         self._smart_nvme_cache: dict[str, dict[str, Any]] = {}
         self._smart_last_poll: float | None = None
+        # Disk inventory cache (Issue #115): DiskMgmt.enumerateDevices
+        # triggers smartctl via omv-engined on OMV, which keeps disks
+        # active and prevents spindown. The raw disk records are
+        # fetched at most once per CONF_SMART_INTERVAL seconds and
+        # cached; normalisation runs on every cycle from the cached
+        # data so disk entities stay populated in between.
+        self._disk_inventory_cache: list[dict[str, Any]] = []
+        self._disk_inventory_last_poll: float | None = None
         # Device-registry bookkeeping (Issue #83): the HA device id (not the
         # OMV identifier tuple) of the pre-registered hub device and each
         # compose-project device, used as `via_device_id` by entity.py.
@@ -402,7 +410,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             raw_services = await self._fetch_or_empty("Services", "getStatus", collection="service")
             raw_network = await self._fetch_or_empty("Network", "enumerateDevices", collection="network")
-            raw_disks = await self._fetch_or_empty("DiskMgmt", "enumerateDevices", collection="disk")
+            raw_disks = await self._async_fetch_disk_inventory()
             raw_md_raids: Any = []
             if self.omv_version >= 7:
                 # Fetch MdMgmt for OMV 7 *and* OMV 8. OMV 8's DiskMgmt
@@ -879,6 +887,40 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 hwinfo["cputemp"] = round(temp, 1)
 
         return hwinfo
+
+    async def _async_fetch_disk_inventory(self) -> list[dict[str, Any]]:
+        """Fetch DiskMgmt.enumerateDevices on the SMART interval and cache.
+
+        On OMV, DiskMgmt.enumerateDevices triggers smartctl via omv-engined,
+        which keeps disks active and prevents spindown (Issue #115). The
+        raw records are fetched at most once per CONF_SMART_INTERVAL seconds;
+        between polls the cached records are returned so disk entities stay
+        populated without issuing a new RPC.
+
+        Returns:
+            The (possibly cached) raw disk records.
+        """
+        options = self.config_entry.options
+        interval = options.get(
+            CONF_SMART_INTERVAL,
+            options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+        now = time.monotonic()
+        if self._disk_inventory_last_poll is None or (now - self._disk_inventory_last_poll) >= interval:
+            records = await self._fetch_or_empty("DiskMgmt", "enumerateDevices", collection="disk")
+            if "disk" in self._degraded_collections:
+                # Do not cache a failed fetch: retry on the next refresh (Issue #118).
+                return []
+            self._disk_inventory_cache = records
+            self._disk_inventory_last_poll = now
+            _LOGGER.debug("Disk inventory refreshed (interval=%ss)", interval)
+        else:
+            _LOGGER.debug(
+                "Using cached disk inventory (%.0fs since last poll, interval=%ss)",
+                now - self._disk_inventory_last_poll,
+                interval,
+            )
+        return self._disk_inventory_cache
 
     async def _async_collect_smart(self, disks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Refresh SMART data on its own interval and apply it to the disks.

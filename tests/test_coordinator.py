@@ -2196,6 +2196,7 @@ async def test_cleanup_prunes_after_inventory_recovers_and_confirms_removal(hass
     coordinator.api.async_call = AsyncMock(side_effect=_mode_call)
 
     # 1. Complete refresh that still reports the disk: nothing is pruned.
+    coordinator._disk_inventory_last_poll = None  # expire the disk cache: this refresh hits DiskMgmt
     data = await coordinator._async_update_data()
     coordinator.data = data
     assert [disk["disk_key"] for disk in data["disk"]] == ["sda"]
@@ -2207,6 +2208,7 @@ async def test_cleanup_prunes_after_inventory_recovers_and_confirms_removal(hass
 
     # 2. Degraded refresh omits the disk entirely: the registry entry survives.
     mode["disk"] = "error"
+    coordinator._disk_inventory_last_poll = None  # expire the disk cache: this refresh hits DiskMgmt
     data = await coordinator._async_update_data()
     coordinator.data = data
     assert data["disk"] == []
@@ -2225,6 +2227,7 @@ async def test_cleanup_prunes_after_inventory_recovers_and_confirms_removal(hass
 
     # 3. The disk reappears: still registered, no churn.
     mode["disk"] = "ok"
+    coordinator._disk_inventory_last_poll = None  # expire the disk cache: this refresh hits DiskMgmt
     data = await coordinator._async_update_data()
     coordinator.data = data
     assert [disk["disk_key"] for disk in data["disk"]] == ["sda"]
@@ -2235,6 +2238,7 @@ async def test_cleanup_prunes_after_inventory_recovers_and_confirms_removal(hass
 
     # 4. A verified complete inventory that no longer lists the disk does prune it.
     mode["disk"] = "empty"
+    coordinator._disk_inventory_last_poll = None  # expire the disk cache: this refresh hits DiskMgmt
     data = await coordinator._async_update_data()
     coordinator.data = data
     assert data["disk"] == []
@@ -2566,6 +2570,45 @@ async def test_smart_interval_caches_between_polls(hass, config_entry) -> None:
     assert smart_calls_second == 0
     assert disks2[0]["temperature"] == 35
     assert disks2[0]["smart_attributes"] == {"Raw_Read_Error_Rate": "0"}
+
+
+@pytest.mark.asyncio
+async def test_disk_inventory_failure_is_flagged_and_not_cached(hass, config_entry) -> None:
+    """A failed DiskMgmt fetch is flagged as degraded and never cached (Issues #115, #118).
+
+    Caching the swallowed ``[]`` would hide every disk until the next SMART
+    interval, and the stale-registry cleanup must see the inventory as degraded.
+    """
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_INTERVAL: 3600},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    disk = {"devicename": "sda", "canonicaldevicefile": "/dev/sda"}
+    responses: list = [OMVApiError("DiskMgmt.enumerateDevices unavailable"), [disk]]
+
+    async def async_call(service, method, params=None, **kwargs):
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+
+    assert await coordinator._async_fetch_disk_inventory() == []
+    assert "disk" in coordinator.degraded_collections
+
+    # Same SMART interval: the failed fetch must not be cached, so the disk comes back.
+    # Mirror the per-refresh reset that _async_update_data performs.
+    coordinator._degraded_collections.clear()
+    assert await coordinator._async_fetch_disk_inventory() == [disk]
+    assert api.async_call.await_count == 2
 
 
 _NVME_SMARTCTL_OUTPUT = """\
