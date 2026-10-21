@@ -2105,6 +2105,150 @@ async def test_cleanup_removes_deselected_entities_and_child_devices(hass, coord
 
 
 @pytest.mark.asyncio
+async def test_cleanup_skips_prune_when_disk_inventory_degraded(hass, coordinator, config_entry) -> None:
+    """Issue #118: a degraded disk fetch must not delete registered disk entries.
+
+    ``_fetch_or_empty`` swallows an OMVApiError into ``[]``, which leaves the
+    incoming inventory looking empty even though the disk is still there.
+    Pruning against that partial result removed live devices/entities; the
+    cleanup must skip the refresh instead.
+    """
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+
+    disk_device = device_registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, f"{config_entry.entry_id}:disk:sda")},
+        name="Disk sda",
+    )
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{config_entry.entry_id}-disk_used_size-sda",
+        config_entry=config_entry,
+        device_id=disk_device.id,
+        original_name="sda Used Size",
+    )
+
+    async def _degraded_disk_call(service, method, params=None, **kwargs):
+        if (service, method) == ("DiskMgmt", "enumerateDevices"):
+            raise OMVApiError("DiskMgmt.enumerateDevices unavailable")
+        return await _success_async_call(service, method, params, **kwargs)
+
+    coordinator.api.async_call = AsyncMock(side_effect=_degraded_disk_call)
+
+    data = await coordinator._async_update_data()
+    coordinator.data = data
+
+    assert data["disk"] == []
+    assert "disk" in coordinator.degraded_collections
+
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+
+    assert device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{config_entry.entry_id}:disk:sda"), config_entry.entry_id
+    )
+    assert (
+        entity_registry.async_get_entity_id(
+            DOMAIN,
+            "sensor",
+            f"{config_entry.entry_id}-disk_used_size-sda",
+        )
+        is not None
+    )
+
+
+@pytest.mark.asyncio
+async def test_cleanup_prunes_after_inventory_recovers_and_confirms_removal(hass, coordinator, config_entry) -> None:
+    """Issue #118 regression: a disk omitted for one refresh then reappearing survives.
+
+    The disk drops out of exactly one (degraded) refresh, is back in the next
+    complete refresh, and only gets pruned once a *complete* inventory reports
+    it as genuinely gone.
+    """
+    entity_registry = er.async_get(hass)
+    device_registry = dr.async_get(hass)
+
+    disk_device = device_registry.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, f"{config_entry.entry_id}:disk:sda")},
+        name="Disk sda",
+    )
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{config_entry.entry_id}-disk_used_size-sda",
+        config_entry=config_entry,
+        device_id=disk_device.id,
+        original_name="sda Used Size",
+    )
+
+    mode = {"disk": "ok"}
+
+    async def _mode_call(service, method, params=None, **kwargs):
+        if (service, method) == ("DiskMgmt", "enumerateDevices"):
+            if mode["disk"] == "error":
+                raise OMVApiError("DiskMgmt.enumerateDevices unavailable")
+            if mode["disk"] == "empty":
+                return []
+        return await _success_async_call(service, method, params, **kwargs)
+
+    coordinator.api.async_call = AsyncMock(side_effect=_mode_call)
+
+    # 1. Complete refresh that still reports the disk: nothing is pruned.
+    data = await coordinator._async_update_data()
+    coordinator.data = data
+    assert [disk["disk_key"] for disk in data["disk"]] == ["sda"]
+    assert coordinator.degraded_collections == frozenset()
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+    assert device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{config_entry.entry_id}:disk:sda"), config_entry.entry_id
+    )
+
+    # 2. Degraded refresh omits the disk entirely: the registry entry survives.
+    mode["disk"] = "error"
+    data = await coordinator._async_update_data()
+    coordinator.data = data
+    assert data["disk"] == []
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+    assert device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{config_entry.entry_id}:disk:sda"), config_entry.entry_id
+    )
+    assert (
+        entity_registry.async_get_entity_id(
+            DOMAIN,
+            "sensor",
+            f"{config_entry.entry_id}-disk_used_size-sda",
+        )
+        is not None
+    )
+
+    # 3. The disk reappears: still registered, no churn.
+    mode["disk"] = "ok"
+    data = await coordinator._async_update_data()
+    coordinator.data = data
+    assert [disk["disk_key"] for disk in data["disk"]] == ["sda"]
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+    assert device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{config_entry.entry_id}:disk:sda"), config_entry.entry_id
+    )
+
+    # 4. A verified complete inventory that no longer lists the disk does prune it.
+    mode["disk"] = "empty"
+    data = await coordinator._async_update_data()
+    coordinator.data = data
+    assert data["disk"] == []
+    assert coordinator.degraded_collections == frozenset()
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+    assert (
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, f"{config_entry.entry_id}:disk:sda"), config_entry.entry_id
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_cpu_temp_zero_is_filtered_to_none(hass, config_entry) -> None:
     """Test that a CPU temperature of 0°C (reported by VMs) is treated as no-data."""
     config_entry.add_to_hass(hass)
