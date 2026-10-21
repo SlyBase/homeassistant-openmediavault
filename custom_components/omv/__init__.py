@@ -36,7 +36,7 @@ from .const import (
     PLATFORMS,
 )
 from .coordinator import OMVDataUpdateCoordinator
-from .entity import get_compose_project_device_info, get_hub_device_info
+from .entity import get_compose_project_device_info, get_hub_device_info, get_zfs_pool_device_info
 from .exceptions import OMVApiError, OMVAuthError, OMVConnectionError
 from .omv_api import OMVAPI
 from .repairs import async_delete_reboot_repair_issue, async_sync_reboot_repair_issue
@@ -80,17 +80,22 @@ def _check_coordinator_version_consistency(coordinator: OMVDataUpdateCoordinator
         coordinator: The freshly constructed data update coordinator.
 
     Raises:
-        RuntimeError: If ``hub_device_id`` or ``project_device_ids`` are absent
-            from the coordinator class, i.e. the loaded ``coordinator.py``
-            predates 2.8.0 — with an instruction to reinstall the integration.
+        RuntimeError: If ``hub_device_id``, ``project_device_ids`` or
+            ``zfs_pool_device_ids`` are absent from the coordinator class,
+            i.e. the loaded ``coordinator.py`` predates the current version —
+            with an instruction to reinstall the integration.
     """
-    if not (hasattr(coordinator, "hub_device_id") and hasattr(coordinator, "project_device_ids")):
+    if not (
+        hasattr(coordinator, "hub_device_id")
+        and hasattr(coordinator, "project_device_ids")
+        and hasattr(coordinator, "zfs_pool_device_ids")
+    ):
         raise RuntimeError(
             "OpenMediaVault installation is inconsistent: the loaded "
-            "coordinator.py predates integration 2.8.0 while the other files "
-            "do not (Issue #88). Remove the custom_components/omv folder "
-            "including its __pycache__ and reinstall the integration, then "
-            "restart Home Assistant."
+            "coordinator.py predates the current integration version while "
+            "the other files do not (Issue #88). Remove the "
+            "custom_components/omv folder including its __pycache__ and "
+            "reinstall the integration, then restart Home Assistant."
         )
 
 
@@ -208,6 +213,21 @@ async def _async_register_hierarchy_devices(
             **get_compose_project_device_info(coordinator, project),
         )
         coordinator.project_device_ids[project_key] = project_device.id
+
+    # ZFS pool devices (Issue #113) must exist before any dataset entity is
+    # built: datasets nest under their pool via `via_device_id`, which HA
+    # resolves eagerly at entity-setup time.
+    for pool in coordinator.data.get("zfs", []):
+        if not isinstance(pool, dict):
+            continue
+        pool_name = str(pool.get("name") or "")
+        if not pool_name:
+            continue
+        pool_device = device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            **get_zfs_pool_device_info(coordinator, pool),
+        )
+        coordinator.zfs_pool_device_ids[pool_name] = pool_device.id
 
 
 async def _async_migrate_container_registry_keys(

@@ -12,14 +12,14 @@ test = [
   "pytest==9.0.3",
   "pytest-asyncio==1.4.0",
   "pytest-cov==7.1.0",
-  "pytest-homeassistant-custom-component==0.13.368",
-  "pycares==5.0.1",
+  "pytest-homeassistant-custom-component==0.13.372",
+  "pycares==5.2.0",
   "aioresponses==0.7.9",
 ]
 dev = [
-  "ruff==0.16.10",
+  "ruff==0.17.1",
   "mypy==2.4.0",
-  "pre-commit==4.6.2",
+  "pre-commit==4.7.0",
 ]
 
 [tool.setuptools]

@@ -295,6 +295,10 @@ def get_expected_sensor_registry_state(
         for filesystem in coordinator.data.get("fs", []):
             if not isinstance(filesystem, dict):
                 continue
+            # ZFS filesystems are represented by their dataset/pool entities
+            # (Issue #113), not by filesystem sensors on a member disk.
+            if filesystem.get("type") == "zfs":
+                continue
             item_key = str(filesystem.get("uuid") or "")
             if not item_key or not _should_add_description(description, filesystem):
                 continue
@@ -522,6 +526,10 @@ async def async_setup_entry(
     for description in _FILESYSTEM_SENSORS:
         for filesystem in coordinator.data.get("fs", []):
             if not isinstance(filesystem, dict):
+                continue
+            # ZFS filesystems are represented by their dataset/pool entities
+            # (Issue #113), not by filesystem sensors on a member disk.
+            if filesystem.get("type") == "zfs":
                 continue
             item_key = str(filesystem.get("uuid") or "")
             if not item_key or not _should_add_description(description, filesystem):

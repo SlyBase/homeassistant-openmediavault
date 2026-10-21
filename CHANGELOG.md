@@ -5,6 +5,21 @@
 ### Fixed
 
 - `DiskMgmt.enumerateDevices` is now cached on the SMART polling interval (`smart_interval`) instead of being fetched on every coordinator cycle. On OMV, this RPC triggers `smartctl` via `omv-engined`, which keeps disks active and prevents HDD spindown (Issue #115). CPU, RAM, temperature and service data continue to update at the normal scan interval; disk inventory refreshes at the longer SMART cadence.
+- Stale registry cleanup no longer deletes disk and filesystem devices and entities when a refresh's core inventory call (`DiskMgmt.enumerateDevices` or `FileSystemMgmt.enumerateFilesystems`) fails. Pruning now runs only against a verified complete inventory (Issue #118, PR #119).
+
+## [2.9.0] - 2026-10-09
+
+### Added
+
+- ZFS datasets now get their own logical device carrying their full path (e.g. `pool1/containers/immich`), nested under their owning pool via `via_device_id`, so the pool → dataset → sub-dataset hierarchy stays visible and a dataset is never mislabelled as a pool (Issue #113, PR #114).
+- ZFS pool devices now expose dedicated capacity sensors — total size, used size, free size, used % and free % — and dataset devices expose used/free/total size sensors, so the storage metrics that beta.6 removed from member disks are back on the pool/dataset devices where they belong (Issue #113, PR #114).
+
+### Fixed
+
+- A ZFS pool no longer appears as a duplicate `ZFS Dataset <pool>` device: the coordinator now suppresses the pool's root dataset (whose path equals the pool name and contains no `/`), since a pool is not a dataset under itself (Issue #113, PR #114).
+- ZFS pool/dataset device grouping reworked (Issue #113, follow-up to PR #114): OMV 8's `zfs.listPools` returns one record per tree level (pool + all datasets), so the coordinator now filters out dataset records from `data["zfs"]` — only true top-level pools get their own logical device (scrub button, pool binary sensors), eliminating the duplicate "ZFS Pool <short name>" device per dataset. ZFS filesystem records from `enumerateFilesystems` are excluded from disk storage-metric projection and filesystem sensors, so pool labels and capacity metrics no longer leak onto the first member disk.
+- ZFS pools now get their own logical device (`zfs_pool:<name>`) instead of being merged into the first member disk's physical-disk device: pool sensors, scrub/remove buttons, and datasets no longer land on a member disk, and pool metrics are no longer projected onto the member disk's name (Issue #113, PR #114).
+- Restored the valid parenthesized form of `except (TypeError, ValueError)` in `coordinator.py` and `binary_sensor_types.py` (a Python-2-only syntax that was a hard `SyntaxError` in Python 3 and broke the `test` CI job), with `# fmt: skip` keeping `ruff format` green (PR #114).
 
 ## [2.8.2] - 2026-09-28
 

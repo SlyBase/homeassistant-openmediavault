@@ -8,7 +8,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please describe your question as clearly as possible.
+        Please describe your question as clearly as possible. Tagging @slydlake for triage and follow-up.
 
   - type: textarea
     id: question

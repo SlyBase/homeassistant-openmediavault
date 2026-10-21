@@ -260,7 +260,8 @@ async def test_zfs_pool_scrub_active_binary_sensor_state_and_device(coordinator)
     assert sensor.is_on is False
     assert sensor.extra_state_attributes["scrubstate"] == "completed"
     assert sensor.extra_state_attributes["lastscrub"] == "Sun Jun  8 03:00:42 2026"
-    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:disk:sdc")}
+    # The pool attaches to its own logical device, not a member disk (Issue #113).
+    assert sensor.device_info["identifiers"] == {(DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_pool:tank")}
     assert sensor._attr_suggested_object_id == "nas_zfs_tank_scrub_active"
     assert sensor._attr_translation_placeholders == {"resource": "tank"}
 

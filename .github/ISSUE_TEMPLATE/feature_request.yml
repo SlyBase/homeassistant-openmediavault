@@ -8,7 +8,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting a new feature! Please fill out the fields below.
+        Thanks for suggesting a new feature! Please fill out the fields below. Tagging @slydlake for triage and follow-up.
 
   - type: textarea
     id: problem
