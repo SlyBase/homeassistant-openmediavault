@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Stale registry cleanup no longer deletes disk and filesystem devices and entities when a refresh's core inventory call (`DiskMgmt.enumerateDevices` or `FileSystemMgmt.enumerateFilesystems`) fails. Pruning now runs only against a verified complete inventory (Issue #118, PR #119).
+
 ## [2.9.0] - 2026-10-09
 
 ### Added
