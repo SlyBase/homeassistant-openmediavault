@@ -13,7 +13,7 @@ test = [
   "pytest-asyncio==1.4.0",
   "pytest-cov==7.1.0",
   "pytest-homeassistant-custom-component==0.13.373",
-  "pycares==5.2.0",
+  "pycares==5.2.1",
   "aioresponses==0.7.9",
 ]
 dev = [
