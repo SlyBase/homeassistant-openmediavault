@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `FileSystemMgmt.enumerateFilesystems` is now cached on the SMART polling interval (`smart_interval`) instead of being fetched on every coordinator cycle. On OMV, this RPC runs `blkid`, which probes every block device and keeps disks active, preventing HDD spindown (Issue #134). Filesystem entities keep their last known values between polls, mirroring the disk inventory cache from Issue #115.
+
 ## [2.9.1] - 2026-10-21
 
 ### Fixed
