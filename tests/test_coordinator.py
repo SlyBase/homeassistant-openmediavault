@@ -2611,6 +2611,125 @@ async def test_disk_inventory_failure_is_flagged_and_not_cached(hass, config_ent
     assert api.async_call.await_count == 2
 
 
+@pytest.mark.asyncio
+async def test_filesystem_inventory_caches_between_polls(hass, config_entry) -> None:
+    """FileSystemMgmt.enumerateFilesystems runs once per SMART interval; the cached
+    records are served between polls so no blkid runs on the disks (Issue #134)."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_INTERVAL: 3600},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    fs = {"devicename": "sda1", "fsname": "ext4", "mountdir": "/mnt/data"}
+
+    async def async_call(service, method, params=None, **kwargs):
+        if service == "FileSystemMgmt" and method == "enumerateFilesystems":
+            return [fs]
+        return []
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+
+    # First poll: live fetch populates the cache.
+    assert await coordinator._async_fetch_filesystems() == [fs]
+    fs_calls = sum(1 for c in api.async_call.await_args_list if c.args[0] == "FileSystemMgmt")
+    assert fs_calls == 1
+
+    api.async_call.reset_mock()
+
+    # Second poll within the interval: no RPC, cached records served.
+    assert await coordinator._async_fetch_filesystems() == [fs]
+    fs_calls_second = sum(1 for c in api.async_call.await_args_list if c.args[0] == "FileSystemMgmt")
+    assert fs_calls_second == 0
+
+
+@pytest.mark.asyncio
+async def test_filesystem_inventory_failure_is_flagged_and_not_cached(hass, config_entry) -> None:
+    """A failed FileSystemMgmt fetch is flagged as degraded and never cached (Issues #118, #134)."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_INTERVAL: 3600},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    fs = {"devicename": "sda1", "fsname": "ext4", "mountdir": "/mnt/data"}
+    responses: list = [OMVApiError("FileSystemMgmt.enumerateFilesystems unavailable"), [fs]]
+
+    async def async_call(service, method, params=None, **kwargs):
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 8
+
+    assert await coordinator._async_fetch_filesystems() == []
+    assert "filesystem" in coordinator.degraded_collections
+
+    # Same SMART interval: the failed fetch must not be cached, so the fs comes back.
+    # Mirror the per-refresh reset that _async_update_data performs.
+    coordinator._degraded_collections.clear()
+    assert await coordinator._async_fetch_filesystems() == [fs]
+    assert api.async_call.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_update_data_caches_filesystem_fetch(hass, config_entry) -> None:
+    """Issue #134: two full updates within the SMART interval issue one
+    enumerateFilesystems RPC (no per-scan blkid), and fs entities stay
+    populated from the cached records on the second update."""
+    patched_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={CONF_SMART_INTERVAL: 3600},
+    )
+    patched_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    fs = {
+        "uuid": "aaaa-bbbb-cccc-dddd",
+        "devicefile": "/dev/sda1",
+        "devicename": "sda1",
+        "fsname": "ext4",
+        "mountdir": "/mnt/data",
+        "size": "100000000000",
+        "available": "50000000000",
+        "percentage": "50",
+    }
+    fs_calls = {"count": 0}
+
+    async def async_call(service, method, params=None, **kwargs):
+        if service == "System" and method == "getInformation":
+            return {"hostname": "omv7", "version": "7.7.24-7"}
+        if service == "FileSystemMgmt" and method == "enumerateFilesystems":
+            fs_calls["count"] += 1
+            return [fs]
+        return []
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator = OMVDataUpdateCoordinator(hass, patched_entry, api, scan_interval=60)
+    coordinator.omv_version = 7
+
+    data1 = await coordinator._async_update_data()
+    assert data1["fs"]
+    assert fs_calls["count"] == 1
+
+    data2 = await coordinator._async_update_data()
+    assert data2["fs"], "cached raw records must keep fs entities populated"
+    assert fs_calls["count"] == 1, "no second enumerateFilesystems RPC within the interval"
+
+
 _NVME_SMARTCTL_OUTPUT = """\
 === START OF SMART DATA SECTION ===
 SMART overall-health self-assessment test result: PASSED
