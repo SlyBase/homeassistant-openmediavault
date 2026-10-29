@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
 import aiohttp
 import pytest
 from aioresponses import aioresponses
 from aioresponses.core import CallbackResult
+from homeassistant.helpers.aiohttp_client import DATA_CONNECTOR
 from yarl import URL
 
 from custom_components.omv.exceptions import (
@@ -26,7 +25,34 @@ def mock_aiohttp() -> aioresponses:
 
 
 @pytest.mark.asyncio
-async def test_login_success(mock_aiohttp: aioresponses) -> None:
+async def test_session_uses_ha_managed_connector(hass, mock_aiohttp: aioresponses) -> None:
+    """Test the HTTP session is HA-managed (async_create_clientsession, Issue #133)."""
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {"authenticated": True, "sessionid": "session123"},
+            "error": None,
+        },
+    )
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={
+            "response": {"version": "8.1.2", "hostname": "nas"},
+            "error": None,
+        },
+    )
+
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
+    await api.async_connect()
+
+    # HA-managed session: shares HA's connector pool (Issue #133).
+    assert api._session.connector in hass.data.get(DATA_CONNECTOR, {}).values()
+    await api.async_close()
+    assert api._session is None
+
+
+@pytest.mark.asyncio
+async def test_login_success(hass, mock_aiohttp: aioresponses) -> None:
     """Test successful connect and initial system info fetch."""
     mock_aiohttp.post(
         "http://192.168.1.1:80/rpc.php",
@@ -43,7 +69,7 @@ async def test_login_success(mock_aiohttp: aioresponses) -> None:
         },
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     info = await api.async_connect()
 
     assert info["hostname"] == "nas"
@@ -52,14 +78,14 @@ async def test_login_success(mock_aiohttp: aioresponses) -> None:
 
 
 @pytest.mark.asyncio
-async def test_login_wrong_password(mock_aiohttp: aioresponses) -> None:
+async def test_login_wrong_password(hass, mock_aiohttp: aioresponses) -> None:
     """Test authentication failure on login."""
     mock_aiohttp.post(
         "http://192.168.1.1:80/rpc.php",
         payload={"response": {"authenticated": False}, "error": None},
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "wrong")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="wrong")
     with pytest.raises(OMVAuthError):
         await api.async_connect()
     await api.async_close()
@@ -67,6 +93,7 @@ async def test_login_wrong_password(mock_aiohttp: aioresponses) -> None:
 
 @pytest.mark.asyncio
 async def test_login_rpc_error_wrong_password_raises_auth_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test OMV login RPC errors for bad credentials surface as OMVAuthError."""
@@ -78,14 +105,14 @@ async def test_login_rpc_error_wrong_password_raises_auth_error(
         },
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "wrong")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="wrong")
     with pytest.raises(OMVAuthError):
         await api.async_connect()
     await api.async_close()
 
 
 @pytest.mark.asyncio
-async def test_login_success_omv85_status_contract(mock_aiohttp: aioresponses) -> None:
+async def test_login_success_omv85_status_contract(hass, mock_aiohttp: aioresponses) -> None:
     """Test successful connect using OMV 8.5+'s status-based login contract."""
     mock_aiohttp.post(
         "http://192.168.1.1:80/rpc.php",
@@ -107,7 +134,7 @@ async def test_login_success_omv85_status_contract(mock_aiohttp: aioresponses) -
         },
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     info = await api.async_connect()
 
     assert info["hostname"] == "nas"
@@ -117,6 +144,7 @@ async def test_login_success_omv85_status_contract(mock_aiohttp: aioresponses) -
 
 @pytest.mark.asyncio
 async def test_login_challenge_required_raises_two_factor_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test that a 2FA challenge on login is surfaced as a distinguishable error."""
@@ -132,7 +160,7 @@ async def test_login_challenge_required_raises_two_factor_error(
         },
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVTwoFactorRequiredError) as excinfo:
         await api.async_connect()
     assert excinfo.value.challenge_kind == "totp"
@@ -142,7 +170,7 @@ async def test_login_challenge_required_raises_two_factor_error(
 
 
 @pytest.mark.asyncio
-async def test_submit_two_factor_code_success(mock_aiohttp: aioresponses) -> None:
+async def test_submit_two_factor_code_success(hass, mock_aiohttp: aioresponses) -> None:
     """Test completing a 2FA login via Session.verify."""
     mock_aiohttp.post(
         "http://192.168.1.1:80/rpc.php",
@@ -175,7 +203,7 @@ async def test_submit_two_factor_code_success(mock_aiohttp: aioresponses) -> Non
         },
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVTwoFactorRequiredError):
         await api.async_connect()
 
@@ -188,6 +216,7 @@ async def test_submit_two_factor_code_success(mock_aiohttp: aioresponses) -> Non
 
 @pytest.mark.asyncio
 async def test_submit_two_factor_code_wrong_code_raises_auth_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test that a rejected verification code raises OMVAuthError."""
@@ -208,7 +237,7 @@ async def test_submit_two_factor_code_wrong_code_raises_auth_error(
         payload={"response": None, "error": {"code": 0, "message": "Challenge verification failed."}},
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVTwoFactorRequiredError):
         await api.async_connect()
 
@@ -222,6 +251,7 @@ TOTP_SECRET = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 @pytest.mark.asyncio
 async def test_connect_with_totp_secret_answers_challenge_automatically(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """A configured TOTP secret answers the login challenge via Session.verify."""
@@ -262,7 +292,7 @@ async def test_connect_with_totp_secret_answers_challenge_automatically(
 
     mock_aiohttp.post("http://192.168.1.1:80/rpc.php", callback=rpc_callback, repeat=True)
 
-    api = OMVAPI("192.168.1.1", "admin", "pass", totp_secret=TOTP_SECRET)
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass", totp_secret=TOTP_SECRET)
     info = await api.async_connect()
 
     assert info["hostname"] == "nas"
@@ -276,6 +306,7 @@ async def test_connect_with_totp_secret_answers_challenge_automatically(
 
 @pytest.mark.asyncio
 async def test_session_expiry_auto_relogin_with_totp_secret(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Session expiry on a 2FA account re-logins via the stored secret (Issue #55)."""
@@ -322,7 +353,7 @@ async def test_session_expiry_auto_relogin_with_totp_secret(
         payload={"response": {"cpuUtilization": 42}, "error": None},
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass", totp_secret=TOTP_SECRET)
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass", totp_secret=TOTP_SECRET)
     await api.async_connect()
 
     response = await api.async_call("System", "getInformation")
@@ -334,6 +365,7 @@ async def test_session_expiry_auto_relogin_with_totp_secret(
 
 @pytest.mark.asyncio
 async def test_connect_with_wrong_totp_secret_raises_auth_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """All candidate codes rejected (wrong secret) surfaces as OMVAuthError."""
@@ -359,7 +391,7 @@ async def test_connect_with_wrong_totp_secret_raises_auth_error(
 
     mock_aiohttp.post("http://192.168.1.1:80/rpc.php", callback=rpc_callback, repeat=True)
 
-    api = OMVAPI("192.168.1.1", "admin", "pass", totp_secret=TOTP_SECRET)
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass", totp_secret=TOTP_SECRET)
     with pytest.raises(OMVAuthError) as excinfo:
         await api.async_connect()
     # Must NOT be the two-factor-required variant — a secret was configured,
@@ -370,6 +402,7 @@ async def test_connect_with_wrong_totp_secret_raises_auth_error(
 
 @pytest.mark.asyncio
 async def test_connect_without_totp_secret_still_raises_two_factor_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Without a stored secret the challenge behaviour is unchanged."""
@@ -385,7 +418,7 @@ async def test_connect_without_totp_secret_still_raises_two_factor_error(
         },
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVTwoFactorRequiredError):
         await api.async_connect()
     await api.async_close()
@@ -393,6 +426,7 @@ async def test_connect_without_totp_secret_still_raises_two_factor_error(
 
 @pytest.mark.asyncio
 async def test_login_opaque_401_raises_connection_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test a bare, non-OMV-RPC 401 (e.g. from a proxy/WAF) is not treated as invalid credentials."""
@@ -402,14 +436,14 @@ async def test_login_opaque_401_raises_connection_error(
         body="Unauthorized",
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVConnectionError):
         await api.async_connect()
     await api.async_close()
 
 
 @pytest.mark.asyncio
-async def test_login_omv_rpc_401_raises_auth_error(mock_aiohttp: aioresponses) -> None:
+async def test_login_omv_rpc_401_raises_auth_error(hass, mock_aiohttp: aioresponses) -> None:
     """Test that a genuine OMV RPC error body on a 401 still raises OMVAuthError."""
     mock_aiohttp.post(
         "http://192.168.1.1:80/rpc.php",
@@ -417,14 +451,14 @@ async def test_login_omv_rpc_401_raises_auth_error(mock_aiohttp: aioresponses) -
         payload={"response": None, "error": {"code": 5001, "message": "Session expired"}},
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVAuthError):
         await api.async_connect()
     await api.async_close()
 
 
 @pytest.mark.asyncio
-async def test_session_expiry_auto_reauth(mock_aiohttp: aioresponses) -> None:
+async def test_session_expiry_auto_reauth(hass, mock_aiohttp: aioresponses) -> None:
     """Test automatic reauthentication when the session expires."""
     mock_aiohttp.post(
         "http://192.168.1.1:80/rpc.php",
@@ -456,7 +490,7 @@ async def test_session_expiry_auto_reauth(mock_aiohttp: aioresponses) -> None:
         payload={"response": {"cpuUtilization": 42}, "error": None},
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     await api.async_connect()
 
     response = await api.async_call("System", "getInformation")
@@ -468,6 +502,7 @@ async def test_session_expiry_auto_reauth(mock_aiohttp: aioresponses) -> None:
 
 @pytest.mark.asyncio
 async def test_login_uses_session_id_header_for_follow_up_calls(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test follow-up RPCs include the OMV session header from login."""
@@ -494,15 +529,19 @@ async def test_login_uses_session_id_header_for_follow_up_calls(
         callback=system_callback,
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     await api.async_connect()
 
-    assert seen_headers == [{"X-OPENMEDIAVAULT-SESSIONID": "session123"}]
+    # HA-managed sessions inject a default User-Agent; the OMV session header
+    # must be present (exact match would couple to HA's default headers).
+    assert seen_headers
+    assert seen_headers[0]["X-OPENMEDIAVAULT-SESSIONID"] == "session123"
     await api.async_close()
 
 
 @pytest.mark.asyncio
 async def test_connection_error_raises_omv_connection_error(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test network errors surface as OMVConnectionError."""
@@ -511,16 +550,16 @@ async def test_connection_error_raises_omv_connection_error(
         exception=aiohttp.ClientConnectionError("boom"),
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     with pytest.raises(OMVConnectionError):
         await api.async_connect()
     await api.async_close()
 
 
 @pytest.mark.asyncio
-async def test_session_accepts_cookies_for_ip_hosts() -> None:
+async def test_session_accepts_cookies_for_ip_hosts(hass) -> None:
     """Test the session cookie jar retains OMV cookies for IP-based hosts."""
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
 
     await api._async_ensure_session()
 
@@ -537,21 +576,25 @@ async def test_session_accepts_cookies_for_ip_hosts() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_close_yields_for_aiohttp_cleanup() -> None:
-    """Test async_close yields one loop tick for aiohttp transport cleanup."""
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+async def test_async_close_detaches_ha_managed_session(hass) -> None:
+    """Test async_close detaches (does not close) the HA-managed session."""
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     await api._async_ensure_session()
+    session = api._session
+    assert session is not None
 
-    with patch("custom_components.omv.omv_api.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
-        await api.async_close()
+    await api.async_close()
 
-    sleep_mock.assert_awaited_once_with(0)
     assert api._session is None
     assert api._session_id is None
+    # detach() marks the session closed without touching the shared connector.
+    assert session.closed
+    assert not any(c.closed for c in hass.data.get(DATA_CONNECTOR, {}).values())
 
 
 @pytest.mark.asyncio
 async def test_async_apply_config_sends_required_params(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """Test async_apply_config passes modules+force params required by OMV 8."""
@@ -569,7 +612,7 @@ async def test_async_apply_config_sends_required_params(
         callback=apply_callback,
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     api._session_id = "sess1"
     await api._async_ensure_session()
     await api.async_apply_config()
@@ -590,18 +633,18 @@ def _login_cookie_names(api: OMVAPI) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_get_set_login_cookie_name_roundtrip() -> None:
+async def test_get_set_login_cookie_name_roundtrip(hass) -> None:
     """The login-notification cookie name getter/setter round-trips (Issue #62)."""
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     assert api.get_login_cookie_name() is None
     api.set_login_cookie_name("OPENMEDIAVAULT-LOGIN-abcd")
     assert api.get_login_cookie_name() == "OPENMEDIAVAULT-LOGIN-abcd"
 
 
 @pytest.mark.asyncio
-async def test_capture_login_cookie_records_prefixed_cookie() -> None:
+async def test_capture_login_cookie_records_prefixed_cookie(hass) -> None:
     """_capture_login_cookie records the OMV login-dedup cookie, ignoring others."""
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     await api._async_ensure_session()
     assert api._session is not None
     # Simulate what real aiohttp does when OMV sends the Set-Cookie header on
@@ -621,14 +664,14 @@ async def test_capture_login_cookie_records_prefixed_cookie() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ensure_session_reinjects_login_cookie() -> None:
+async def test_ensure_session_reinjects_login_cookie(hass) -> None:
     """Recreating the session replays the login-dedup cookie so it survives.
 
     The connection-error retry path recreates the aiohttp session; without
     re-injection the OMV login-notification cookie would be lost and OMV would
     email again on the next login (Issue #62).
     """
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     api.set_login_cookie_name("OPENMEDIAVAULT-LOGIN-seed")
 
     await api._async_ensure_session()
@@ -643,6 +686,7 @@ async def test_ensure_session_reinjects_login_cookie() -> None:
 
 @pytest.mark.asyncio
 async def test_seeded_login_cookie_present_for_first_login(
+    hass,
     mock_aiohttp: aioresponses,
 ) -> None:
     """A persisted cookie name is replayed into the jar before the first login.
@@ -660,7 +704,7 @@ async def test_seeded_login_cookie_present_for_first_login(
         payload={"response": {"version": "8.1.2", "hostname": "nas"}, "error": None},
     )
 
-    api = OMVAPI("192.168.1.1", "admin", "pass")
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="pass")
     api.set_login_cookie_name("OPENMEDIAVAULT-LOGIN-restored")
     await api.async_connect()
 

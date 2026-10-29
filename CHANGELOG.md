@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `OMVAPI` now obtains its HTTP session via HA's `async_create_clientsession` helper instead of instantiating `aiohttp.ClientSession` directly, satisfying the `inject-websession` quality-scale rule. The session still uses its own cookie jar (login-notification dedup, Issue #62) and honors `verify_ssl`; `async_close` now detaches the HA-managed session instead of closing it, and the session is auto-detached on HA shutdown / config entry unload (Issue #133).
+
 ## [2.9.2] - 2026-10-28
 
 ### Fixed
