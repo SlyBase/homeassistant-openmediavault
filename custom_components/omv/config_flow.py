@@ -217,6 +217,7 @@ class OMVConfigFlow(ConfigFlow, domain=DOMAIN):
                 user_input[CONF_PASSWORD] != user_input[CONF_PASSWORD].strip(),
             )
             api = OMVAPI(
+                self.hass,
                 host=user_input[CONF_HOST],
                 username=user_input[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],

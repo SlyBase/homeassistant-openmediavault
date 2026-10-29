@@ -8,6 +8,8 @@ import time
 from typing import Any
 
 import aiohttp
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from yarl import URL
 
 from . import totp
@@ -42,6 +44,7 @@ class OMVAPI:
 
     def __init__(
         self,
+        hass: HomeAssistant,
         host: str,
         username: str,
         password: str,
@@ -52,6 +55,7 @@ class OMVAPI:
         source: str = "runtime",
         totp_secret: str | None = None,
     ) -> None:
+        self._hass = hass
         self._host = host
         self._port = port
         self._username = username
@@ -149,16 +153,21 @@ class OMVAPI:
         return any(fragment in lowered for fragment in _INVALID_LOGIN_MESSAGES)
 
     async def _async_ensure_session(self) -> None:
-        """Create or recreate the aiohttp session.
+        """Create or recreate the HA-managed aiohttp session.
 
-        Re-injects the OMV login-notification dedup cookie (if known) into the
-        fresh cookie jar so recreating the session — e.g. on the connection
-        error retry path — does not drop it and cause OMV to re-send the login
-        notification email (Issue #62).
+        The session is created via ``async_create_clientsession`` (Issue #133)
+        so it runs on HA's shared connector pool and is auto-detached on HA
+        shutdown / config entry unload. Re-creates the session on a new
+        dedicated cookie jar; re-injects the OMV login-notification dedup
+        cookie (if known) into it so the connection error retry path does not
+        drop it and cause OMV to re-send the login notification email
+        (Issue #62).
         """
         if self._session and not self._session.closed:
-            await self._session.close()
-        self._session = aiohttp.ClientSession(
+            self._session.detach()
+        self._session = async_create_clientsession(
+            self._hass,
+            verify_ssl=self._verify_ssl,
             cookie_jar=aiohttp.CookieJar(unsafe=True),
             timeout=_REQUEST_TIMEOUT,
         )
@@ -598,11 +607,15 @@ class OMVAPI:
         await self.async_call("Config", "applyChanges", {"modules": [], "force": False})
 
     async def async_close(self) -> None:
-        """Close the underlying aiohttp session."""
+        """Detach the HA-managed aiohttp session.
+
+        The session was created via ``async_create_clientsession`` (Issue
+        #133), so it shares HA's connector pool and is auto-detached on HA
+        shutdown / config entry unload — it must not be closed (which would
+        warn and is unnecessary). Detach marks it closed without touching
+        the shared connector.
+        """
         if self._session and not self._session.closed:
-            await self._session.close()
-            # Let aiohttp run deferred transport shutdown callbacks before
-            # pytest cleanup checks for lingering background threads.
-            await asyncio.sleep(0)
+            self._session.detach()
         self._session = None
         self._session_id = None

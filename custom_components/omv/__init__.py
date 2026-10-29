@@ -376,6 +376,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
         api, system_info = handoff
     else:
         api = OMVAPI(
+            hass,
             host=entry.data[CONF_HOST],
             username=entry.data[CONF_USERNAME],
             password=entry.data[CONF_PASSWORD],
