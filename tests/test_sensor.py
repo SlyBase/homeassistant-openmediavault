@@ -430,6 +430,23 @@ async def test_zfs_pool_sensor_exposes_label(coordinator) -> None:
 
 
 @pytest.mark.asyncio
+async def test_all_zfs_pool_sensors_expose_label(coordinator) -> None:
+    """Every ZFS pool sensor exposes the pool name as ``label``.
+
+    Filesystem sensors (e.g. ``SaveData``) expose a ``label`` attribute on
+    every sensor of the device; the ZFS pool sensors must match so the pool
+    detail view is not missing the label its filesystem counterpart has
+    (follow-up to PR #141: only the pool health sensor had it).
+    """
+    from custom_components.omv.sensor_types import ZFS_POOL_EXTRA_SENSORS
+
+    for desc in (ZFS_POOL_SENSOR, *ZFS_POOL_EXTRA_SENSORS):
+        sensor = OMVSensor(coordinator, desc, item_key="tank")
+        attrs = sensor.extra_state_attributes or {}
+        assert attrs.get("label") == "tank", desc.key
+
+
+@pytest.mark.asyncio
 async def test_zfs_pool_capacity_sensors(coordinator) -> None:
     """Issue #113: pool devices expose dedicated capacity sensors.
 
