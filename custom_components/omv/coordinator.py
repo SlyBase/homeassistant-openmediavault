@@ -644,6 +644,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         for filesystem in data.get("fs", []):
             if not isinstance(filesystem, dict):
                 continue
+            # ZFS mounts are represented by pool/dataset entities (Issue #113),
+            # not by filesystem sensors — offering them here would let the user
+            # select a filesystem that silently produces no entity.
+            if filesystem.get("type") == "zfs":
+                continue
             value = str(filesystem.get("uuid") or "")
             if not value:
                 continue
