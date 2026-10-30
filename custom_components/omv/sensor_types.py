@@ -767,6 +767,7 @@ ZFS_POOL_SENSOR = OMVSensorDescription(
     name_key="name",
     value_fn=lambda data: data.get("state") or data.get("health"),
     extra_attrs_fn=lambda data: {
+        "label": data.get("name"),
         "disk_key": data.get("disk_key"),
         "mountpoint": data.get("mountpoint"),
         "size": data.get("size"),

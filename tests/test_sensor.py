@@ -417,6 +417,19 @@ async def test_zfs_sensor_uses_pool_state(coordinator) -> None:
 
 
 @pytest.mark.asyncio
+async def test_zfs_pool_sensor_exposes_label(coordinator) -> None:
+    """ZFS pool exposes a label attribute, matching filesystem sensors.
+
+    The md-RAID-backed filesystem sensor exposes a ``label`` attribute (e.g.
+    ``SaveData``); the ZFS pool sensor must expose the equivalent detail so a
+    pool is not missing the same attribute its filesystem counterpart has.
+    """
+    sensor = OMVSensor(coordinator, ZFS_POOL_SENSOR, item_key="tank")
+
+    assert sensor.extra_state_attributes["label"] == "tank"
+
+
+@pytest.mark.asyncio
 async def test_zfs_pool_capacity_sensors(coordinator) -> None:
     """Issue #113: pool devices expose dedicated capacity sensors.
 

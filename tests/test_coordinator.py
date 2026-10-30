@@ -3565,6 +3565,27 @@ def test_build_inventory_includes_vms() -> None:
     assert [item["label"] for item in inventory[CONF_SELECTED_VMS]] == ["homeassistant", "scratch-vm"]
 
 
+def test_build_inventory_excludes_zfs_filesystems() -> None:
+    """ZFS filesystems are not offered in the filesystem selection.
+
+    ZFS mounts are represented by pool/dataset entities (Issue #113), not by
+    filesystem sensors, so offering them in the filesystem selection would let
+    the user pick a filesystem that silently produces no entity.
+    """
+    inventory = OMVDataUpdateCoordinator.build_inventory(
+        {
+            "fs": [
+                {"uuid": "fs-ext4", "label": "data", "type": "ext4", "mountdir": "/data"},
+                {"uuid": "fs-zfs", "label": "bigdata", "type": "zfs", "mountdir": "/bigdata"},
+            ],
+        }
+    )
+
+    values = {item["value"] for item in inventory[CONF_SELECTED_FILESYSTEMS]}
+    assert "fs-ext4" in values
+    assert "fs-zfs" not in values
+
+
 @pytest.mark.asyncio
 async def test_filter_data_by_selection_filters_vms(hass, config_entry) -> None:
     """Test that filter_data_by_selection honors CONF_SELECTED_VMS."""

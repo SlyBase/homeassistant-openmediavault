@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- ZFS pool sensors now expose a `label` attribute (the pool name), matching filesystem sensors; ZFS filesystems are no longer offered in the filesystem selection because they produce no filesystem entities (Issue #113, PR #141).
+
 ## [2.9.3] - 2026-10-29
 
 ### Fixed
