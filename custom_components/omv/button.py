@@ -23,6 +23,9 @@ from .entity import (
 from .exceptions import OMVApiError, OMVConnectionError
 from .wol import async_send_magic_packet
 
+# One command at a time: OMV executes Docker/KVM commands sequentially.
+PARALLEL_UPDATES = 1
+
 _COMPOSE_PROJECT_ACTIONS: tuple[tuple[int, str, str, str], ...] = (
     (1, "compose_up", "up -d", "mdi:arrow-up-bold-box-outline"),
     (2, "compose_down", "down", "mdi:arrow-down-bold-box-outline"),

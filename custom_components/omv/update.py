@@ -18,6 +18,9 @@ from .exceptions import OMVConnectionError
 
 _LOGGER = logging.getLogger(__name__)
 
+# One update install at a time: apt upgrade runs as a single background job.
+PARALLEL_UPDATES = 1
+
 _INSTALL_POLL_INTERVAL = 10  # seconds between Exec.isRunning polls
 _INSTALL_TIMEOUT = 600  # maximum seconds per background process step (10 minutes)
 _MAX_POLLS = _INSTALL_TIMEOUT // _INSTALL_POLL_INTERVAL

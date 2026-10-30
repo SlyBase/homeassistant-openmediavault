@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant import data_entry_flow
-from homeassistant.components.repairs import ConfirmRepairFlow, RepairsFlow
+from homeassistant.components.repairs import (
+    ConfirmRepairFlow,
+    RepairsFlow,
+    RepairsFlowResult,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
@@ -77,7 +80,7 @@ class OMVRebootRepairFlow(ConfirmRepairFlow):
             raise ValueError("OMV config entry is not loaded")
         return coordinator
 
-    async def async_step_confirm(self, user_input: dict[str, str] | None = None) -> data_entry_flow.FlowResult:
+    async def async_step_confirm(self, user_input: dict[str, str] | None = None) -> RepairsFlowResult:
         """Handle the confirmation step for the reboot repair."""
         if user_input is None:
             return self.async_show_form(
