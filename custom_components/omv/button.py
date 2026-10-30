@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
+from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button.const import ButtonDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -22,6 +23,9 @@ from .entity import (
 )
 from .exceptions import OMVApiError, OMVConnectionError
 from .wol import async_send_magic_packet
+
+# One command at a time: OMV executes Docker/KVM commands sequentially.
+PARALLEL_UPDATES = 1
 
 _COMPOSE_PROJECT_ACTIONS: tuple[tuple[int, str, str, str], ...] = (
     (1, "compose_up", "up -d", "mdi:arrow-up-bold-box-outline"),

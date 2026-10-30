@@ -20,6 +20,9 @@ from .entity import (
 )
 from .exceptions import OMVApiError, OMVConnectionError
 
+# One command at a time: container start/stop commands run sequentially on OMV.
+PARALLEL_UPDATES = 1
+
 
 def get_expected_switch_unique_ids(coordinator: OMVDataUpdateCoordinator) -> set[str]:
     """Return the switch unique IDs for the current runtime data."""

@@ -58,6 +58,9 @@ from .sensor_types import (
     OMVSensorDescription,
 )
 
+# The coordinator fetches all data in one place, so entity updates need no limit.
+PARALLEL_UPDATES = 0
+
 _DISK_SENSORS: tuple[OMVSensorDescription, ...] = (
     DISK_USED_PERCENT_SENSOR,
     DISK_FREE_PERCENT_SENSOR,

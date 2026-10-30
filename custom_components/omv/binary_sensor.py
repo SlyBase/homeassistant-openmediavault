@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
+from homeassistant.components.binary_sensor import BinarySensorEntity
+from homeassistant.components.binary_sensor.const import BinarySensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
@@ -34,6 +32,9 @@ from .entity import (
     get_storage_device_info,
     get_vm_device_info,
 )
+
+# The coordinator fetches all data in one place, so entity updates need no limit.
+PARALLEL_UPDATES = 0
 
 _DISK_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
     DISK_BAD_SECTORS_BINARY_SENSOR,
