@@ -80,9 +80,7 @@ class OMVRebootRepairFlow(ConfirmRepairFlow):
             raise ValueError("OMV config entry is not loaded")
         return coordinator
 
-    async def async_step_confirm(
-        self, user_input: dict[str, str] | None = None
-    ) -> RepairsFlowResult:
+    async def async_step_confirm(self, user_input: dict[str, str] | None = None) -> RepairsFlowResult:
         """Handle the confirmation step for the reboot repair."""
         if user_input is None:
             return self.async_show_form(
