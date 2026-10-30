@@ -790,7 +790,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("lastscrub"),
-        extra_attrs_fn=lambda data: {"scrubstate": data.get("scrubstate")},
+        extra_attrs_fn=lambda data: {"label": data.get("name"), "scrubstate": data.get("scrubstate")},
     ),
     OMVSensorDescription(
         key="zfs_pool_dataset_count",
@@ -802,6 +802,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("dataset_count"),
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
     OMVSensorDescription(
         key="zfs_pool_snapshot_count",
@@ -813,6 +814,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("snapshot_count"),
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
     OMVSensorDescription(
         key="zfs_pool_total_size",
@@ -826,6 +828,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("size"),
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
     OMVSensorDescription(
         key="zfs_pool_used_size",
@@ -839,6 +842,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("alloc"),
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
     OMVSensorDescription(
         key="zfs_pool_free_size",
@@ -852,6 +856,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("free") or data.get("available"),
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
     OMVSensorDescription(
         key="zfs_pool_used_percent",
@@ -864,6 +869,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: data.get("capacity"),
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
     OMVSensorDescription(
         key="zfs_pool_free_percent",
@@ -876,6 +882,7 @@ ZFS_POOL_EXTRA_SENSORS: tuple[OMVSensorDescription, ...] = (
         collection_key="name",
         name_key="name",
         value_fn=lambda data: round(100.0 - data["capacity"], 1) if data.get("capacity") is not None else None,
+        extra_attrs_fn=lambda data: {"label": data.get("name")},
     ),
 )
 
