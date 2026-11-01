@@ -12,6 +12,13 @@
 - `py.typed` (PEP 561) so the integration is fully type-checkable, plus version-agnostic typing fixes: typed `Store[dict[str, Any]]` and `RepairsFlowResult` annotation. `mypy --strict` passes with 0 errors at the target HA 2026.8.0 (Platinum `strict-typing` rule, PR #140).
 - `tests/test_diagnostics.py` lifts diagnostics coverage from 0% (Silver `test-coverage` rule, PR #140).
 
+## [2.9.4] - 2026-10-30
+
+### Fixed
+
+- ZFS pool sensors now expose a `label` attribute (the pool name), matching filesystem sensors; ZFS filesystems are no longer offered in the filesystem selection because they produce no filesystem entities (Issue #113, PR #141).
+- All ZFS pool sensors (size, capacity, scrub and count) now expose the `label` attribute, not only the pool health sensor (follow-up to PR #141).
+
 ## [2.9.3] - 2026-10-29
 
 ### Fixed
