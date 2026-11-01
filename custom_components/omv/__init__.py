@@ -295,6 +295,84 @@ async def _async_migrate_container_registry_keys(
             entity_registry.async_update_entity(registry_entry.entity_id, new_unique_id=new_unique_id)
 
 
+async def _async_migrate_disk_registry_keys(
+    hass: HomeAssistant,
+    entry: OMVConfigEntry,
+    coordinator: OMVDataUpdateCoordinator,
+) -> None:
+    """Retarget disk devices/entities from the volatile /dev/sdX key to the
+    stable by-id key.
+
+    ``disk_key`` was derived from ``devicename`` (the volatile ``/dev/sdX``
+    letter), which the kernel reassigns across reboots (Issue #144). It is
+    now derived from the stable ``/dev/disk/by-id`` link (WWN or serial+port).
+    Existing installs still have their disk devices and entities registered
+    under the old devicename key. Rename those in place — matched by the old
+    device identifier — so user customizations and long-term statistics
+    survive, instead of letting the stale-cleanup pass drop them and
+    recreate fresh ones.
+
+    Args:
+        hass: The Home Assistant instance.
+        entry: The config entry being set up.
+        coordinator: The coordinator, already refreshed with current data.
+    """
+    prefix = f"{entry.entry_id}:disk:"
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    for disk in coordinator.data.get("disk", []):
+        if not isinstance(disk, dict):
+            continue
+        old_key = str(disk.get("devicename") or "")
+        new_key = str(disk.get("disk_key") or "")
+        if not old_key or not new_key or old_key == new_key:
+            continue
+
+        old_device = device_registry.async_get_device_by_identifier((DOMAIN, f"{prefix}{old_key}"), entry.entry_id)
+        if old_device is None:
+            # The devicename may have changed (reboot) before the migration ran,
+            # so the old device identifier no longer matches the current
+            # devicename. Fall back to matching by serial number, which is
+            # stored on the device's hw_version (get_disk_device_info) and
+            # survives a devicename change.
+            serial = str(disk.get("serialnumber") or "")
+            if not serial or serial == "unknown":
+                continue
+            old_device = next(
+                (
+                    device
+                    for device in dr.async_entries_for_config_entry(device_registry, entry.entry_id)
+                    if device.hw_version == serial
+                    and any(
+                        identifier[0] == DOMAIN and identifier[1].startswith(prefix)
+                        for identifier in device.identifiers
+                    )
+                ),
+                None,
+            )
+        if old_device is None:
+            continue
+
+        new_identifiers = {
+            (DOMAIN, f"{prefix}{new_key}")
+            if (identifier[0] == DOMAIN and identifier[1].startswith(prefix))
+            else identifier
+            for identifier in old_device.identifiers
+        }
+        device_registry.async_update_device(old_device.id, new_identifiers=new_identifiers)
+
+        for registry_entry in er.async_entries_for_device(
+            entity_registry, old_device.id, include_disabled_entities=True
+        ):
+            if registry_entry.unique_id.endswith(f"-{new_key}"):
+                continue
+            head, _, _tail = registry_entry.unique_id.rpartition("-")
+            if not head:
+                continue
+            entity_registry.async_update_entity(registry_entry.entity_id, new_unique_id=f"{head}-{new_key}")
+
+
 async def _async_cleanup_stale_registry_entries(
     hass: HomeAssistant,
     entry: OMVConfigEntry,
@@ -415,6 +493,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     _check_coordinator_version_consistency(coordinator)
     entry.runtime_data = coordinator
     await _async_register_hierarchy_devices(hass, entry, coordinator)
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
     await _async_migrate_container_registry_keys(hass, entry, coordinator)
     await _async_cleanup_stale_registry_entries(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, _platforms_for_entry(entry))
