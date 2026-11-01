@@ -20,13 +20,64 @@ env:
   YQ_VERSION: "v4.53.3"
 
 jobs:
+  ci-gate:
+    name: Gate on CI success
+    # The CI workflow (lint/test/hassfest) runs concurrently against the same
+    # head SHA. Gate the smoke test on it: deploy to the live Pi only once
+    # every non-skipped CI job is green. Runs on a cheap ubuntu-latest (not
+    # the k8s runner) and reports ci_green so the smoke job can be skipped
+    # (grey) rather than failed (red) when CI is not green — the CI job already
+    # reports the failure.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      ci_green: ${{ steps.gate.outputs.ci_green }}
+    steps:
+      - name: Poll CI check-runs for this head SHA
+        id: gate
+        run: |
+          set -euo pipefail
+          # hacs and release are `if: false` on PRs, so they create no check
+          # runs; only lint/test/hassfest count. A CI job's `if` being false
+          # yields no check run, so the filter is stable.
+          for _ in $(seq 1 40); do
+            resp=$(curl -sf "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs")
+            total=$(jq '[.check_runs[] | select(.name|IN("lint","test","hassfest"))] | length' <<<"$resp")
+            if [ "${total}" -eq 0 ]; then
+              sleep 30
+              continue
+            fi
+            done_=$(jq '[.check_runs[] | select(.name|IN("lint","test","hassfest")) | select(.status=="completed")] | length' <<<"$resp")
+            if [ "${done_}" -lt "${total}" ]; then
+              sleep 30
+              continue
+            fi
+            ok=$(jq '[.check_runs[] | select(.name|IN("lint","test","hassfest")) | select(.conclusion=="success")] | length' <<<"$resp")
+            if [ "${ok}" -eq "${total}" ]; then
+              echo "ci_green=true" >> "$GITHUB_OUTPUT"
+              echo "CI green — proceeding with smoke test."
+              exit 0
+            fi
+            echo "ci_green=false" >> "$GITHUB_OUTPUT"
+            echo "CI failed — skipping smoke test."
+            exit 0
+          done
+          echo "ci_green=false" >> "$GITHUB_OUTPUT"
+          echo "Timed out waiting for CI — skipping smoke test."
+
   smoke:
     name: Deploy + REST verify on Pi
+    needs: ci-gate
     # Dependabot pull_request runs cannot read Actions secrets (they use a
     # separate Dependabot secret store), so the Infisical fetch would fail with
     # "Missing universal auth credentials". A live Pi deploy adds no value for a
     # dependency/actions bump anyway — skip the job so it reports neutrally.
-    if: github.actor != 'dependabot[bot]'
+    # Also skip when CI is not green (ci-gate output), except on manual
+    # workflow_dispatch where an explicit request overrides the gate.
+    if: github.actor != 'dependabot[bot]' && (github.event_name == 'workflow_dispatch' || needs.ci-gate.outputs.ci_green == 'true')
     # Ephemeral ARC runner (org-scoped, kubernetes containerMode) — see
     # homelab kubernetes/apps/arc-runners. Fresh pod per run, nothing persists.
     runs-on: k8s
