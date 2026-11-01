@@ -734,3 +734,80 @@ async def test_async_migrate_disk_registry_keys_serial_fallback(hass) -> None:
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_disk_registry_keys_idempotent(hass) -> None:
+    """Running the migration twice must be a no-op the second time: the device
+    identifier must not be duplicated or corrupted and entity unique_ids must
+    stay at the by-id value (Issue #144).
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:disk:sdj")},
+        name="WDC WD2000FYYZ [sdj]",
+        hw_version="01UL1B3",
+    )
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{entry.entry_id}-disk_size-sdj",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="WDC WD2000FYYZ [sdj] size",
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    coordinator.data = {
+        "disk": [
+            {
+                "disk_key": "ata-WDC_WD2000FYYZ-01UL1B3",
+                "devicename": "sdj",
+                "serialnumber": "01UL1B3",
+                "model": "WD2000FYYZ",
+                "vendor": "WDC",
+            },
+        ],
+    }
+
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    first_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD2000FYYZ-01UL1B3"), entry.entry_id
+    )
+    assert first_device is not None
+    first_identifiers = set(first_device.identifiers)
+    first_entity_id = entity_registry.async_get_entity_id(
+        DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3"
+    )
+    assert first_entity_id is not None
+
+    # Run the migration a second time — must be a no-op.
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    second_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD2000FYYZ-01UL1B3"), entry.entry_id
+    )
+    assert second_device is not None
+    assert second_device.id == first_device.id, "device must not be re-created"
+    assert set(second_device.identifiers) == first_identifiers, (
+        "identifiers must not be duplicated or changed on a second run"
+    )
+    assert entity_registry.async_get_entity_id(
+        DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3"
+    ) == first_entity_id, "entity unique_id must be unchanged on a second run"
+    assert (
+        device_registry.async_get_device_by_identifier(
+            (DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id
+        )
+        is None
+    )
