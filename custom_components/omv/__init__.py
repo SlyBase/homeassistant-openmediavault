@@ -20,6 +20,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
+from homeassistant.helpers.typing import ConfigType
 
 from . import session_handoff
 from .const import (
@@ -45,6 +46,18 @@ from .services import async_setup_services
 _LOGGER = logging.getLogger(__name__)
 
 type OMVConfigEntry = ConfigEntry[OMVDataUpdateCoordinator]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Set up the OpenMediaVault integration.
+
+    Registers the domain services here (not in ``async_setup_entry``) so they
+    exist as soon as the integration loads, before any config entry is loaded
+    (quality scale: action-setup). The handlers validate the target entry and
+    raise ``ServiceValidationError`` when it is missing or not loaded.
+    """
+    async_setup_services(hass)
+    return True
 
 
 def _platforms_for_entry(entry: OMVConfigEntry) -> list[Platform]:
@@ -99,7 +112,7 @@ def _check_coordinator_version_consistency(coordinator: OMVDataUpdateCoordinator
         )
 
 
-def _login_cookie_store(hass: HomeAssistant, entry: OMVConfigEntry) -> Store:
+def _login_cookie_store(hass: HomeAssistant, entry: OMVConfigEntry) -> Store[dict[str, Any]]:
     """Return the per-entry Store for the OMV login-notification cookie name.
 
     Args:
@@ -109,7 +122,7 @@ def _login_cookie_store(hass: HomeAssistant, entry: OMVConfigEntry) -> Store:
     Returns:
         A :class:`Store` keyed by the entry id (Issue #62).
     """
-    return Store(
+    return Store[dict[str, Any]](
         hass,
         LOGIN_COOKIE_STORAGE_VERSION,
         f"{DOMAIN}.{LOGIN_COOKIE_STORAGE_KEY}.{entry.entry_id}",
@@ -421,7 +434,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: OMVConfigEntry) -> bool:
     _register_registry_cleanup_listener(hass, entry, coordinator)
     _register_reboot_repair_listener(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-    async_setup_services(hass)
     return True
 
 

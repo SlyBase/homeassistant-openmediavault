@@ -35,6 +35,9 @@ from .entity import (
     get_vm_device_info,
 )
 
+# The coordinator fetches all data in one place, so entity updates need no limit.
+PARALLEL_UPDATES = 0
+
 _DISK_BINARY_SENSORS: tuple[OMVBinarySensorDescription, ...] = (
     DISK_BAD_SECTORS_BINARY_SENSOR,
     DISK_CRC_ERRORS_BINARY_SENSOR,
