@@ -30,7 +30,7 @@ include = ["custom_components*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-"custom_components.omv" = ["*.json", "brand/*.png", "translations/*.json"]
+"custom_components.omv" = ["*.json", "brand/*.png", "translations/*.json", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

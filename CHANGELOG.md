@@ -1,6 +1,16 @@
 # Changelog
 
-## [2.9.5] - 2026-11-01
+## [Unreleased]
+
+### Added
+
+- `py.typed` (PEP 561) so the integration is fully type-checkable, plus version-agnostic typing fixes: typed `Store[dict[str, Any]]` and `RepairsFlowResult` annotation. `mypy --strict` passes with 0 errors at the target HA 2026.8.0 (Platinum `strict-typing` rule, PR #140).
+- `tests/test_diagnostics.py` lifts diagnostics coverage from 0% (Silver `test-coverage` rule, PR #140).
+
+### Changed
+
+- Service registration moved from `async_setup_entry` to module-level `async_setup` (Bronze `action-setup` rule); service handlers validate the config entry and raise `ServiceValidationError` when it is missing or not loaded (PR #140).
+- `PARALLEL_UPDATES` added to all five entity platforms: 0 for coordinator-fed sensor/binary_sensor, 1 for command platforms button/switch/update (Silver `parallel-updates` rule, PR #140).
 
 ### Fixed
 
