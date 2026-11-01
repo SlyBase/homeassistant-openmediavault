@@ -4065,7 +4065,9 @@ async def test_filter_data_zfs_datasets_follow_pool_selection(hass, config_entry
     unfiltered = coordinator.filter_data_by_selection(data, {})
     assert len(unfiltered["zfs_datasets"]) == 2
 
+
 # --- Stable disk identity (Issue #144) -----------------------------------
+
 
 @pytest.mark.asyncio
 async def test_stable_disk_key_uses_by_id_link(hass, config_entry) -> None:

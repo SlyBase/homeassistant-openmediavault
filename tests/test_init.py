@@ -659,10 +659,7 @@ async def test_async_migrate_disk_registry_keys(hass) -> None:
     assert migrated_device is not None
     assert migrated_device.id == old_device.id
     assert (
-        device_registry.async_get_device_by_identifier(
-            (DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id
-        )
-        is None
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
     )
 
     new_entity_id = entity_registry.async_get_entity_id(
@@ -729,10 +726,7 @@ async def test_async_migrate_disk_registry_keys_serial_fallback(hass) -> None:
     assert migrated_device is not None
     assert migrated_device.id == old_device.id
     assert (
-        device_registry.async_get_device_by_identifier(
-            (DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id
-        )
-        is None
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
     )
 
 
@@ -802,12 +796,10 @@ async def test_async_migrate_disk_registry_keys_idempotent(hass) -> None:
     assert set(second_device.identifiers) == first_identifiers, (
         "identifiers must not be duplicated or changed on a second run"
     )
-    assert entity_registry.async_get_entity_id(
-        DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3"
-    ) == first_entity_id, "entity unique_id must be unchanged on a second run"
     assert (
-        device_registry.async_get_device_by_identifier(
-            (DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id
-        )
-        is None
+        entity_registry.async_get_entity_id(DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3")
+        == first_entity_id
+    ), "entity unique_id must be unchanged on a second run"
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
     )
