@@ -1816,6 +1816,38 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("_normalize_network: produced %d deduplicated interfaces", len(network))
         return network
 
+    def _stable_disk_key(
+        self,
+        record: dict[str, Any],
+        devicename: str,
+        used_keys: set[str],
+    ) -> str:
+        """Return a stable disk identity key, preferring the by-id link.
+
+        Issue #144: ``/dev/sdX`` is volatile across reboots, so a disk that
+        moves from ``sdj`` to ``sdi`` would get a new identity and orphan its
+        long-term statistics. The ``/dev/disk/by-id`` link (WWN or
+        serial+port) is stable and unique; ``by-path`` is a stable fallback;
+        ``devicename`` is the last resort when neither link exists. A by-id
+        candidate already claimed by another record (a USB controller sharing
+        one serial across ports) must not collide, so it falls back to
+        devicename.
+        """
+        links = record.get("devicelinks") or []
+        for link in links:
+            if "/by-id/" in link:
+                candidate = link.rsplit("/", 1)[-1]
+                if candidate and candidate not in used_keys:
+                    return candidate
+                break
+        for link in links:
+            if "/by-path/" in link:
+                candidate = link.rsplit("/", 1)[-1]
+                if candidate and candidate not in used_keys:
+                    return candidate
+                break
+        return devicename
+
     def _normalize_disks(self, response: Any) -> list[dict[str, Any]]:
         """Normalize disk inventory data.
 
@@ -1824,6 +1856,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         disks: list[dict[str, Any]] = []
         seen_devicenames: set[str] = set()
+        used_stable_keys: set[str] = set()
         raw_records = self._records_from_response(response)
         _LOGGER.debug("_normalize_disks: received %d raw records", len(raw_records))
         for record in raw_records:
@@ -1854,8 +1887,10 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             total_size_gb = self._coerce_storage_gb(record.get("size"))
             model = str(record.get("model") or "unknown")
             is_virtual = model.upper().startswith(("QEMU", "VMWARE", "VIRTUALBOX", "VBOX"))
+            disk_key = self._stable_disk_key(record, devicename, used_stable_keys)
+            used_stable_keys.add(disk_key)
             disk = {
-                "disk_key": devicename,
+                "disk_key": disk_key,
                 "devicename": devicename,
                 "canonicaldevicefile": str(record.get("canonicaldevicefile") or ""),
                 "devicefile": str(record.get("devicefile") or ""),

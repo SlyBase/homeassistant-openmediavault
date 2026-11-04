@@ -2,15 +2,23 @@
 
 ## [Unreleased]
 
+### Added
+
+- `py.typed` (PEP 561) so the integration is fully type-checkable, plus version-agnostic typing fixes: typed `Store[dict[str, Any]]` and `RepairsFlowResult` annotation. `mypy --strict` passes with 0 errors at the target HA 2026.8.0 (Platinum `strict-typing` rule, PR #140).
+- `tests/test_diagnostics.py` lifts diagnostics coverage from 0% (Silver `test-coverage` rule, PR #140).
+
 ### Changed
 
 - Service registration moved from `async_setup_entry` to module-level `async_setup` (Bronze `action-setup` rule); service handlers validate the config entry and raise `ServiceValidationError` when it is missing or not loaded (PR #140).
 - `PARALLEL_UPDATES` added to all five entity platforms: 0 for coordinator-fed sensor/binary_sensor, 1 for command platforms button/switch/update (Silver `parallel-updates` rule, PR #140).
 
-### Added
+### Fixed
 
-- `py.typed` (PEP 561) so the integration is fully type-checkable, plus version-agnostic typing fixes: typed `Store[dict[str, Any]]` and `RepairsFlowResult` annotation. `mypy --strict` passes with 0 errors at the target HA 2026.8.0 (Platinum `strict-typing` rule, PR #140).
-- `tests/test_diagnostics.py` lifts diagnostics coverage from 0% (Silver `test-coverage` rule, PR #140).
+- Disk devices and entities now keep a stable identity across reboots: their identifier is derived from the stable `/dev/disk/by-id` link (WWN or serial+port) instead of the volatile `/dev/sdX` name, with a `/dev/disk/by-path` fallback and the device name as a last resort (Issue #144). When a physical disk is re-lettered by the kernel after a reboot (e.g. `sdj` → `sdi`), its entity `unique_id` and device identifier stay stable, so long-term statistics and dashboards are no longer fragmented or orphaned. A one-time registry migration retargets existing disk devices/entities from the old `sdX` identifier to the stable `by-id` identifier in place, preserving user customizations and long-term statistics; when the device name changed after a reboot before the migration ran, it falls back to matching the device by its serial number (stored on `hw_version`) so the disk is not orphaned. A duplicate `by-id` (a USB controller sharing one serial across ports) falls back to the device name so the two disks remain distinct (Issue #665).
+
+### Notes
+
+- ZFS pools/datasets, md RAID arrays, filesystems, VMs, containers, compose projects and network interfaces are unaffected — their identifiers were already stable (pool name, dataset path, md array name, filesystem UUID, libvirt name, service name, interface UUID).
 
 ## [2.9.4] - 2026-10-30
 
