@@ -17,7 +17,7 @@ test = [
   "aioresponses==0.7.9",
 ]
 dev = [
-  "ruff==0.17.3",
+  "ruff==0.17.4",
   "mypy==2.4.1",
   "pre-commit==4.7.0",
 ]
