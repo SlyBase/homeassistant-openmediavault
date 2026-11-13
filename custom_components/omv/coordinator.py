@@ -1826,12 +1826,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Issue #144: ``/dev/sdX`` is volatile across reboots, so a disk that
         moves from ``sdj`` to ``sdi`` would get a new identity and orphan its
-        long-term statistics. The ``/dev/disk/by-id`` link (WWN or
-        serial+port) is stable and unique; ``by-path`` is a stable fallback;
-        ``devicename`` is the last resort when neither link exists. A by-id
+        long-term statistics. The chain mirrors the Proxmox integration:
+        ``/dev/disk/by-id`` link (WWN or serial+port) -> ``by-path`` ->
+        hardware ``serialnumber`` -> ``devicename`` as the last resort. A
         candidate already claimed by another record (a USB controller sharing
-        one serial across ports) must not collide, so it falls back to
-        devicename.
+        one serial across ports) must not collide, so it falls through to the
+        next step.
         """
         links = record.get("devicelinks") or []
         for link in links:
@@ -1846,6 +1846,9 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if candidate and candidate not in used_keys:
                     return candidate
                 break
+        serial = str(record.get("serialnumber") or "").strip()
+        if serial and serial not in used_keys:
+            return serial
         return devicename
 
     def _normalize_disks(self, response: Any) -> list[dict[str, Any]]:

@@ -4133,8 +4133,13 @@ async def test_stable_disk_key_falls_back_to_by_path(hass, config_entry) -> None
 
 
 @pytest.mark.asyncio
-async def test_stable_disk_key_falls_back_to_devicename_when_no_links(hass, config_entry) -> None:
-    """disk_key must keep the devicename when no by-id or by-path link exists."""
+async def test_stable_disk_key_falls_back_to_serialnumber_when_no_links(hass, config_entry) -> None:
+    """disk_key must fall back to the hardware serial when no links exist.
+
+    Owner design decision on Issue #144 (2026-11-01): mirror the Proxmox
+    integration's chain by-id -> by-path -> serialnumber -> devicename, so a
+    disk without udev links still keeps a stable identity across reboots.
+    """
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
@@ -4153,13 +4158,73 @@ async def test_stable_disk_key_falls_back_to_devicename_when_no_links(hass, conf
     )
 
     assert len(disks) == 1
-    assert disks[0]["disk_key"] == "sdj", "no links -> devicename is the last resort"
+    assert disks[0]["disk_key"] == "01UL1B3", "no links -> the hardware serial is more stable than the devicename"
+    assert disks[0]["devicename"] == "sdj", "devicename must remain the raw sdX name"
+
+
+@pytest.mark.asyncio
+async def test_stable_disk_key_serial_collision_falls_back_to_devicename(hass, config_entry) -> None:
+    """Two disks without links sharing one serial must not collide; the second
+    falls back to its devicename so both remain distinct."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    disks = coordinator._normalize_disks(
+        [
+            {
+                "devicename": "sdj",
+                "canonicaldevicefile": "/dev/sdj",
+                "devicefile": "/dev/sdj",
+                "serialnumber": "DUP01",
+            },
+            {
+                "devicename": "sdk",
+                "canonicaldevicefile": "/dev/sdk",
+                "devicefile": "/dev/sdk",
+                "serialnumber": "DUP01",
+            },
+        ]
+    )
+
+    assert len(disks) == 2, "two physical disks must stay two distinct records"
+    keys = {d["disk_key"] for d in disks}
+    assert len(keys) == 2, f"duplicate serial must not collide; got {keys}"
+    assert "DUP01" in keys
+    assert "sdk" in keys, "colliding disk must fall back to its devicename"
+
+
+@pytest.mark.asyncio
+async def test_stable_disk_key_falls_back_to_devicename_when_no_links(hass, config_entry) -> None:
+    """disk_key must keep the devicename when no links AND no serial exist."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    disks = coordinator._normalize_disks(
+        [
+            {
+                "devicename": "sdj",
+                "canonicaldevicefile": "/dev/sdj",
+                "devicefile": "/dev/sdj",
+                "serialnumber": "",
+            },
+        ]
+    )
+
+    assert len(disks) == 1
+    assert disks[0]["disk_key"] == "sdj", "no links and no serial -> devicename is the last resort"
 
 
 @pytest.mark.asyncio
 async def test_stable_disk_key_collision_falls_back_to_devicename(hass, config_entry) -> None:
-    """A duplicate by-id (USB controller shares one serial) must not collide;
-    the second disk falls back to its devicename so both remain distinct."""
+    """A duplicate by-id (USB controller shares one serial) must not collide.
+    The second disk falls through to its serial (still stable, still distinct);
+    a third disk whose serial is ALSO claimed ends at its devicename."""
     config_entry.add_to_hass(hass)
     api = Mock()
     api.base_url = "http://192.0.2.10:80"
@@ -4182,11 +4247,19 @@ async def test_stable_disk_key_collision_falls_back_to_devicename(hass, config_e
                 "serialnumber": "DUP01",
                 "devicelinks": ["/dev/disk/by-id/usb-CTRL_DUP01-0:0"],
             },
+            {
+                "devicename": "sdl",
+                "canonicaldevicefile": "/dev/sdl",
+                "devicefile": "/dev/sdl",
+                "serialnumber": "DUP01",
+                "devicelinks": ["/dev/disk/by-id/usb-CTRL_DUP01-0:0"],
+            },
         ]
     )
 
-    assert len(disks) == 2, "two physical disks must stay two distinct records"
+    assert len(disks) == 3, "three physical disks must stay three distinct records"
     keys = {d["disk_key"] for d in disks}
-    assert len(keys) == 2, f"duplicate by-id must not collide; got {keys}"
+    assert len(keys) == 3, f"duplicate by-id must not collide; got {keys}"
     assert "usb-CTRL_DUP01-0:0" in keys
-    assert "sdk" in keys, "colliding disk must fall back to its devicename"
+    assert "DUP01" in keys, "by-id collision falls through to the serial"
+    assert "sdl" in keys, "by-id AND serial collision ends at the devicename"
