@@ -758,12 +758,17 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 continue
 
             disk_key = str(disk.get("disk_key") or disk.get("devicename") or "")
+            # Selections saved before 2.10.0 hold the volatile devicename;
+            # disk_key is now the stable by-id link (Issue #144). Match both
+            # so existing selections keep their disks instead of dropping
+            # them into the stale-cleanup pass.
+            devicename = str(disk.get("devicename") or "")
             if disk.get("israid") or disk.get("is_logical"):
-                if selected_raids is None or disk_key in selected_raids:
+                if selected_raids is None or disk_key in selected_raids or devicename in selected_raids:
                     filtered["disk"].append(disk)
                 continue
 
-            if selected_disks is None or disk_key in selected_disks:
+            if selected_disks is None or disk_key in selected_disks or devicename in selected_disks:
                 filtered["disk"].append(disk)
 
         selected_filesystems = self._selected_values(options, CONF_SELECTED_FILESYSTEMS)
@@ -1062,13 +1067,16 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if (
                 not canonical
                 or str(disk.get("devicename") or "").startswith(("mmcblk", "sr", "bcache"))
-                or disk.get("hotpluggable")
+                # Hotplug-capable SATA ports (e.g. Odroid HC4) report internal
+                # ATA disks as hotpluggable — only pre-skip USB devices, which
+                # rarely support SMART attributes (Issue #144 follow-up).
+                or (disk.get("hotpluggable") and str(disk.get("disk_key") or "").startswith("usb-"))
                 or disk.get("israid")
                 or disk.get("is_logical")
                 or disk.get("is_virtual")
             ):
                 _LOGGER.debug(
-                    "Skipping SMART attributes for %s (removable/hotpluggable/logical/virtual)",
+                    "Skipping SMART attributes for %s (USB/removable/logical/virtual)",
                     canonical or disk.get("devicename"),
                 )
                 continue
@@ -2118,9 +2126,15 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         raids_by_device[raid_device]["member_disks"].append(member)
                 continue
 
-            # Track which physical disk is a member of this RAID
+            # Track which physical disk is a member of this RAID. Without the
+            # md plugin the synthetic array record has no member list — the
+            # array itself must not end up as its own member (Issue #144).
             member_key = str(disk.get("disk_key") or disk.get("devicename") or "")
-            if member_key and member_key not in raids_by_device[raid_device]["member_disks"]:
+            if (
+                member_key
+                and member_key != raid_device
+                and member_key not in raids_by_device[raid_device]["member_disks"]
+            ):
                 _LOGGER.debug(
                     "_normalize_raids: adding member disk=%s to RAID device=%s",
                     member_key,

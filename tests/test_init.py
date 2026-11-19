@@ -803,3 +803,122 @@ async def test_async_migrate_disk_registry_keys_idempotent(hass) -> None:
     assert (
         device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
     )
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_disk_registry_keys_uses_unfiltered_inventory(hass) -> None:
+    """Disks hidden by the persisted selection must still migrate (Issue #144
+    follow-up). coordinator.data is filtered by selection; pre-2.10 selections
+    hold devicenames that no longer match the stable disk_key, so the disk is
+    absent from coordinator.data. Migrating only the filtered list would leave
+    the old device for the stale-cleanup pass to delete with all its entities.
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:disk:sdb")},
+        name="WDC WD101EDBZ [sdb]",
+    )
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{entry.entry_id}-disk-sdb",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="WDC WD101EDBZ [sdb] temperature",
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    # The selection filter dropped the disk from coordinator.data ...
+    coordinator.data = {"disk": []}
+    # ... but the full inventory still knows it.
+    coordinator._inventory_source = {
+        "disk": [
+            {
+                "disk_key": "ata-WDC_WD101EDBZ-11B1DA0_WD-ABC",
+                "devicename": "sdb",
+                "serialnumber": "WD-ABC",
+                "model": "WD101EDBZ",
+                "vendor": "WDC",
+            },
+        ],
+    }
+
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    migrated_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD101EDBZ-11B1DA0_WD-ABC"), entry.entry_id
+    )
+    assert migrated_device is not None
+    assert migrated_device.id == old_device.id
+    assert (
+        entity_registry.async_get_entity_id(DOMAIN, "sensor", f"{entry.entry_id}-disk-ata-WDC_WD101EDBZ-11B1DA0_WD-ABC")
+        is not None
+    ), "temperature entity must be retargeted, not left for stale-cleanup"
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_disk_registry_keys_keeps_filesystem_unique_ids(hass) -> None:
+    """Filesystem sensors share the disk device but are keyed by filesystem
+    UUID, not by the disk key (Issue #144 follow-up). The migration must only
+    rewrite unique_ids that actually end in the old disk key — a blind
+    last-hyphen-segment rewrite corrupts UUID-keyed entities.
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:disk:sda")},
+        name="Seagate ST4000VN008 [sda]",
+    )
+    fs_unique_id = f"{entry.entry_id}-filesystem_used_size-12345678-abcd-ef01-2345-6789abcdef01"
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{entry.entry_id}-disk-sda",
+        config_entry=entry,
+        device_id=old_device.id,
+    )
+    fs_entry = entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        fs_unique_id,
+        config_entry=entry,
+        device_id=old_device.id,
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    coordinator.data = {
+        "disk": [
+            {
+                "disk_key": "ata-Seagate_ST4000VN008_Z123",
+                "devicename": "sda",
+                "serialnumber": "Z123",
+                "model": "ST4000VN008",
+                "vendor": "Seagate",
+            },
+        ],
+    }
+
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    assert entity_registry.async_get(fs_entry.entity_id).unique_id == fs_unique_id, (
+        "filesystem entity unique_id must survive the disk-key migration"
+    )
+    assert (
+        entity_registry.async_get_entity_id(DOMAIN, "sensor", f"{entry.entry_id}-disk-ata-Seagate_ST4000VN008_Z123")
+        is not None
+    )
