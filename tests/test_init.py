@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.omv import (
     _async_migrate_container_registry_keys,
+    _async_migrate_disk_registry_keys,
     _async_persist_login_cookie,
     _check_coordinator_version_consistency,
     _login_cookie_store,
@@ -599,3 +600,206 @@ async def test_migrate_container_registry_keys_ignores_removed_containers(hass) 
     )
     assert unchanged_device is not None
     assert unchanged_device.id == old_device.id
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_disk_registry_keys(hass) -> None:
+    """Disk devices/entries registered under the volatile /dev/sdX key must be
+    retargeted onto the stable by-id key, preserving user customizations.
+
+    Regression test for Issue #144: after the coordinator derives disk_key from
+    the by-id link, existing installs still have disk devices/entities under
+    the old devicename key. The migration must move them in place instead of
+    leaving them for the stale-cleanup pass to drop and recreate.
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:disk:sdj")},
+        name="WDC WD2000FYYZ [sdj]",
+    )
+    sensor_entry = entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{entry.entry_id}-disk_size-sdj",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="WDC WD2000FYYZ [sdj] size",
+    )
+    entity_registry.async_update_entity(sensor_entry.entity_id, name="My Big Disk")
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    coordinator.data = {
+        "disk": [
+            {
+                "disk_key": "ata-WDC_WD2000FYYZ-01UL1B3",
+                "devicename": "sdj",
+                "canonicaldevicefile": "/dev/sdj",
+                "devicefile": "/dev/sdj",
+                "serialnumber": "01UL1B3",
+                "model": "WD2000FYYZ",
+                "vendor": "WDC",
+            },
+        ],
+    }
+
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    migrated_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD2000FYYZ-01UL1B3"), entry.entry_id
+    )
+    assert migrated_device is not None
+    assert migrated_device.id == old_device.id
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
+    )
+
+    new_entity_id = entity_registry.async_get_entity_id(
+        DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3"
+    )
+    assert new_entity_id == sensor_entry.entity_id
+    assert entity_registry.async_get(new_entity_id).name == "My Big Disk"
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_disk_registry_keys_serial_fallback(hass) -> None:
+    """When the devicename changed after reboot (sdj -> sdi) before the migration
+    ran, the old device identifier no longer matches the current devicename.
+    The migration must fall back to matching by serial number (stored on the
+    device's hw_version) so the disk is not orphaned (Issue #144).
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    # Old device registered under the pre-reboot devicename (sdj), with the
+    # serial number stored as hw_version.
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:disk:sdj")},
+        name="WDC WD2000FYYZ [sdj]",
+        hw_version="01UL1B3",
+    )
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{entry.entry_id}-disk_size-sdj",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="WDC WD2000FYYZ [sdj] size",
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    # After reboot the devicename is sdi, but the disk_key (by-id) is unchanged.
+    coordinator.data = {
+        "disk": [
+            {
+                "disk_key": "ata-WDC_WD2000FYYZ-01UL1B3",
+                "devicename": "sdi",
+                "canonicaldevicefile": "/dev/sdi",
+                "devicefile": "/dev/sdi",
+                "serialnumber": "01UL1B3",
+                "model": "WD2000FYYZ",
+                "vendor": "WDC",
+            },
+        ],
+    }
+
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    migrated_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD2000FYYZ-01UL1B3"), entry.entry_id
+    )
+    assert migrated_device is not None
+    assert migrated_device.id == old_device.id
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_async_migrate_disk_registry_keys_idempotent(hass) -> None:
+    """Running the migration twice must be a no-op the second time: the device
+    identifier must not be duplicated or corrupted and entity unique_ids must
+    stay at the by-id value (Issue #144).
+    """
+    entry = _make_entry()
+    entry.add_to_hass(hass)
+
+    device_registry = dr.async_get(hass)
+    entity_registry = er.async_get(hass)
+
+    old_device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}:disk:sdj")},
+        name="WDC WD2000FYYZ [sdj]",
+        hw_version="01UL1B3",
+    )
+    entity_registry.async_get_or_create(
+        DOMAIN,
+        "sensor",
+        f"{entry.entry_id}-disk_size-sdj",
+        config_entry=entry,
+        device_id=old_device.id,
+        original_name="WDC WD2000FYYZ [sdj] size",
+    )
+
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, entry, api, scan_interval=60)
+    coordinator.data = {
+        "disk": [
+            {
+                "disk_key": "ata-WDC_WD2000FYYZ-01UL1B3",
+                "devicename": "sdj",
+                "serialnumber": "01UL1B3",
+                "model": "WD2000FYYZ",
+                "vendor": "WDC",
+            },
+        ],
+    }
+
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    first_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD2000FYYZ-01UL1B3"), entry.entry_id
+    )
+    assert first_device is not None
+    first_identifiers = set(first_device.identifiers)
+    first_entity_id = entity_registry.async_get_entity_id(
+        DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3"
+    )
+    assert first_entity_id is not None
+
+    # Run the migration a second time — must be a no-op.
+    await _async_migrate_disk_registry_keys(hass, entry, coordinator)
+
+    second_device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}:disk:ata-WDC_WD2000FYYZ-01UL1B3"), entry.entry_id
+    )
+    assert second_device is not None
+    assert second_device.id == first_device.id, "device must not be re-created"
+    assert set(second_device.identifiers) == first_identifiers, (
+        "identifiers must not be duplicated or changed on a second run"
+    )
+    assert (
+        entity_registry.async_get_entity_id(DOMAIN, "sensor", f"{entry.entry_id}-disk_size-ata-WDC_WD2000FYYZ-01UL1B3")
+        == first_entity_id
+    ), "entity unique_id must be unchanged on a second run"
+    assert (
+        device_registry.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}:disk:sdj"), entry.entry_id) is None
+    )
