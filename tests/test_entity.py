@@ -5,6 +5,7 @@ from __future__ import annotations
 from custom_components.omv.const import DOMAIN
 from custom_components.omv.entity import (
     _hub_device_id,
+    disk_is_smart_eligible,
     get_compose_project_device_info,
     get_container_device_info,
     get_disk_device_info,
@@ -215,3 +216,16 @@ def test_filesystem_without_uuid_falls_back_to_hub(coordinator) -> None:
 
     entry_id = coordinator.config_entry.entry_id
     assert (DOMAIN, entry_id) in info["identifiers"]
+
+
+def test_disk_is_smart_eligible_excludes_mmcblk_and_bcache() -> None:
+    """SD cards and bcache devices do not support SMART attributes — the
+    entity eligibility must mirror the coordinator's attribute skip list
+    (Issue #144 follow-up: mmcblk0 kept an unknown SMART status sensor).
+    """
+    assert disk_is_smart_eligible({"devicename": "sda"}) is True
+    assert disk_is_smart_eligible({"devicename": "nvme0n1"}) is True
+    assert disk_is_smart_eligible({"devicename": "mmcblk0"}) is False
+    assert disk_is_smart_eligible({"devicename": "bcache0"}) is False
+    assert disk_is_smart_eligible({"devicename": "sr0"}) is False
+    assert disk_is_smart_eligible({"devicename": "sda", "israid": True}) is False

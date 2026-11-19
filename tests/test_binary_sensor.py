@@ -300,3 +300,54 @@ async def test_zfs_scrub_active_dedupes_across_disks(coordinator, config_entry) 
     unique_ids = [entity.unique_id for entity in added]
     assert len(unique_ids) == len(set(unique_ids))
     assert sum(uid.endswith("zfs_pool_scrub_active-tank") for uid in unique_ids) == 1
+
+
+@pytest.mark.asyncio
+async def test_mmcblk_disk_has_no_smart_binary_sensors(coordinator, config_entry) -> None:
+    """SD cards (mmcblk) do not support SMART — no bad-sector/CRC binary
+    sensors may be created for them (Issue #144 follow-up: mmcblk0 kept a
+    permanently unknown SMART status sensor). Mirrors the coordinator's
+    attribute skip list, which already excludes mmcblk.
+    """
+    for disk in coordinator.data["disk"]:
+        if disk.get("disk_key") == "sda":
+            disk["disk_key"] = "mmcblk0"
+            disk["devicename"] = "mmcblk0"
+
+    added = []
+
+    def add_entities(entities):
+        added.extend(entities)
+
+    await async_setup_entry(coordinator.hass, config_entry, add_entities)
+    assert not any(entity.unique_id.endswith("disk_bad_sectors-mmcblk0") for entity in added)
+    assert not any(entity.unique_id.endswith("disk_crc_errors-mmcblk0") for entity in added)
+    expected = get_expected_binary_sensor_unique_ids(coordinator)
+    assert f"{config_entry.entry_id}-disk_bad_sectors-mmcblk0" not in expected
+
+
+@pytest.mark.asyncio
+async def test_smart_binary_sensors_unavailable_when_attribute_missing(coordinator) -> None:
+    """Disks without SMART attribute support (e.g. USB-SATA bridges) must show
+    the bad-sector/CRC sensors as unavailable instead of a permanent unknown
+    (Issue #144 follow-up). Once the attribute arrives, the sensor becomes
+    available again.
+    """
+    coordinator.last_update_success = True
+    for disk in coordinator.data["disk"]:
+        if disk.get("disk_key") == "sdb":
+            disk["Reallocated_Sector_Ct"] = "unknown"
+            disk["UDMA_CRC_Error_Count"] = "unknown"
+
+    bad_sectors = OMVBinarySensor(coordinator, DISK_BAD_SECTORS_BINARY_SENSOR, item_key="sdb")
+    crc_errors = OMVBinarySensor(coordinator, DISK_CRC_ERRORS_BINARY_SENSOR, item_key="sdb")
+    assert bad_sectors.is_on is None
+    assert bad_sectors.available is False, "missing SMART attribute must read unavailable, not unknown"
+    assert crc_errors.available is False
+
+    for disk in coordinator.data["disk"]:
+        if disk.get("disk_key") == "sdb":
+            disk["Reallocated_Sector_Ct"] = "0"
+    assert bad_sectors.available is True
+    assert bad_sectors.is_on is False
+    assert crc_errors.available is False, "the CRC attribute is still missing"
