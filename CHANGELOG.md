@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Disk selection saved before 2.10.0 (stored as `/dev/sdX` device names) keeps working after the stable disk-identifier change: the selection filter now matches both the stable `disk_key` and the device name, so previously selected disks no longer disappear from the filtered data and lose their entities/device to the stale-cleanup pass (Issue #144 follow-up — lost RAID-member temperature/SMART entities after updating to 2.10.0).
+- The disk-registry migration now runs against the full disk inventory instead of the selection-filtered data, so disks hidden by a legacy selection are still retargeted in place before stale cleanup runs (Issue #144 follow-up).
+- The disk-registry migration only rewrites entity `unique_id`s that actually end in the old disk key; filesystem sensors sharing the disk device (keyed by filesystem UUID) are no longer corrupted by the rewrite (Issue #144 follow-up).
+- SMART attributes are no longer skipped for internal SATA disks just because the port reports hotplug-capable (e.g. Odroid HC4); only USB devices are pre-skipped (Issue #144 follow-up).
+- An md array without a known member list (no `openmediavault-md` plugin) is no longer recorded as its own member (Issue #144 follow-up).
+
+### Documentation
+
+- README: note that the `openmediavault-md` plugin is required on OMV 7/8 for RAID member detection (Issue #144 follow-up).
+
 ## [2.10.0] - 2026-11-19
 
 ### Added

@@ -334,7 +334,13 @@ async def _async_migrate_disk_registry_keys(
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
 
-    for disk in coordinator.data.get("disk", []):
+    # Migrate from the FULL inventory, not the selection-filtered data: a
+    # pre-2.10 selection holds devicenames that no longer match the stable
+    # disk_key, so the disk can be absent from coordinator.data. Skipping it
+    # here would leave its old device for the stale-cleanup pass to delete
+    # with all its entities (Issue #144 follow-up).
+    disks = coordinator._inventory_source.get("disk") or coordinator.data.get("disk", [])
+    for disk in disks:
         if not isinstance(disk, dict):
             continue
         old_key = str(disk.get("devicename") or "")
@@ -378,12 +384,17 @@ async def _async_migrate_disk_registry_keys(
         for registry_entry in er.async_entries_for_device(
             entity_registry, old_device.id, include_disabled_entities=True
         ):
-            if registry_entry.unique_id.endswith(f"-{new_key}"):
+            # Only rewrite unique_ids that actually carry the old disk key as
+            # their suffix. Filesystem sensors share the disk device but are
+            # keyed by filesystem UUID — a blind last-hyphen-segment rewrite
+            # would corrupt them (Issue #144 follow-up).
+            unique_id = registry_entry.unique_id
+            if unique_id.endswith(f"-{new_key}") or not unique_id.endswith(f"-{old_key}"):
                 continue
-            head, _, _tail = registry_entry.unique_id.rpartition("-")
-            if not head:
-                continue
-            entity_registry.async_update_entity(registry_entry.entity_id, new_unique_id=f"{head}-{new_key}")
+            entity_registry.async_update_entity(
+                registry_entry.entity_id,
+                new_unique_id=f"{unique_id[: -len(old_key)]}{new_key}",
+            )
 
 
 async def _async_cleanup_stale_registry_entries(

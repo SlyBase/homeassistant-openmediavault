@@ -124,6 +124,8 @@ After setup, the options flow lets you adjust:
 
 - RAID health status
 
+**Note:** On OMV 7/8, install the [`openmediavault-md`](https://github.com/openmediavault-plugin-developers/openmediavault-md) plugin for RAID member detection. Without it, OMV does not expose the md array's member disks, so the integration can show the array itself but cannot list its members.
+
 ### ZFS pool devices
 
 - Pool status

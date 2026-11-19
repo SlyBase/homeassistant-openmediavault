@@ -2369,10 +2369,10 @@ async def test_smart_skips_getattributes_for_hotpluggable_disk(hass, config_entr
         api,
         scan_interval=60,
     )
-    # Simulate a USB stick: hotpluggable=True, has a canonical device file
+    # Simulate a USB stick: hotpluggable=True with a usb- by-id key
     disks = [
         {
-            "disk_key": "sdb",
+            "disk_key": "usb-SanDisk_Ultra_12345-0:0",
             "devicename": "sdb",
             "canonicaldevicefile": "/dev/sdb",
             "devicefile": "/dev/sdb",
@@ -4263,3 +4263,128 @@ async def test_stable_disk_key_collision_falls_back_to_devicename(hass, config_e
     assert "usb-CTRL_DUP01-0:0" in keys
     assert "DUP01" in keys, "by-id collision falls through to the serial"
     assert "sdl" in keys, "by-id AND serial collision ends at the devicename"
+
+
+@pytest.mark.asyncio
+async def test_filter_selection_matches_legacy_devicename_after_stable_key_change(hass, config_entry) -> None:
+    """Selections saved before 2.10.0 hold /dev/sdX names (Issue #144 follow-up).
+
+    disk_key is now the stable by-id link, so the selection filter must also
+    match the devicename. Otherwise every previously selected physical disk
+    disappears from the filtered data and the stale-cleanup pass deletes its
+    entities and device (lost RAID-member temperature/SMART sensors).
+    """
+    config_entry = config_entry.__class__(
+        domain=config_entry.domain,
+        title=config_entry.title,
+        data=config_entry.data,
+        options={
+            CONF_SELECTED_DISKS: ["sda", "sdb"],
+            CONF_SELECTED_RAIDS: ["md0", "sdd"],
+        },
+    )
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.168.1.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    data = {
+        "hwinfo": {},
+        "disk": [
+            {"disk_key": "ata-Seagate_ST4000VN008_Z123", "devicename": "sda"},
+            {"disk_key": "ata-WDC_WD101EDBZ-11B1DA0_WD-ABC", "devicename": "sdb"},
+            {"disk_key": "ata-WDC_WD101EDBZ-11B1DA0_WD-DEF", "devicename": "sdc"},
+            {"disk_key": "md0", "devicename": "md0", "israid": True, "is_logical": True},
+            {"disk_key": "ata-RAID_MEMBER_X", "devicename": "sdd", "israid": True},
+        ],
+        "fs": [],
+        "service": [],
+        "network": [],
+        "raid": [],
+        "zfs": [],
+        "smart": [],
+        "compose": [],
+        "compose_projects": [],
+        "compose_volumes": [],
+        "kvm": [],
+        "gpu": {},
+    }
+
+    filtered = coordinator.filter_data_by_selection(data, config_entry.options)
+    assert [disk["devicename"] for disk in filtered["disk"]] == ["sda", "sdb", "md0", "sdd"], (
+        "legacy devicename selections must keep matching after the stable-key change"
+    )
+
+    # New-style selections by the stable disk_key keep working too. Without a
+    # raid selection, RAID devices pass unfiltered (empty_means_all).
+    filtered_new = coordinator.filter_data_by_selection(
+        data, {CONF_SELECTED_DISKS: ["ata-WDC_WD101EDBZ-11B1DA0_WD-DEF"]}
+    )
+    assert [disk["devicename"] for disk in filtered_new["disk"]] == ["sdc", "md0", "sdd"]
+
+
+@pytest.mark.asyncio
+async def test_smart_queries_hotpluggable_internal_sata_disk(hass, config_entry) -> None:
+    """Hotplug-capable SATA ports (e.g. Odroid HC4) must not exclude internal
+    ATA disks from SMART attributes (Issue #144 follow-up). Only USB devices
+    are pre-skipped; a hotpluggable disk with an ata- by-id key is queried.
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+    disks = [
+        {
+            "disk_key": "ata-WDC_WD101EDBZ-11B1DA0_WD-ABC",
+            "devicename": "sdb",
+            "canonicaldevicefile": "/dev/sdb",
+            "devicefile": "/dev/sdb",
+            "hotpluggable": True,
+            "overallstatus": "unknown",
+        }
+    ]
+
+    async def async_call(service, method, params=None, **kwargs):
+        if method in ("getListBg", "getList"):
+            return {"data": [{"devicename": "sdb", "temperature": 35, "overallstatus": "PASSED"}]}
+        if method == "getAttributes":
+            return {"data": [{"attrname": "Raw_Read_Error_Rate", "rawvalue": "0"}]}
+        return []
+
+    api.async_call = AsyncMock(side_effect=async_call)
+    coordinator.omv_version = 8
+
+    await coordinator._async_fetch_smart(disks)
+    assert any(
+        len(call.args) >= 2 and call.args[0] == "Smart" and call.args[1] == "getAttributes"
+        for call in api.async_call.await_args_list
+    ), "getAttributes was not called for a hotpluggable internal SATA disk"
+
+
+@pytest.mark.asyncio
+async def test_normalize_raids_does_not_list_array_as_own_member(hass, config_entry) -> None:
+    """Without the openmediavault-md plugin the synthetic md0 record carries no
+    member list; the array must not be recorded as its own member (Issue #144
+    follow-up).
+    """
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    coordinator = OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+    raids = coordinator._normalize_raids(
+        [
+            {
+                "disk_key": "md0",
+                "devicename": "md0",
+                "canonicaldevicefile": "/dev/md0",
+                "description": "Logical storage device",
+                "israid": True,
+                "is_logical": True,
+            }
+        ]
+    )
+    assert len(raids) == 1
+    assert raids[0]["member_disks"] == [], "md0 must not be a member of itself"
