@@ -222,12 +222,17 @@ def get_zfs_dataset_device_identifier(coordinator: OMVDataUpdateCoordinator, dat
 
 
 def disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
-    """Return True if a disk should receive SMART-derived entities."""
+    """Return True if a disk should receive SMART-derived entities.
+
+    Mirrors the coordinator's SMART attribute skip list: SD cards (mmcblk),
+    optical drives (sr) and bcache devices do not support SMART (Issue #144
+    follow-up — they kept permanently unknown SMART sensors).
+    """
     return not (
         disk.get("israid")
         or disk.get("is_logical")
         or disk.get("is_virtual")
-        or str(disk.get("devicename") or "").startswith("sr")
+        or str(disk.get("devicename") or "").startswith(("mmcblk", "sr", "bcache"))
     )
 
 

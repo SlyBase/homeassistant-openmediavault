@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- SD cards (`mmcblk`), optical drives (`sr`) and `bcache` devices no longer get SMART-derived entities (status, attributes, bad-sector/CRC binary sensors) that stayed permanently `unknown` — entity eligibility now mirrors the coordinator's SMART attribute skip list (Issue #144 follow-up).
+- Bad-sector and CRC-error binary sensors read `unavailable` instead of a permanent `unknown` when the disk does not report the underlying SMART attribute (e.g. USB-SATA bridges without SMART attribute support); they become available automatically once the attribute arrives (Issue #144 follow-up).
+
 ## [2.10.1] - 2026-11-19
 
 ### Fixed

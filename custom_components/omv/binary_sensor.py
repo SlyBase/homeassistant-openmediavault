@@ -318,6 +318,21 @@ class OMVBinarySensor(OMVEntity, BinarySensorEntity):
         return self.entity_description.value_fn(self._get_data())
 
     @property
+    def available(self) -> bool:
+        """SMART-attribute sensors read unavailable when the attribute is absent.
+
+        Disks without SMART attribute support (USB-SATA bridges, SD cards)
+        would otherwise show a permanent unknown (Issue #144 follow-up).
+        """
+        if not super().available:
+            return False
+        required = self.entity_description.required_attribute
+        if required is None:
+            return True
+        value = self._get_data().get(required)
+        return value is not None and value != "unknown"
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
         """Return binary sensor attributes."""
         if not self.entity_description.extra_attrs_fn:

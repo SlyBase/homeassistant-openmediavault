@@ -25,6 +25,10 @@ class OMVBinarySensorDescription(BinarySensorEntityDescription):
     is_collection: bool = False
     collection_key: str | None = None
     name_key: str | None = None
+    # Raw SMART attribute this sensor depends on. When the disk does not
+    # report it (e.g. USB-SATA bridges without SMART attribute support), the
+    # sensor reads unavailable instead of a permanent unknown (Issue #144).
+    required_attribute: str | None = None
 
 
 def _smart_attribute_problem(data: dict[str, Any], attr_name: str) -> bool | None:
@@ -141,6 +145,7 @@ DISK_BAD_SECTORS_BINARY_SENSOR = OMVBinarySensorDescription(
     collection_key="disk_key",
     value_fn=lambda data: _smart_attribute_problem(data, "Reallocated_Sector_Ct"),
     extra_attrs_fn=lambda data: {"reallocated_sector_ct": data.get("Reallocated_Sector_Ct")},
+    required_attribute="Reallocated_Sector_Ct",
 )
 
 DISK_CRC_ERRORS_BINARY_SENSOR = OMVBinarySensorDescription(
@@ -154,4 +159,5 @@ DISK_CRC_ERRORS_BINARY_SENSOR = OMVBinarySensorDescription(
     collection_key="disk_key",
     value_fn=lambda data: _smart_attribute_problem(data, "UDMA_CRC_Error_Count"),
     extra_attrs_fn=lambda data: {"udma_crc_error_count": data.get("UDMA_CRC_Error_Count")},
+    required_attribute="UDMA_CRC_Error_Count",
 )
