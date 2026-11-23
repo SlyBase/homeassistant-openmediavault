@@ -38,13 +38,17 @@ jobs:
     steps:
       - name: Poll CI check-runs for this head SHA
         id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # GITHUB_SHA is the PR merge commit; check runs hang on the head SHA.
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           # hacs and release are `if: false` on PRs, so they create no check
           # runs; only lint/test/hassfest count. A CI job's `if` being false
           # yields no check run, so the filter is stable.
           for _ in $(seq 1 40); do
-            resp=$(curl -sf "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs")
+            resp=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" "https://api.github.com/repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/check-runs")
             total=$(jq '[.check_runs[] | select(.name|IN("lint","test","hassfest"))] | length' <<<"$resp")
             if [ "${total}" -eq 0 ]; then
               sleep 30
