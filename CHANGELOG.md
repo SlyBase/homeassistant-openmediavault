@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Smoke-test CI gate sends the workflow token to the check-runs API and polls the PR head SHA instead of the merge commit, so it no longer fails with curl exit 22 (HTTP error) on PRs such as #159.
+
 ## [2.10.2] - 2026-11-19
 
 ### Fixed
