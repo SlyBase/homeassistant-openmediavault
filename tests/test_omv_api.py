@@ -713,3 +713,37 @@ async def test_seeded_login_cookie_present_for_first_login(
     assert "OPENMEDIAVAULT-LOGIN-restored" in _login_cookie_names(api)
     assert api.get_login_cookie_name() == "OPENMEDIAVAULT-LOGIN-restored"
     await api.async_close()
+
+
+def _rpc_request_kwargs(mock_aiohttp: aioresponses) -> list[dict]:
+    """Return the kwargs of every recorded POST to the OMV RPC endpoint."""
+    return [call.kwargs for call in mock_aiohttp.requests[("POST", URL("http://192.168.1.1:80/rpc.php"))]]
+
+
+@pytest.mark.asyncio
+async def test_async_call_passes_per_call_timeout(hass, mock_aiohttp: aioresponses) -> None:
+    """A per-call timeout becomes a per-request aiohttp.ClientTimeout; the default keeps the session timeout."""
+    for _ in range(2):
+        mock_aiohttp.post(
+            "http://192.168.1.1:80/rpc.php",
+            payload={"response": None, "error": None},
+        )
+
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    await api.async_call(
+        "Kubectl",
+        "delete",
+        {"type": "pod", "name": "web-1", "namespace": "web-app"},
+        max_retries=0,
+        timeout=60.0,
+    )
+    await api.async_call("System", "getInformation")
+
+    with_timeout, without_timeout = _rpc_request_kwargs(mock_aiohttp)
+    assert with_timeout["timeout"] == aiohttp.ClientTimeout(total=60.0)
+    assert with_timeout["json"]["params"] == {"type": "pod", "name": "web-1", "namespace": "web-app"}
+    # No override: no per-request timeout, so the session default (30 s) applies.
+    assert "timeout" not in without_timeout
+    await api.async_close()

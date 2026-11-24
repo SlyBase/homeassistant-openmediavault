@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `OMVAPI.async_call` / `_async_raw_call` accept an optional keyword-only per-call `timeout` (seconds), sent as a per-request `aiohttp.ClientTimeout`.
+
 ### Fixed
 
 - Smoke-test CI gate sends the workflow token to the check-runs API and polls the PR head SHA instead of the merge commit, so it no longer fails with curl exit 22 (HTTP error) on PRs such as #159.
