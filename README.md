@@ -176,15 +176,15 @@ One device per Deployment, StatefulSet and DaemonSet (named `Kubernetes <namespa
 
 - **State** — `running`, `progressing` (rollout in progress), `degraded` (fewer ready than desired replicas), `unavailable` (no ready replica), `scaled_down` (0 replicas desired); attributes: namespace, kind, desired/ready/available/updated replicas, pod count, pod names, images
 - **Restarts** — sum of container restarts over the workload's live pods (resets when pods are recreated)
-- **CPU** — usage in % of the summed node allocatable CPU (attribute `cpu_millicores`)
+- **CPU** — usage in % of the summed node allocatable CPU, 2 decimals (attribute `cpu_millicores`, 3 decimals)
 - **Memory** — usage in MiB
-- **Button: Recreate pods** — deletes *all* pods of the workload at once via `Kubectl.delete`; the controller recreates them. Expect a brief downtime for single-replica workloads. The call blocks on the OMV side until each pod has terminated (up to its `terminationGracePeriodSeconds`), so the integration waits up to grace period + 15 s per pod (30–85 s); a pod that is still terminating after that is logged as a warning, not an error. Other OMV requests of the integration (including the next poll) wait while a delete is in progress. There are deliberately no scale/stop/start controls: the plugin exposes no such RPC, only `apply`, and applying partial manifests can strip fields from recipe- or Helm-installed workloads.
+- **Button: Recreate pods** — deletes *all* pods of the workload at once via `Kubectl.delete`; the controller recreates them. Expect a brief downtime for single-replica workloads. kubectl issues the Kubernetes delete immediately and then waits on the OMV side for the pod to terminate (up to its `terminationGracePeriodSeconds`). The integration stops waiting after 10 s per pod; the delete still completes on the NAS and the controller starts the replacement pod, so a pod that is still terminating at that point is only logged at INFO level, not reported as an error. Other OMV requests of the integration (including the next poll) wait at most those ~10 s per pod. There are deliberately no scale/stop/start controls: the plugin exposes no such RPC, only `apply`, and applying partial manifests can strip fields from recipe- or Helm-installed workloads.
 
 On the hub device: Kubernetes workloads total / running / not running.
 
 **RPC cost:** two `Kubectl.getList` calls per poll (workloads + pods in one call, pod metrics in a separate one); the node list (allocatable CPU) is fetched once and then refreshed about hourly (every 60 polls).
 
-**Selection:** Kubernetes workloads are listed in the options flow like containers and VMs (**Selected Kubernetes workloads**); de-selecting a workload removes its device and entities. Pods owned by Jobs/CronJobs and bare pods are ignored.
+**Selection:** Kubernetes workloads are listed in the options flow like containers and VMs (**Selected Kubernetes workloads**); de-selecting a workload removes its device and entities. Fresh installations (no saved options yet) monitor all workloads; **existing installations: open the integration options and select the workloads to monitor** — once any resource selection has been saved, new resource types start with nothing selected (the same strict opt-in as for VMs). Pods owned by Jobs/CronJobs and bare pods are ignored.
 
 ## Development
 

@@ -24,6 +24,7 @@ from custom_components.omv.button import (
 from custom_components.omv.button import async_setup_entry as async_setup_buttons
 from custom_components.omv.const import CONF_SELECTED_K8S_WORKLOADS, DOMAIN
 from custom_components.omv.coordinator import (
+    _K8S_DELETE_TIMEOUT,
     _K8S_NODES_REFRESH_MULTIPLIER,
     K8S_WORKLOAD_STATES,
     OMVDataUpdateCoordinator,
@@ -281,18 +282,18 @@ async def test_normalize_sums_metrics_and_cpu_percent(hass, config_entry) -> Non
 
     n8n = by_key["n8n-app/deployment/n8n"]
     # 236910n + 5782605n = 6.019515 millicores; 8612Ki + 519000Ki = 515.25 MiB
-    assert n8n["cpu_millicores"] == 6.0
+    assert n8n["cpu_millicores"] == 6.02
     assert n8n["memory_mib"] == 515.2
     assert n8n["cpu_percent"] == 0.15  # 6.019515 / 4000 * 100
     assert n8n["restarts"] == 82
     assert n8n["images"] == ["docker.n8n.io/n8nio/n8n:2.42.7", "n8nio/runners:2.42.7"]
 
     actual = by_key["actual-app/deployment/actual"]
-    assert actual["cpu_millicores"] == 0.0  # 36353n = 0.036 millicores
+    assert actual["cpu_millicores"] == 0.036  # 36353n, kept at 3 decimals so idle pods don't read 0
     assert actual["memory_mib"] == 53.3
     assert actual["cpu_percent"] == 0.0
 
-    assert by_key["intel-gpu-plugin-app/daemonset/intel-gpu-plugin"]["cpu_millicores"] == 0.2
+    assert by_key["intel-gpu-plugin-app/daemonset/intel-gpu-plugin"]["cpu_millicores"] == 0.242
 
     web = by_key["web-app/deployment/web"]
     assert web["cpu_millicores"] == 250.0
@@ -300,11 +301,12 @@ async def test_normalize_sums_metrics_and_cpu_percent(hass, config_entry) -> Non
     assert web["cpu_percent"] == 6.25
 
     broken = by_key["broken-app/deployment/broken"]
-    assert broken["cpu_millicores"] == 0.0
+    assert broken["cpu_millicores"] == 0.012  # 12u
     assert broken["memory_mib"] == 1.0  # 1000k bytes
 
     # Terminating pod still consumes resources and keeps its metrics.
     assert by_key["omv-ha-probe/deployment/probe-slow"]["memory_mib"] == 0.3
+    assert by_key["omv-ha-probe/deployment/probe-slow"]["cpu_millicores"] == 0.048
 
     # No mapped pod has a metrics record (too new / no pods at all) -> None.
     for key in ("db-app/statefulset/db", "paused-app/deployment/paused"):
@@ -588,7 +590,8 @@ async def test_workload_sensors_states_attributes_and_device(coordinator) -> Non
     assert restarts.state_class == SensorStateClass.TOTAL_INCREASING
     assert cpu.native_value == 0.15
     assert cpu.native_unit_of_measurement == "%"
-    assert cpu.extra_state_attributes == {"cpu_millicores": 6.0}
+    assert cpu.extra_state_attributes == {"cpu_millicores": 6.02}
+    assert cpu.entity_description.suggested_display_precision == 2
     assert memory.native_value == 515.2
     assert memory.device_class == SensorDeviceClass.DATA_SIZE
     assert memory.native_unit_of_measurement == "MiB"
@@ -662,8 +665,8 @@ def _button(coordinator: OMVDataUpdateCoordinator, key: str) -> OMVK8sRecreatePo
     return OMVK8sRecreatePodsButton(coordinator, workload)
 
 
-async def test_button_deletes_each_live_pod_with_grace_based_timeout(coordinator) -> None:
-    """One Kubectl.delete per non-terminating pod, sequentially, with clamped timeouts."""
+async def test_button_deletes_each_live_pod_with_fixed_timeout(coordinator) -> None:
+    """One Kubectl.delete per non-terminating pod, sequentially, each with the fixed 10 s timeout."""
     _attach_k8s(coordinator)
     coordinator.api.async_call = AsyncMock(return_value=None)
     coordinator.async_request_refresh = AsyncMock()
@@ -675,31 +678,32 @@ async def test_button_deletes_each_live_pod_with_grace_based_timeout(coordinator
     assert calls == [
         (
             ("Kubectl", "delete", {"type": "pod", "name": "probe-slow-7c7568dffd-x9k2p", "namespace": "omv-ha-probe"}),
-            {"max_retries": 0, "timeout": 60.0},
+            {"max_retries": 0, "timeout": 10},
         ),
         (
             ("Kubectl", "delete", {"type": "pod", "name": "db-0", "namespace": "db-app"}),
-            {"max_retries": 0, "timeout": 75.0},
+            {"max_retries": 0, "timeout": 10},
         ),
         (
             ("Kubectl", "delete", {"type": "pod", "name": "db-1", "namespace": "db-app"}),
-            {"max_retries": 0, "timeout": 75.0},
+            {"max_retries": 0, "timeout": 10},
         ),
     ]
     assert coordinator.async_request_refresh.await_count == 2
 
 
-@pytest.mark.parametrize(("grace", "expected"), [(0, 30.0), (30, 45.0), (45, 60.0), (70, 85.0), (600, 85.0)])
-async def test_recreate_pods_timeout_is_clamped(coordinator, grace, expected) -> None:
-    """Per-call timeout = clamp(grace_period + 15, 30, 85)."""
+async def test_recreate_pods_timeout_is_fixed_regardless_of_grace_period(coordinator) -> None:
+    """The per-call timeout is _K8S_DELETE_TIMEOUT (10 s) for every grace period."""
     coordinator.api.async_call = AsyncMock(return_value=None)
     workload = {
         "namespace": "ns",
-        "pods": [{"name": "p-1", "terminating": False, "grace_period": grace}],
+        "pods": [{"name": f"p-{grace}", "terminating": False, "grace_period": grace} for grace in (0, 10, 30, 45, 600)],
     }
 
-    assert await coordinator.async_k8s_recreate_pods(workload) == 1
-    assert coordinator.api.async_call.await_args.kwargs["timeout"] == expected
+    assert await coordinator.async_k8s_recreate_pods(workload) == 5
+    timeouts = [call.kwargs["timeout"] for call in coordinator.api.async_call.await_args_list]
+    assert timeouts == [_K8S_DELETE_TIMEOUT] * 5
+    assert _K8S_DELETE_TIMEOUT == 10
 
 
 def _client_timeout_error() -> OMVConnectionError:
@@ -711,19 +715,24 @@ def _client_timeout_error() -> OMVConnectionError:
     return outer
 
 
-async def test_button_timeout_logs_warning_and_continues(coordinator, caplog) -> None:
-    """A client timeout means 'still terminating': warn, do not raise, go on."""
+async def test_button_timeout_logs_info_and_continues(coordinator, caplog) -> None:
+    """A client timeout means 'delete requested, still terminating': INFO log, no raise, next pod."""
     _attach_k8s(coordinator)
-    coordinator.api.async_call = AsyncMock(side_effect=[_client_timeout_error(), None])
+    coordinator.api.async_call = AsyncMock(side_effect=[_client_timeout_error(), _client_timeout_error()])
     coordinator.async_request_refresh = AsyncMock()
 
-    with caplog.at_level(logging.WARNING, logger="custom_components.omv.coordinator"):
+    with caplog.at_level(logging.DEBUG, logger="custom_components.omv.coordinator"):
         await _button(coordinator, "db-app/statefulset/db").async_press()
 
     assert coordinator.api.async_call.await_count == 2
-    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
-    assert len(warnings) == 1
-    assert "db-app/db-0" in warnings[0].getMessage()
+    records = [record for record in caplog.records if record.name == "custom_components.omv.coordinator"]
+    assert not [record for record in records if record.levelno >= logging.WARNING]
+    infos = [record.getMessage() for record in records if record.levelno == logging.INFO]
+    assert len(infos) == 2
+    assert "db-app/db-0" in infos[0]
+    assert "db-app/db-1" in infos[1]
+    assert "still terminating" in infos[0]
+    assert "grace period 60s" in infos[0]
     coordinator.async_request_refresh.assert_awaited_once()
 
 

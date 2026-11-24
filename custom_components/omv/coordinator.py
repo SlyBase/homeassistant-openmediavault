@@ -139,12 +139,11 @@ K8S_WORKLOAD_STATES: tuple[str, ...] = (
 _K8S_NAME_PATTERN = re.compile(r"^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$")
 _K8S_NAME_MAX_LENGTH = 253
 _K8S_DEFAULT_GRACE_PERIOD = 30
-# Kubectl.delete blocks until the pod is gone (up to its grace period), so the
-# per-call client timeout follows the grace period, bounded below by the
-# regular request timeout and above by OMV's own nginx/PHP request limit.
-_K8S_DELETE_TIMEOUT_MARGIN = 15
-_K8S_DELETE_TIMEOUT_MIN = 30
-_K8S_DELETE_TIMEOUT_MAX = 85
+# Kubectl.delete issues the API DELETE immediately and then only waits for the
+# pod to terminate (up to its grace period). Aborting the client call does not
+# cancel the delete (verified live: kubectl keeps running inside omv-engined),
+# so a short fixed per-call timeout bounds how long the shared API lock is held.
+_K8S_DELETE_TIMEOUT = 10
 # Binary (Ki, Mi, ...) and decimal (n, u, m, k, M, ...) Kubernetes quantity
 # suffixes as multipliers of the base unit (cores for CPU, bytes for memory).
 _K8S_QUANTITY_SUFFIXES: dict[str, float] = {
@@ -473,15 +472,18 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Each non-terminating pod is deleted sequentially via
         ``Kubectl.delete {"type": "pod", "name", "namespace"}``. That RPC runs
-        ``kubectl delete`` and blocks until the pod is gone, i.e. up to its
-        ``terminationGracePeriodSeconds``; the per-call client timeout is
-        therefore ``grace_period + 15`` seconds, clamped to 30-85 s. kubectl
-        issues the Kubernetes DELETE immediately and only *waits* for the
-        termination afterwards, so a client-side timeout is logged as "delete
-        requested, termination still in progress" and the next pod is
-        processed instead of failing the whole command. All names are
-        validated as DNS-1123 before the first RPC, so an invalid name never
-        leaves a half-processed workload behind.
+        ``kubectl delete``, which issues the Kubernetes DELETE immediately and
+        then blocks until the pod is gone, i.e. up to its
+        ``terminationGracePeriodSeconds``. Aborting the client call does not
+        cancel the delete (kubectl keeps running inside omv-engined and the
+        controller starts the replacement pod), so every call uses a fixed
+        ``_K8S_DELETE_TIMEOUT`` (10 s) client timeout, which bounds how long
+        the shared API lock is held. A client-side timeout therefore means
+        "delete requested, pod still terminating" — the normal path for any
+        pod with a grace period above ~10 s — and is logged at INFO before the
+        next pod is processed. All names are validated as DNS-1123 before the
+        first RPC, so an invalid name never leaves a half-processed workload
+        behind.
 
         Args:
             workload: A normalized workload record from
@@ -509,31 +511,24 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         issued = 0
         for pod in targets:
             pod_name = str(pod["name"])
-            grace_period = self._k8s_count(pod.get("grace_period"), _K8S_DEFAULT_GRACE_PERIOD)
-            timeout = float(
-                min(
-                    _K8S_DELETE_TIMEOUT_MAX,
-                    max(_K8S_DELETE_TIMEOUT_MIN, grace_period + _K8S_DELETE_TIMEOUT_MARGIN),
-                )
-            )
             try:
                 await self.api.async_call(
                     "Kubectl",
                     "delete",
                     {"type": "pod", "name": pod_name, "namespace": namespace},
                     max_retries=0,
-                    timeout=timeout,
+                    timeout=_K8S_DELETE_TIMEOUT,
                 )
             except OMVConnectionError as err:
                 if not self._is_timeout_error(err):
                     raise
-                _LOGGER.warning(
-                    "Kubectl.delete of pod %s/%s did not finish within %.0fs; the delete was "
-                    "requested and the pod is still terminating (grace period %ss)",
+                _LOGGER.info(
+                    "Kubectl.delete of pod %s/%s requested; pod still terminating after %ss "
+                    "(grace period %ss), its controller recreates it",
                     namespace,
                     pod_name,
-                    timeout,
-                    grace_period,
+                    _K8S_DELETE_TIMEOUT,
+                    self._k8s_count(pod.get("grace_period"), _K8S_DEFAULT_GRACE_PERIOD),
                 )
             else:
                 _LOGGER.debug("Kubectl.delete pod %s/%s completed", namespace, pod_name)
@@ -2881,7 +2876,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "state": self._k8s_workload_state(desired, ready, updated),
                     "pods": pods,
                     "restarts": sum(int(pod["restarts"]) for pod in pods if not pod["terminating"]),
-                    "cpu_millicores": round(cpu_millicores, 1) if cpu_millicores is not None else None,
+                    "cpu_millicores": round(cpu_millicores, 3) if cpu_millicores is not None else None,
                     "memory_mib": round(memory_bytes / _BYTES_PER_MIB, 1) if memory_bytes is not None else None,
                     "cpu_percent": cpu_percent,
                 }
