@@ -24,11 +24,10 @@ from custom_components.omv.button import (
     get_expected_button_unique_ids,
 )
 from custom_components.omv.button import async_setup_entry as async_setup_buttons
-from custom_components.omv.const import CONF_SELECTED_K8S_WORKLOADS, DOMAIN
+from custom_components.omv.const import CONF_SELECTED_K8S_WORKLOADS, DOMAIN, K8S_WORKLOAD_STATES
 from custom_components.omv.coordinator import (
     _K8S_DELETE_TIMEOUT,
-    _K8S_NODES_REFRESH_MULTIPLIER,
-    K8S_WORKLOAD_STATES,
+    _K8S_NODES_REFRESH_SECONDS,
     OMVDataUpdateCoordinator,
 )
 from custom_components.omv.diagnostics import async_get_config_entry_diagnostics
@@ -261,11 +260,13 @@ async def test_normalize_maps_pods_and_derives_every_state(hass, config_entry) -
     assert web["restarts"] == 4
     assert [pod["ready"] for pod in web["pods"]] == [True, False]
 
-    # ReplicaSet owner without pod-template-hash label: rsplit fallback.
+    # ReplicaSet owner without pod-template-hash label: not mapped.
     broken = by_key["broken-app/deployment/broken"]
-    assert [pod["name"] for pod in broken["pods"]] == ["broken-6b9f4d7c8f-qwert"]
+    assert broken["pods"] == []
     assert broken["ready"] == 0
-    assert broken["restarts"] == 12
+    assert broken["restarts"] == 0
+    assert by_key["n8n-app/deployment/n8n"]["version"] == "2.42.7"
+    assert by_key["db-app/statefulset/db"]["version"] == "17"
 
     paused = by_key["paused-app/deployment/paused"]
     assert paused["desired"] == 0
@@ -313,8 +314,8 @@ async def test_normalize_sums_metrics_and_cpu_percent(hass, config_entry) -> Non
     assert web["cpu_percent"] == 6.25
 
     broken = by_key["broken-app/deployment/broken"]
-    assert broken["cpu_millicores"] == 0.012  # 12u
-    assert broken["memory_mib"] == 1.0  # 1000k bytes
+    assert broken["cpu_millicores"] is None  # its only pod is not mapped (no hash label)
+    assert broken["memory_mib"] is None
 
     # Terminating pod still consumes resources and keeps its metrics.
     assert by_key["omv-ha-probe/deployment/probe-slow"]["memory_mib"] == 0.3
@@ -423,8 +424,8 @@ async def test_update_fetches_workloads_metrics_and_nodes(hass, config_entry) ->
         "workload_total": 8,
         "workload_running": 4,
         "workload_not_running": 4,
-        "pod_total": 9,
-        "pod_running": 8,
+        "pod_total": 8,
+        "pod_running": 7,
     }
     assert "k8s_workloads" not in coordinator.degraded_collections
 
@@ -460,21 +461,31 @@ async def test_workload_fetch_failure_marks_collection_degraded(hass, config_ent
 
 
 async def test_node_cache_refresh_cadence(hass, config_entry) -> None:
-    """Nodes are fetched on the first cycle, then once per refresh multiplier."""
+    """Nodes are fetched on the first poll, then again only after _K8S_NODES_REFRESH_SECONDS."""
     coordinator = _new_coordinator(hass, config_entry)
     coordinator.api.async_call = AsyncMock(return_value=_payload("nodes"))
 
-    for _ in range(_K8S_NODES_REFRESH_MULTIPLIER):
+    with patch("custom_components.omv.coordinator.time.monotonic", return_value=1000.0):
         nodes = await coordinator._async_fetch_k8s_nodes()
+    with patch(
+        "custom_components.omv.coordinator.time.monotonic",
+        return_value=1000.0 + _K8S_NODES_REFRESH_SECONDS - 1,
+    ):
+        await coordinator._async_fetch_k8s_nodes()
     assert coordinator.api.async_call.await_count == 1
     assert nodes[0]["metadata"]["name"] == "omv-node"
+    assert coordinator.api.async_call.await_args.kwargs == {"max_retries": 0}
 
-    await coordinator._async_fetch_k8s_nodes()
+    with patch(
+        "custom_components.omv.coordinator.time.monotonic",
+        return_value=1000.0 + _K8S_NODES_REFRESH_SECONDS,
+    ):
+        await coordinator._async_fetch_k8s_nodes()
     assert coordinator.api.async_call.await_count == 2
 
 
 async def test_node_cache_retries_while_empty_and_keeps_old_on_failure(hass, config_entry) -> None:
-    """An empty cache is refetched every cycle; a failed refresh keeps the cache."""
+    """An empty cache is refetched every poll; a failed refresh keeps the old cache."""
     coordinator = _new_coordinator(hass, config_entry)
     coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("boom"))
 
@@ -487,8 +498,9 @@ async def test_node_cache_retries_while_empty_and_keeps_old_on_failure(hass, con
     assert len(cached) == 1
 
     coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("boom"))
-    coordinator._k8s_nodes_counter = _K8S_NODES_REFRESH_MULTIPLIER
+    coordinator._k8s_nodes_last_poll = -_K8S_NODES_REFRESH_SECONDS
     assert await coordinator._async_fetch_k8s_nodes() == cached
+    assert coordinator.api.async_call.await_count == 1
 
 
 # --- selection / inventory --------------------------------------------------
@@ -645,7 +657,7 @@ async def test_k8s_summary_sensors_expose_counts(coordinator) -> None:
     total, running, not_running = (OMVSensor(coordinator, d) for d in K8S_SENSORS)
 
     assert (total.native_value, running.native_value, not_running.native_value) == (8, 4, 4)
-    assert total.extra_state_attributes["pod_total"] == 9
+    assert total.extra_state_attributes["pod_total"] == 8
     assert total._attr_suggested_object_id == "nas_k8s_workload_total"
 
 
@@ -712,7 +724,7 @@ async def test_recreate_pods_timeout_is_fixed_regardless_of_grace_period(coordin
         "pods": [{"name": f"p-{grace}", "terminating": False, "grace_period": grace} for grace in (0, 10, 30, 45, 600)],
     }
 
-    assert await coordinator.async_k8s_recreate_pods(workload) == 5
+    assert await coordinator.async_recreate_k8s_pods(workload) == 5
     timeouts = [call.kwargs["timeout"] for call in coordinator.api.async_call.await_args_list]
     assert timeouts == [_K8S_DELETE_TIMEOUT] * 5
     assert _K8S_DELETE_TIMEOUT == 10
@@ -794,7 +806,7 @@ async def test_recreate_pods_read_timeout_on_real_api_counts_as_requested(coordi
     workload = {"namespace": "ns", "pods": [{"name": "p-1"}, {"name": "p-2"}]}
 
     try:
-        assert await coordinator.async_k8s_recreate_pods(workload) == 2
+        assert await coordinator.async_recreate_k8s_pods(workload) == 2
     finally:
         await api.async_close()
 
@@ -819,7 +831,7 @@ async def test_recreate_pods_rejects_invalid_names(coordinator, namespace, pod_n
     }
 
     with pytest.raises(ValueError):
-        await coordinator.async_k8s_recreate_pods(workload)
+        await coordinator.async_recreate_k8s_pods(workload)
     coordinator.api.async_call.assert_not_awaited()
 
 

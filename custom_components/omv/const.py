@@ -64,3 +64,11 @@ CONF_SELECTED_CRON_JOBS = "selected_cron_jobs"
 # Kubernetes workloads (openmediavault-k8s): Deployments/StatefulSets/DaemonSets
 # keyed by "<namespace>/<kind>/<name>"
 CONF_SELECTED_K8S_WORKLOADS = "selected_k8s_workloads"
+# Options of the k8s_workload_state ENUM sensor, in evaluation order.
+K8S_WORKLOAD_STATES: tuple[str, ...] = (
+    "scaled_down",
+    "unavailable",
+    "progressing",
+    "degraded",
+    "running",
+)

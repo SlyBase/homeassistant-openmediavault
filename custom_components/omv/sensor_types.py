@@ -21,7 +21,7 @@ from homeassistant.const import (
     UnitOfTime,
 )
 
-from .coordinator import K8S_WORKLOAD_STATES
+from .const import K8S_WORKLOAD_STATES
 
 
 @dataclass(frozen=True, kw_only=True)

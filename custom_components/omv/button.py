@@ -524,7 +524,7 @@ class OMVK8sRecreatePodsButton(OMVEntity, ButtonEntity):
         try:
             if workload is None:
                 raise ValueError(f"Kubernetes workload {self._workload_key!r} not found")
-            await self.coordinator.async_k8s_recreate_pods(workload)
+            await self.coordinator.async_recreate_k8s_pods(workload)
         except (OMVApiError, OMVConnectionError, ValueError) as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
