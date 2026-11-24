@@ -502,7 +502,7 @@ class OMVAPI:
                 ``{"updatelastaccess": True}`` for non-session services.
             timeout: Optional read timeout in seconds for this one HTTP
                 attempt, sent as ``aiohttp.ClientTimeout(total=None,
-                sock_connect=<_REQUEST_TIMEOUT>, sock_read=timeout)``; ``None``
+                connect=<_REQUEST_TIMEOUT>, sock_connect=<_REQUEST_TIMEOUT>, sock_read=timeout)``; ``None``
                 keeps the session default ``_REQUEST_TIMEOUT``.
 
         Returns:
@@ -557,6 +557,7 @@ class OMVAPI:
             # connection error.
             request_kwargs["timeout"] = aiohttp.ClientTimeout(
                 total=None,
+                connect=_REQUEST_TIMEOUT.total,
                 sock_connect=_REQUEST_TIMEOUT.total,
                 sock_read=timeout,
             )

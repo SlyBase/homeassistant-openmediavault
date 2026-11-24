@@ -747,7 +747,7 @@ async def test_async_call_passes_per_call_timeout(hass, mock_aiohttp: aiorespons
     await api.async_call("System", "getInformation")
 
     with_timeout, without_timeout = _rpc_request_kwargs(mock_aiohttp)
-    assert with_timeout["timeout"] == aiohttp.ClientTimeout(total=None, sock_connect=30, sock_read=60.0)
+    assert with_timeout["timeout"] == aiohttp.ClientTimeout(total=None, connect=30, sock_connect=30, sock_read=60.0)
     assert with_timeout["json"]["params"] == {"type": "pod", "name": "web-1", "namespace": "web-app"}
     # No override: no per-request timeout, so the session default (30 s) applies.
     assert "timeout" not in without_timeout

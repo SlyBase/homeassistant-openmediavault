@@ -16,7 +16,7 @@
 
 ### Documentation
 
-- The README describes the new Kubernetes workload devices, and the new `docs/kubernetes.md` page explains the design decisions, the measurements and some ideas for the openmediavault-k8s plugin.
+- The README describes the new Kubernetes workload devices, how the Recreate pods button behaves and how to pick the workloads you want to monitor.
 
 ## [2.10.2] - 2026-11-19
 

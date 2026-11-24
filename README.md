@@ -192,8 +192,6 @@ The Recreate pods button deletes all pods of the workload at the same time, and 
 
 Each update makes two extra RPC calls, one for the workloads and pods and one for the pod metrics, and the node CPU size is only fetched about once an hour.
 
-See [docs/kubernetes.md](docs/kubernetes.md) for the design notes, the measurements and some ideas for the openmediavault-k8s plugin.
-
 ## Development
 
 ### Environment
