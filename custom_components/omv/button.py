@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_SELECTED_CRON_JOBS, DOMAIN
@@ -472,7 +472,7 @@ class OMVK8sRecreatePodsButton(OMVEntity, ButtonEntity):
     Deletes every non-terminating pod of the workload via ``Kubectl.delete``;
     the owning Deployment/StatefulSet/DaemonSet controller recreates them.
     This is the only non-destructive workload verb the openmediavault-k8s
-    plugin offers — scaling or stopping would require ``Kubectl.apply``,
+    plugin offers: scaling or stopping would require ``Kubectl.apply``,
     which can strip fields from recipe/Helm-installed workloads.
     """
 
@@ -493,6 +493,7 @@ class OMVK8sRecreatePodsButton(OMVEntity, ButtonEntity):
             coordinator,
             "k8s",
             workload.get("namespace"),
+            workload.get("kind"),
             workload.get("name") or self._workload_key,
             "recreate_pods",
         )
@@ -502,6 +503,31 @@ class OMVK8sRecreatePodsButton(OMVEntity, ButtonEntity):
             device_info=get_k8s_workload_device_info(coordinator, workload),
         )
 
+    def _current_workload(self) -> dict[str, Any] | None:
+        """Return this button's workload from the current coordinator data.
+
+        Returns:
+            The normalized workload record, or ``None`` when it is gone.
+        """
+        return next(
+            (
+                item
+                for item in (self.coordinator.data or {}).get("k8s_workloads", [])
+                if isinstance(item, dict) and item.get("workload_key") == self._workload_key
+            ),
+            None,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return True only while the workload exists and has a pod to delete."""
+        workload = self._current_workload()
+        return (
+            super().available
+            and workload is not None
+            and any(isinstance(pod, dict) and not pod.get("terminating") for pod in workload.get("pods") or [])
+        )
+
     async def async_press(self) -> None:
         """Delete this workload's pods so its controller recreates them.
 
@@ -509,30 +535,25 @@ class OMVK8sRecreatePodsButton(OMVEntity, ButtonEntity):
         (pod names change with every recreation).
 
         Raises:
-            HomeAssistantError: When the workload is no longer known, a name
-                fails validation, or a Kubectl.delete RPC fails (a client-side
-                timeout while a pod is still terminating is not a failure).
+            ServiceValidationError: When the workload is no longer known.
+            HomeAssistantError: When a name fails validation or a
+                Kubectl.delete RPC fails (a read timeout while a pod is still
+                terminating is not a failure).
         """
-        workload = next(
-            (
-                item
-                for item in self.coordinator.data.get("k8s_workloads", [])
-                if isinstance(item, dict) and item.get("workload_key") == self._workload_key
-            ),
-            None,
-        )
+        workload = self._current_workload()
+        if workload is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="k8s_workload_not_found",
+                translation_placeholders={"resource": self._display_name},
+            )
         try:
-            if workload is None:
-                raise ValueError(f"Kubernetes workload {self._workload_key!r} not found")
             await self.coordinator.async_recreate_k8s_pods(workload)
         except (OMVApiError, OMVConnectionError, ValueError) as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
-                translation_key="k8s_command_failed",
-                translation_placeholders={
-                    "resource": self._display_name,
-                    "command": "recreate pods",
-                },
+                translation_key="k8s_recreate_pods_failed",
+                translation_placeholders={"resource": self._display_name},
             ) from err
         finally:
             await self.coordinator.async_request_refresh()

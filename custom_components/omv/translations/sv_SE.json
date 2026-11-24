@@ -328,8 +328,11 @@
     }
   },
   "exceptions": {
-    "k8s_command_failed": {
-      "message": "Det gick inte att köra {command} för Kubernetes-arbetslasten {resource}. Kontrollera OMV-loggarna."
+    "k8s_recreate_pods_failed": {
+      "message": "Det gick inte att återskapa poddarna för Kubernetes-arbetslasten {resource}. Kontrollera OMV-loggarna."
+    },
+    "k8s_workload_not_found": {
+      "message": "Kubernetes-arbetslasten {resource} hittades inte på OMV-värden."
     }
   },
   "services": {

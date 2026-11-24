@@ -328,8 +328,11 @@
     }
   },
   "exceptions": {
-    "k8s_command_failed": {
-      "message": "Falha ao executar {command} no workload Kubernetes {resource}. Verifique os logs do OMV."
+    "k8s_recreate_pods_failed": {
+      "message": "Falha ao recriar os pods do workload Kubernetes {resource}. Verifique os logs do OMV."
+    },
+    "k8s_workload_not_found": {
+      "message": "O workload Kubernetes {resource} não foi encontrado no host OMV."
     }
   },
   "services": {

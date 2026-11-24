@@ -399,8 +399,11 @@
     "vm_command_failed": {
       "message": "VM {resource} konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
     },
-    "k8s_command_failed": {
-      "message": "„{command}“ für Kubernetes-Workload {resource} fehlgeschlagen. Bitte die OMV-Logs prüfen."
+    "k8s_recreate_pods_failed": {
+      "message": "Die Pods des Kubernetes-Workloads {resource} konnten nicht neu erstellt werden. Bitte die OMV-Logs prüfen."
+    },
+    "k8s_workload_not_found": {
+      "message": "Kubernetes-Workload {resource} wurde auf dem OMV-Host nicht gefunden."
     },
     "rsync_execute_failed": {
       "message": "Rsync-Auftrag {name} konnte nicht gestartet werden. Prüfe die OMV-Logs."

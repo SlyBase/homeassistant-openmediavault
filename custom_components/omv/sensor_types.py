@@ -480,11 +480,13 @@ def _k8s_workload_attrs(data: dict[str, Any]) -> dict[str, Any]:
         data: A normalized record from ``coordinator.data["k8s_workloads"]``.
 
     Returns:
-        Namespace, kind, name, replica counters, pod count, pod names and
-        images of the workload.
+        Workload key, namespace, kind, name, replica counters, pod count and
+        images of the workload. Pod names are deliberately not exposed: they
+        change on every recreation and would churn the recorder.
     """
     pods = [pod for pod in data.get("pods") or [] if isinstance(pod, dict)]
     return {
+        "workload_key": data.get("workload_key"),
         "namespace": data.get("namespace"),
         "kind": data.get("kind"),
         "name": data.get("name"),
@@ -493,7 +495,6 @@ def _k8s_workload_attrs(data: dict[str, Any]) -> dict[str, Any]:
         "available_replicas": data.get("available"),
         "updated_replicas": data.get("updated"),
         "pod_count": len(pods),
-        "pods": [pod.get("name") for pod in pods],
         "images": data.get("images"),
     }
 
@@ -516,9 +517,10 @@ K8S_WORKLOAD_SENSORS: tuple[OMVSensorDescription, ...] = (
         key="k8s_workload_restarts",
         translation_key="k8s_workload_restarts",
         icon="mdi:restart",
-        # Recreated pods restart their counters from 0; TOTAL_INCREASING
-        # treats such a drop as a meter reset instead of a negative delta.
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        # The sum can drop on rollouts and scale-downs (new pods start at 0),
+        # so it is a measurement rather than a monotonic total.
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
         data_path="k8s_workloads",
         is_collection=True,
         collection_key="workload_key",
@@ -544,6 +546,7 @@ K8S_WORKLOAD_SENSORS: tuple[OMVSensorDescription, ...] = (
         translation_key="k8s_workload_memory",
         native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
         device_class=SensorDeviceClass.DATA_SIZE,
+        icon="mdi:memory",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
         data_path="k8s_workloads",

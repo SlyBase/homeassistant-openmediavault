@@ -14,7 +14,8 @@ import aiohttp
 import pytest
 from aioresponses import aioresponses
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.const import EntityCategory
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -605,13 +606,15 @@ async def test_workload_sensors_states_attributes_and_device(coordinator) -> Non
         "available_replicas": 1,
         "updated_replicas": 1,
         "pod_count": 1,
-        "pods": ["n8n-6d5786467f-6kwgb"],
+        "workload_key": "n8n-app/deployment/n8n",
         "images": ["docker.n8n.io/n8nio/n8n:2.42.7", "n8nio/runners:2.42.7"],
     }
     assert state._attr_translation_placeholders == {"resource": "n8n"}
 
     assert restarts.native_value == 82
-    assert restarts.state_class == SensorStateClass.TOTAL_INCREASING
+    assert restarts.state_class == SensorStateClass.MEASUREMENT
+    assert restarts.entity_category == EntityCategory.DIAGNOSTIC
+    assert memory.icon == "mdi:memory"
     assert cpu.native_value == 0.15
     assert cpu.native_unit_of_measurement == "%"
     assert cpu.extra_state_attributes == {"cpu_millicores": 6.02}
@@ -629,26 +632,27 @@ async def test_workload_sensors_states_attributes_and_device(coordinator) -> Non
     assert device["model"] == "Deployment"
     assert device["sw_version"] == "2.42.7"
     assert device["via_device_id"] == coordinator.hub_device_id
-    assert state._attr_suggested_object_id == "nas_k8s_n8n_app_n8n_state"
+    assert state._attr_suggested_object_id == "nas_k8s_n8n_app_deployment_n8n_state"
 
 
 @pytest.mark.parametrize(
-    ("images", "expected"),
+    ("image", "expected"),
     [
-        (["docker.io/library/nginx:1.27"], "1.27"),
-        (["registry.local:5000/app"], None),
-        (["registry.local:5000/app:2.0@sha256:abc"], "2.0"),
-        (["nginx@sha256:abc"], None),
-        ([], None),
+        ("docker.io/library/nginx:1.27", "1.27"),
+        ("registry.local:5000/app", ""),
+        ("registry.local:5000/app:2.0@sha256:abc", "2.0"),
+        ("nginx@sha256:abc", ""),
+        ("", ""),
     ],
 )
-async def test_workload_device_sw_version_from_image_tag(coordinator, images, expected) -> None:
-    """sw_version is the first image's tag; registry ports and digests are not tags."""
+async def test_workload_device_sw_version_from_image_tag(coordinator, image, expected) -> None:
+    """version is the first image's tag (registry ports/digests are not tags) and becomes sw_version."""
+    assert OMVDataUpdateCoordinator._image_tag(image) == expected
     device = get_k8s_workload_device_info(
         coordinator,
-        {"workload_key": "ns/deployment/x", "namespace": "ns", "name": "x", "kind": "Deployment", "images": images},
+        {"workload_key": "ns/deployment/x", "namespace": "ns", "name": "x", "kind": "Deployment", "version": expected},
     )
-    assert device.get("sw_version") == expected
+    assert device.get("sw_version") == (expected or None)
 
 
 async def test_k8s_summary_sensors_expose_counts(coordinator) -> None:
@@ -768,8 +772,8 @@ async def test_button_other_errors_raise_translated_error(coordinator, error) ->
     with pytest.raises(HomeAssistantError) as exc_info:
         await _button(coordinator, "db-app/statefulset/db").async_press()
 
-    assert exc_info.value.translation_key == "k8s_command_failed"
-    assert exc_info.value.translation_placeholders == {"resource": "db-app/db", "command": "recreate pods"}
+    assert exc_info.value.translation_key == "k8s_recreate_pods_failed"
+    assert exc_info.value.translation_placeholders == {"resource": "db-app/db"}
     assert coordinator.api.async_call.await_count == 1
     coordinator.async_request_refresh.assert_awaited_once()
 
@@ -790,7 +794,7 @@ async def test_button_connect_timeout_on_real_api_surfaces_error(coordinator, mo
     finally:
         await api.async_close()
 
-    assert exc_info.value.translation_key == "k8s_command_failed"
+    assert exc_info.value.translation_key == "k8s_recreate_pods_failed"
     assert isinstance(exc_info.value.__cause__, OMVConnectionError)
     assert not isinstance(exc_info.value.__cause__, OMVTimeoutError)
 
@@ -845,7 +849,7 @@ async def test_button_invalid_name_raises_translated_error(coordinator) -> None:
     with pytest.raises(HomeAssistantError) as exc_info:
         await _button(coordinator, coordinator.data["k8s_workloads"][0]["workload_key"]).async_press()
 
-    assert exc_info.value.translation_key == "k8s_command_failed"
+    assert exc_info.value.translation_key == "k8s_recreate_pods_failed"
     coordinator.api.async_call.assert_not_awaited()
 
 
@@ -862,8 +866,27 @@ async def test_button_uses_current_pods_and_fails_for_vanished_workload(coordina
     assert coordinator.api.async_call.await_args.args[2]["name"] == "actual-65fd9dc779-newpd"
 
     coordinator.data["k8s_workloads"] = []
-    with pytest.raises(HomeAssistantError):
+    with pytest.raises(ServiceValidationError) as exc_info:
         await button.async_press()
+    assert exc_info.value.translation_key == "k8s_workload_not_found"
+    assert exc_info.value.translation_placeholders == {"resource": "actual-app/actual"}
+
+
+async def test_button_available_only_with_a_live_pod(coordinator) -> None:
+    """The button is available only while its workload exists and has a non-terminating pod."""
+    _attach_k8s(coordinator)
+    coordinator.last_update_success = True
+    live = _button(coordinator, "actual-app/deployment/actual")
+    scaled_down = _button(coordinator, "paused-app/deployment/paused")
+    assert live.available is True
+    assert scaled_down.available is False
+
+    workload = next(w for w in coordinator.data["k8s_workloads"] if w["workload_key"] == "actual-app/deployment/actual")
+    workload["pods"] = [{**workload["pods"][0], "terminating": True}]
+    assert live.available is False
+
+    coordinator.data["k8s_workloads"] = []
+    assert live.available is False
 
 
 # --- diagnostics / registry cleanup ----------------------------------------

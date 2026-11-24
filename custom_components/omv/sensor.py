@@ -179,6 +179,7 @@ def _sensor_suggested_object_id(
             coordinator,
             "k8s",
             data.get("namespace"),
+            data.get("kind"),
             data.get("name") or item_key,
             metric,
         )
@@ -408,20 +409,19 @@ def get_expected_sensor_registry_state(
                 device_identifiers,
             )
 
-    # Every workload gets all K8S_WORKLOAD_SENSORS: CPU/memory stay registered
-    # (as unknown) while metrics are missing instead of being pruned.
-    for workload in coordinator.data.get("k8s_workloads", []):
-        if not isinstance(workload, dict):
-            continue
-        item_key = str(workload.get("workload_key") or "")
-        if not item_key:
-            continue
-        for description in K8S_WORKLOAD_SENSORS:
+    # Not gated via _should_add_description: a short metrics-server outage must not prune CPU/memory.
+    for description in K8S_WORKLOAD_SENSORS:
+        for workload in coordinator.data.get("k8s_workloads", []):
+            if not isinstance(workload, dict):
+                continue
+            item_key = str(workload.get("workload_key") or "")
+            if not item_key:
+                continue
             unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
-        _collect_device_identifiers(
-            get_k8s_workload_device_info(coordinator, workload),
-            device_identifiers,
-        )
+            _collect_device_identifiers(
+                get_k8s_workload_device_info(coordinator, workload),
+                device_identifiers,
+            )
 
     return unique_ids, device_identifiers
 
@@ -660,24 +660,22 @@ async def async_setup_entry(
                 )
             )
 
-    # No _should_add_description here: CPU/memory are created even while
-    # metrics-server has no data yet and simply report unknown.
-    for workload in coordinator.data.get("k8s_workloads", []):
-        if not isinstance(workload, dict):
-            continue
-        item_key = str(workload.get("workload_key") or "")
-        if not item_key:
-            continue
-        device_info = get_k8s_workload_device_info(coordinator, workload)
-        entities.extend(
-            OMVSensor(
-                coordinator,
-                description,
-                item_key=item_key,
-                device_info=device_info,
+    # Not gated via _should_add_description: a short metrics-server outage must not prune CPU/memory.
+    for description in K8S_WORKLOAD_SENSORS:
+        for workload in coordinator.data.get("k8s_workloads", []):
+            if not isinstance(workload, dict):
+                continue
+            item_key = str(workload.get("workload_key") or "")
+            if not item_key:
+                continue
+            entities.append(
+                OMVSensor(
+                    coordinator,
+                    description,
+                    item_key=item_key,
+                    device_info=get_k8s_workload_device_info(coordinator, workload),
+                )
             )
-            for description in K8S_WORKLOAD_SENSORS
-        )
 
     async_add_entities(entities)
 

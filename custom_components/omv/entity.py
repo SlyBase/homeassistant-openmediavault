@@ -471,23 +471,6 @@ def get_vm_device_info(
     )
 
 
-def _k8s_image_tag(image: str) -> str | None:
-    """Return the tag of a container image reference, if it has one.
-
-    Args:
-        image: Image reference such as ``docker.io/library/nginx:1.27`` or
-            ``nginx@sha256:<digest>`` (registry ports are not mistaken for tags).
-
-    Returns:
-        The tag (``"1.27"``), or ``None`` for untagged/digest-only references.
-    """
-    reference = image.split("@", 1)[0]
-    last_segment = reference.rsplit("/", 1)[-1]
-    if ":" not in last_segment:
-        return None
-    return _normalized_device_value(last_segment.rsplit(":", 1)[1])
-
-
 def get_k8s_workload_device_info(
     coordinator: OMVDataUpdateCoordinator,
     workload: dict[str, Any],
@@ -500,21 +483,19 @@ def get_k8s_workload_device_info(
 
     Returns:
         A device named ``Kubernetes <namespace>/<name>`` below the hub device,
-        with the workload kind as model and the first image tag as
-        ``sw_version``.
+        with the workload kind as model and the normalized ``version`` (tag
+        of the first pod-template image) as ``sw_version``.
     """
     workload_key = str(workload.get("workload_key") or "")
     namespace = str(workload.get("namespace") or "")
     name = str(workload.get("name") or workload_key)
-    images = workload.get("images")
-    first_image = str(images[0]) if isinstance(images, list) and images else ""
     return DeviceInfo(
         identifiers={get_k8s_workload_device_identifier(coordinator, workload_key)},
         via_device_id=_require_device_id(_hub_device_id(coordinator)),
         name=f"Kubernetes {namespace}/{name}" if namespace else f"Kubernetes {name}",
         manufacturer="Kubernetes",
         model=_normalized_device_value(workload.get("kind")) or "Workload",
-        sw_version=_k8s_image_tag(first_image) if first_image else None,
+        sw_version=_normalized_device_value(workload.get("version")),
         configuration_url=coordinator.api.base_url,
     )
 
