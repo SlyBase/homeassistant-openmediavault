@@ -17,6 +17,7 @@ from .exceptions import (
     OMVApiError,
     OMVAuthError,
     OMVConnectionError,
+    OMVTimeoutError,
     OMVTwoFactorRequiredError,
 )
 
@@ -409,15 +410,22 @@ class OMVAPI:
             max_retries: Maximum number of retry attempts on connection errors.
                 Set to 0 to disable retries (e.g. for calls that are known to
                 fail permanently on certain devices).
-            timeout: Optional total timeout in seconds for this call's HTTP
-                request(s), overriding the session default of 30 s — for RPCs
-                known to block on the OMV side (e.g. ``Kubectl.delete`` waiting
-                for pod termination). ``None`` keeps the session default.
+            timeout: Optional read timeout in seconds, applied per HTTP
+                attempt, for RPCs known to block on the OMV side (e.g.
+                ``Kubectl.delete`` waiting for pod termination). Connecting
+                keeps the ``_REQUEST_TIMEOUT`` budget. ``None`` keeps the
+                session default ``_REQUEST_TIMEOUT``.
+
+        Returns:
+            The ``response`` member of the OMV JSON-RPC reply.
 
         Raises:
-            OMVConnectionError: When OMV stays unreachable after all retries,
-                including a request that exceeded ``timeout`` (the underlying
-                ``TimeoutError`` is kept in the exception chain).
+            OMVApiError: When OMV returns an RPC error.
+            OMVAuthError: When re-authentication after an expired session fails.
+            OMVConnectionError: When OMV stays unreachable after all retries.
+            OMVTimeoutError: When the last attempt was sent but no response
+                arrived within ``timeout``. The type is preserved; with
+                ``max_retries=0`` the original exception is re-raised.
         """
         async with self._lock:
             last_err: Exception | None = None
@@ -468,6 +476,11 @@ class OMVAPI:
                 self._host,
                 last_err,
             )
+        if isinstance(last_err, OMVTimeoutError):
+            # Keep the read-timeout type: callers treat it as "request was sent".
+            if max_retries == 0:
+                raise last_err
+            raise OMVTimeoutError(f"Failed to reach OMV after {max_retries} retries: {last_err}") from last_err
         raise OMVConnectionError(f"Failed to reach OMV after {max_retries} retries: {last_err}") from last_err
 
     async def _async_raw_call(
@@ -487,18 +500,21 @@ class OMVAPI:
             params: Optional parameters to pass to the RPC call.
             options: Explicit RPC ``options`` object; ``None`` sends
                 ``{"updatelastaccess": True}`` for non-session services.
-            timeout: Optional total request timeout in seconds, passed as a
-                per-request ``aiohttp.ClientTimeout``; ``None`` keeps the
-                session's 30 s default.
+            timeout: Optional read timeout in seconds for this one HTTP
+                attempt, sent as ``aiohttp.ClientTimeout(total=None,
+                sock_connect=<_REQUEST_TIMEOUT>, sock_read=timeout)``; ``None``
+                keeps the session default ``_REQUEST_TIMEOUT``.
 
         Returns:
             The ``response`` member of the OMV JSON-RPC reply.
 
         Raises:
-            OMVAuthError: On OMV authentication failures / expired sessions.
-            OMVConnectionError: On network errors, timeouts (``TimeoutError``
-                kept as ``__cause__``), HTTP 5xx and invalid JSON.
             OMVApiError: When OMV returns an RPC error.
+            OMVAuthError: On OMV authentication failures / expired sessions.
+            OMVConnectionError: On network errors, connect timeouts, HTTP 5xx
+                and invalid JSON.
+            OMVTimeoutError: When the request was sent but no response arrived
+                within ``timeout`` (``aiohttp.SocketTimeoutError``).
         """
         if not self._session or self._session.closed:
             raise OMVConnectionError("No active OMV session")
@@ -535,7 +551,15 @@ class OMVAPI:
         ssl_param: bool = not (self._ssl and not self._verify_ssl)
         request_kwargs: dict[str, Any] = {}
         if timeout is not None:
-            request_kwargs["timeout"] = aiohttp.ClientTimeout(total=timeout)
+            # aiohttp starts the sock_read timer only after the request body is
+            # written, so a SocketTimeoutError proves OMV received the request.
+            # Connecting keeps the regular budget; its timeout is a plain
+            # connection error.
+            request_kwargs["timeout"] = aiohttp.ClientTimeout(
+                total=None,
+                sock_connect=_REQUEST_TIMEOUT.total,
+                sock_read=timeout,
+            )
         try:
             async with self._session.post(
                 f"{self.base_url}/rpc.php",
@@ -587,6 +611,8 @@ class OMVAPI:
                     )
                     raise OMVConnectionError(f"OMV returned HTTP {response.status}: {body}")
                 data = await response.json(content_type=None)
+        except aiohttp.SocketTimeoutError as err:
+            raise OMVTimeoutError(f"No response from {self._host} within {timeout}s: {err}") from err
         except (aiohttp.ClientError, TimeoutError) as err:
             raise OMVConnectionError(f"Connection to {self._host} failed: {err}") from err
         except ValueError as err:

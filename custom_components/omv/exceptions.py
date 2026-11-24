@@ -25,3 +25,14 @@ class OMVTwoFactorRequiredError(OMVAuthError):
 
 class OMVConnectionError(OMVApiError):
     """Cannot connect to the OMV endpoint."""
+
+
+class OMVTimeoutError(OMVConnectionError):
+    """The request was sent but no response arrived within the read timeout.
+
+    Only raised for a per-call read timeout (``aiohttp.SocketTimeoutError``,
+    whose timer aiohttp starts after the request body has been written).
+    Connect timeouts and other network errors stay a plain
+    :class:`OMVConnectionError`, so this type means "OMV received the
+    request" (e.g. a ``Kubectl.delete`` still waiting for the pod to stop).
+    """

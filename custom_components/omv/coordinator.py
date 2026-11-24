@@ -42,6 +42,7 @@ from .exceptions import (
     OMVApiError,
     OMVAuthError,
     OMVConnectionError,
+    OMVTimeoutError,
     OMVTwoFactorRequiredError,
 )
 from .omv_api import OMVAPI
@@ -478,10 +479,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         cancel the delete (kubectl keeps running inside omv-engined and the
         controller starts the replacement pod), so every call uses a fixed
         ``_K8S_DELETE_TIMEOUT`` (10 s) client timeout, which bounds how long
-        the shared API lock is held. A client-side timeout therefore means
-        "delete requested, pod still terminating" — the normal path for any
-        pod with a grace period above ~10 s — and is logged at INFO before the
-        next pod is processed. All names are validated as DNS-1123 before the
+        the shared API lock is held. A read timeout (``OMVTimeoutError``)
+        therefore means "delete requested, pod still terminating", the normal
+        path for any pod with a grace period above ~10 s, and is logged at
+        DEBUG before the next pod is processed. A connect timeout or any other
+        error is raised. All names are validated as DNS-1123 before the
         first RPC, so an invalid name never leaves a half-processed workload
         behind.
 
@@ -497,8 +499,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ValueError: When the namespace or a pod name is not a valid
                 Kubernetes (DNS-1123) name.
             OMVApiError: When OMV rejects a delete (e.g. kubectl failed).
-            OMVConnectionError: When the OMV host is unreachable for reasons
-                other than the client-side timeout described above.
+            OMVConnectionError: When the request could not be sent (OMV
+                unreachable, connect timeout).
         """
         namespace = str(workload.get("namespace") or "")
         if not self._is_valid_k8s_name(namespace):
@@ -519,16 +521,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     max_retries=0,
                     timeout=_K8S_DELETE_TIMEOUT,
                 )
-            except OMVConnectionError as err:
-                if not self._is_timeout_error(err):
-                    raise
-                _LOGGER.info(
-                    "Kubectl.delete of pod %s/%s requested; pod still terminating after %ss "
-                    "(grace period %ss), its controller recreates it",
+            except OMVTimeoutError:
+                _LOGGER.debug(
+                    "Kubectl.delete pod=%s/%s timed out after %ss, pod still terminating",
                     namespace,
                     pod_name,
                     _K8S_DELETE_TIMEOUT,
-                    self._k8s_count(pod.get("grace_period"), _K8S_DEFAULT_GRACE_PERIOD),
                 )
             else:
                 _LOGGER.debug("Kubectl.delete pod %s/%s completed", namespace, pod_name)
@@ -3142,28 +3140,6 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             and 0 < len(value) <= _K8S_NAME_MAX_LENGTH
             and _K8S_NAME_PATTERN.fullmatch(value) is not None
         )
-
-    @staticmethod
-    def _is_timeout_error(err: BaseException) -> bool:
-        """Return whether an OMV client error was caused by a client-side timeout.
-
-        ``OMVAPI`` wraps aiohttp/asyncio timeouts into ``OMVConnectionError``
-        (twice when ``async_call`` gives up), so the exception chain is walked.
-
-        Args:
-            err: The exception raised by ``OMVAPI.async_call``.
-
-        Returns:
-            True when a ``TimeoutError`` is anywhere in the cause chain.
-        """
-        current: BaseException | None = err
-        seen: set[int] = set()
-        while current is not None and id(current) not in seen:
-            if isinstance(current, TimeoutError):
-                return True
-            seen.add(id(current))
-            current = current.__cause__ or current.__context__
-        return False
 
     def _normalize_compose(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Docker/Compose containers and extract project relationships."""

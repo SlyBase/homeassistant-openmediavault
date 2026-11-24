@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock, patch
+
 import aiohttp
 import pytest
+from aiohttp import web
 from aioresponses import aioresponses
 from aioresponses.core import CallbackResult
 from homeassistant.helpers.aiohttp_client import DATA_CONNECTOR
@@ -12,6 +16,7 @@ from yarl import URL
 from custom_components.omv.exceptions import (
     OMVAuthError,
     OMVConnectionError,
+    OMVTimeoutError,
     OMVTwoFactorRequiredError,
 )
 from custom_components.omv.omv_api import OMVAPI
@@ -722,7 +727,7 @@ def _rpc_request_kwargs(mock_aiohttp: aioresponses) -> list[dict]:
 
 @pytest.mark.asyncio
 async def test_async_call_passes_per_call_timeout(hass, mock_aiohttp: aioresponses) -> None:
-    """A per-call timeout becomes a per-request aiohttp.ClientTimeout; the default keeps the session timeout."""
+    """A per-call timeout bounds the read per attempt; connect keeps _REQUEST_TIMEOUT; default is untouched."""
     for _ in range(2):
         mock_aiohttp.post(
             "http://192.168.1.1:80/rpc.php",
@@ -742,7 +747,7 @@ async def test_async_call_passes_per_call_timeout(hass, mock_aiohttp: aiorespons
     await api.async_call("System", "getInformation")
 
     with_timeout, without_timeout = _rpc_request_kwargs(mock_aiohttp)
-    assert with_timeout["timeout"] == aiohttp.ClientTimeout(total=60.0)
+    assert with_timeout["timeout"] == aiohttp.ClientTimeout(total=None, sock_connect=30, sock_read=60.0)
     assert with_timeout["json"]["params"] == {"type": "pod", "name": "web-1", "namespace": "web-app"}
     # No override: no per-request timeout, so the session default (30 s) applies.
     assert "timeout" not in without_timeout
@@ -750,25 +755,84 @@ async def test_async_call_passes_per_call_timeout(hass, mock_aiohttp: aiorespons
 
 
 @pytest.mark.asyncio
-async def test_async_call_timeout_surfaces_as_connection_error_with_timeout_cause(
-    hass,
-    mock_aiohttp: aioresponses,
-) -> None:
-    """A client timeout raises OMVConnectionError with TimeoutError in the chain."""
-    from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+async def test_async_call_read_timeout_on_real_socket_raises_omv_timeout_error(hass, socket_enabled) -> None:
+    """A real sock_read timeout after the request was sent raises OMVTimeoutError.
 
+    Uses a local aiohttp server that accepts the request and never answers in
+    time, so the installed aiohttp raises its genuine read-timeout exception
+    (``aiohttp.SocketTimeoutError``). With ``max_retries=0`` the type and the
+    original exception are preserved instead of being wrapped.
+    """
+    received = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_rpc(request: web.Request) -> web.Response:
+        """Record the request, then hold the response past the read timeout."""
+        await request.read()
+        received.set()
+        await release.wait()
+        return web.json_response({"response": None, "error": None})
+
+    app = web.Application()
+    app.router.add_post("/rpc.php", slow_rpc)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = runner.addresses[0][1]
+
+    api = OMVAPI(hass=hass, host="127.0.0.1", username="admin", password="***", port=port)
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    try:
+        with pytest.raises(OMVTimeoutError) as exc_info:
+            await api.async_call("Kubectl", "delete", {"type": "pod", "name": "p"}, max_retries=0, timeout=0.2)
+    finally:
+        release.set()
+        await api.async_close()
+        await runner.cleanup()
+
+    assert received.is_set()
+    assert isinstance(exc_info.value.__cause__, aiohttp.SocketTimeoutError)
+    assert "Failed to reach OMV" not in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_async_call_connect_timeout_stays_plain_connection_error(hass, mock_aiohttp: aioresponses) -> None:
+    """A connect timeout (nothing was sent) is a plain OMVConnectionError, not OMVTimeoutError."""
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=aiohttp.ConnectionTimeoutError("connect"))
     mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=TimeoutError())
-    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=aiohttp.ClientConnectionError("refused"))
 
     api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="***")
     api._session_id = "sess1"
     await api._async_ensure_session()
 
-    with pytest.raises(OMVConnectionError) as timeout_err:
-        await api.async_call("Kubectl", "delete", {"type": "pod", "name": "p"}, max_retries=0, timeout=45.0)
-    with pytest.raises(OMVConnectionError) as refused_err:
-        await api.async_call("Kubectl", "delete", {"type": "pod", "name": "p"}, max_retries=0, timeout=45.0)
+    for _ in range(2):
+        with pytest.raises(OMVConnectionError) as exc_info:
+            await api.async_call("Kubectl", "delete", {"type": "pod", "name": "p"}, max_retries=0, timeout=10)
+        assert not isinstance(exc_info.value, OMVTimeoutError)
+    await api.async_close()
 
-    assert OMVDataUpdateCoordinator._is_timeout_error(timeout_err.value)
-    assert not OMVDataUpdateCoordinator._is_timeout_error(refused_err.value)
+
+@pytest.mark.asyncio
+async def test_async_call_read_timeout_type_survives_retries(hass, mock_aiohttp: aioresponses) -> None:
+    """With retries, a read timeout on the last attempt still surfaces as OMVTimeoutError."""
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=aiohttp.SocketTimeoutError("read"))
+    mock_aiohttp.post(
+        "http://192.168.1.1:80/rpc.php",
+        payload={"response": {"authenticated": True, "sessionid": "s2"}, "error": None},
+    )
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=aiohttp.SocketTimeoutError("read"))
+
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+
+    with (
+        patch("custom_components.omv.omv_api.asyncio.sleep", new=AsyncMock()),
+        pytest.raises(OMVTimeoutError) as exc_info,
+    ):
+        await api.async_call("System", "getInformation", max_retries=1, timeout=5)
+
+    assert "Failed to reach OMV after 1 retries" in str(exc_info.value)
     await api.async_close()

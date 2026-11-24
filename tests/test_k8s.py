@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
+import aiohttp
 import pytest
+from aioresponses import aioresponses
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
@@ -31,7 +33,8 @@ from custom_components.omv.coordinator import (
 )
 from custom_components.omv.diagnostics import async_get_config_entry_diagnostics
 from custom_components.omv.entity import get_k8s_workload_device_info
-from custom_components.omv.exceptions import OMVApiError, OMVConnectionError
+from custom_components.omv.exceptions import OMVApiError, OMVConnectionError, OMVTimeoutError
+from custom_components.omv.omv_api import OMVAPI
 from custom_components.omv.sensor import (
     OMVSensor,
     get_expected_sensor_registry_state,
@@ -41,6 +44,15 @@ from custom_components.omv.sensor_types import K8S_SENSORS, K8S_WORKLOAD_SENSORS
 
 _FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "k8s_kubectl.json").read_text(encoding="utf-8"))
 _K3S_SERVICE = {"name": "k3s", "title": "Kubernetes", "enabled": True, "running": True}
+
+
+@pytest.fixture
+def mock_aiohttp_k8s() -> aioresponses:
+    """Yield an aiohttp response mocker for end-to-end OMVAPI tests."""
+    with aioresponses() as mocked:
+        yield mocked
+
+
 _ALL_KEYS = [
     "actual-app/deployment/actual",
     "broken-app/deployment/broken",
@@ -706,19 +718,10 @@ async def test_recreate_pods_timeout_is_fixed_regardless_of_grace_period(coordin
     assert _K8S_DELETE_TIMEOUT == 10
 
 
-def _client_timeout_error() -> OMVConnectionError:
-    """Build the exception chain OMVAPI.async_call raises for a client timeout."""
-    raw = OMVConnectionError("Connection to 192.0.2.10 failed: ")
-    raw.__cause__ = TimeoutError()
-    outer = OMVConnectionError("Failed to reach OMV after 0 retries: ")
-    outer.__cause__ = raw
-    return outer
-
-
-async def test_button_timeout_logs_info_and_continues(coordinator, caplog) -> None:
-    """A client timeout means 'delete requested, still terminating': INFO log, no raise, next pod."""
+async def test_button_read_timeout_counts_as_requested(coordinator, caplog) -> None:
+    """A read timeout means 'delete requested, still terminating': DEBUG log, no raise, next pod."""
     _attach_k8s(coordinator)
-    coordinator.api.async_call = AsyncMock(side_effect=[_client_timeout_error(), _client_timeout_error()])
+    coordinator.api.async_call = AsyncMock(side_effect=[OMVTimeoutError("read"), OMVTimeoutError("read")])
     coordinator.async_request_refresh = AsyncMock()
 
     with caplog.at_level(logging.DEBUG, logger="custom_components.omv.coordinator"):
@@ -726,22 +729,26 @@ async def test_button_timeout_logs_info_and_continues(coordinator, caplog) -> No
 
     assert coordinator.api.async_call.await_count == 2
     records = [record for record in caplog.records if record.name == "custom_components.omv.coordinator"]
-    assert not [record for record in records if record.levelno >= logging.WARNING]
-    infos = [record.getMessage() for record in records if record.levelno == logging.INFO]
-    assert len(infos) == 2
-    assert "db-app/db-0" in infos[0]
-    assert "db-app/db-1" in infos[1]
-    assert "still terminating" in infos[0]
-    assert "grace period 60s" in infos[0]
+    assert not [record for record in records if record.levelno >= logging.INFO]
+    timeouts = [record.getMessage() for record in records if "timed out" in record.getMessage()]
+    assert timeouts == [
+        "Kubectl.delete pod=db-app/db-0 timed out after 10s, pod still terminating",
+        "Kubectl.delete pod=db-app/db-1 timed out after 10s, pod still terminating",
+    ]
     coordinator.async_request_refresh.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
     "error",
-    [OMVApiError("RPC Kubectl.delete failed: NotFound"), OMVConnectionError("Connection refused")],
+    [
+        OMVApiError("RPC Kubectl.delete failed: NotFound"),
+        OMVConnectionError("Connection refused"),
+        # A connect timeout never reached OMV: it must not count as "requested".
+        OMVConnectionError("Connection to 192.0.2.10 failed: Connection timeout to host"),
+    ],
 )
 async def test_button_other_errors_raise_translated_error(coordinator, error) -> None:
-    """Non-timeout failures stop the command and surface k8s_command_failed."""
+    """Non-read-timeout failures stop the command and surface k8s_command_failed."""
     _attach_k8s(coordinator)
     coordinator.api.async_call = AsyncMock(side_effect=error)
     coordinator.async_request_refresh = AsyncMock()
@@ -753,6 +760,43 @@ async def test_button_other_errors_raise_translated_error(coordinator, error) ->
     assert exc_info.value.translation_placeholders == {"resource": "db-app/db", "command": "recreate pods"}
     assert coordinator.api.async_call.await_count == 1
     coordinator.async_request_refresh.assert_awaited_once()
+
+
+async def test_button_connect_timeout_on_real_api_surfaces_error(coordinator, mock_aiohttp_k8s) -> None:
+    """End to end through OMVAPI: an aiohttp connect timeout makes the button fail, nothing counts as sent."""
+    _attach_k8s(coordinator)
+    api = OMVAPI(hass=coordinator.hass, host="192.0.2.10", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    coordinator.api = api
+    coordinator.async_request_refresh = AsyncMock()
+    mock_aiohttp_k8s.post("http://192.0.2.10:80/rpc.php", exception=aiohttp.ConnectionTimeoutError("connect"))
+
+    try:
+        with pytest.raises(HomeAssistantError) as exc_info:
+            await _button(coordinator, "db-app/statefulset/db").async_press()
+    finally:
+        await api.async_close()
+
+    assert exc_info.value.translation_key == "k8s_command_failed"
+    assert isinstance(exc_info.value.__cause__, OMVConnectionError)
+    assert not isinstance(exc_info.value.__cause__, OMVTimeoutError)
+
+
+async def test_recreate_pods_read_timeout_on_real_api_counts_as_requested(coordinator, mock_aiohttp_k8s) -> None:
+    """End to end through OMVAPI: an aiohttp read timeout is a requested delete."""
+    api = OMVAPI(hass=coordinator.hass, host="192.0.2.10", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    coordinator.api = api
+    mock_aiohttp_k8s.post("http://192.0.2.10:80/rpc.php", exception=aiohttp.SocketTimeoutError("read"))
+    mock_aiohttp_k8s.post("http://192.0.2.10:80/rpc.php", payload={"response": None, "error": None})
+    workload = {"namespace": "ns", "pods": [{"name": "p-1"}, {"name": "p-2"}]}
+
+    try:
+        assert await coordinator.async_k8s_recreate_pods(workload) == 2
+    finally:
+        await api.async_close()
 
 
 @pytest.mark.parametrize(
