@@ -13,6 +13,10 @@
 - `_fetch_optional` accepts an optional `collection` name that records a failed fetch in `degraded_collections`.
 - English, German, Dutch, Brazilian Portuguese and Swedish translations for all Kubernetes entities, states, the option and the `k8s_command_failed` error.
 
+### Documentation
+
+- README: "Kubernetes (openmediavault-k8s)" section (requirements, entities, recreate-pods semantics, RPC cost, selection); `CLAUDE.md`: `k8s_workloads`/`k8s_summary` data keys and the verified Kubectl RPC facts.
+
 ### Fixed
 
 - Smoke-test CI gate sends the workflow token to the check-runs API and polls the PR head SHA instead of the merge commit, so it no longer fails with curl exit 22 (HTTP error) on PRs such as #159.

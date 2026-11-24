@@ -22,6 +22,7 @@ The original integration relied on a synchronous, poll-based controller that no 
 - CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
 - Per-resource device modeling — disks, RAIDs, filesystems, ZFS pools, and Docker containers each appear as separate HA devices
 - Docker Compose support with per-container state, version, and lifecycle button entities
+- Kubernetes workload monitoring (openmediavault-k8s): per-workload state, restarts, CPU, memory, and a recreate-pods button
 - Native Home Assistant update entity with pending package count, per-package release details in the More Info dialog, a direct link to the OMV updates page, one-click package installation, and reboot-only mode when no further packages are pending
 - Binary sensor for reboot requirement and OMV service health
 - Reboot and shutdown buttons
@@ -92,7 +93,7 @@ After setup, the options flow lets you adjust:
 - The scan interval
 - The SMART polling interval — how often SMART data (status, attributes, disk temperature) is read. Reading SMART wakes disks from standby, so a larger interval lets disks spin down for power saving. Defaults to the scan interval.
 - Whether SMART polling is disabled entirely — disks are then never woken by the integration, but SMART status, SMART attributes, and disk temperature entities become unavailable
-- Which disks, filesystems, network interfaces, services, RAIDs, ZFS pools, Compose projects, and containers are monitored — resources not selected simply disappear from Home Assistant
+- Which disks, filesystems, network interfaces, services, RAIDs, ZFS pools, Compose projects, containers, and Kubernetes workloads are monitored — resources not selected simply disappear from Home Assistant
 
 ## Entities
 
@@ -166,6 +167,24 @@ Once saved in OMV, the integration picks up the sensor automatically on the next
 
 - State, status detail, created timestamp, started timestamp, image version
 - Volume size (when reported by OMV)
+
+### Kubernetes (openmediavault-k8s)
+
+**Requirements:** the [`openmediavault-k8s`](https://github.com/openmediavault-plugin-developers/openmediavault-k8s) plugin installed and the **Kubernetes** (`k3s`) service enabled in OMV. Nothing is queried otherwise. CPU and memory additionally need the Kubernetes metrics-server, which k3s bundles and enables by default; without it those two sensors stay `unknown` while everything else keeps working.
+
+One device per Deployment, StatefulSet and DaemonSet (named `Kubernetes <namespace>/<name>`, model = kind, software version = first image tag):
+
+- **State** — `running`, `progressing` (rollout in progress), `degraded` (fewer ready than desired replicas), `unavailable` (no ready replica), `scaled_down` (0 replicas desired); attributes: namespace, kind, desired/ready/available/updated replicas, pod count, pod names, images
+- **Restarts** — sum of container restarts over the workload's live pods (resets when pods are recreated)
+- **CPU** — usage in % of the summed node allocatable CPU (attribute `cpu_millicores`)
+- **Memory** — usage in MiB
+- **Button: Recreate pods** — deletes *all* pods of the workload at once via `Kubectl.delete`; the controller recreates them. Expect a brief downtime for single-replica workloads. The call blocks on the OMV side until each pod has terminated (up to its `terminationGracePeriodSeconds`), so the integration waits up to grace period + 15 s per pod (30–85 s); a pod that is still terminating after that is logged as a warning, not an error. Other OMV requests of the integration (including the next poll) wait while a delete is in progress. There are deliberately no scale/stop/start controls: the plugin exposes no such RPC, only `apply`, and applying partial manifests can strip fields from recipe- or Helm-installed workloads.
+
+On the hub device: Kubernetes workloads total / running / not running.
+
+**RPC cost:** two `Kubectl.getList` calls per poll (workloads + pods in one call, pod metrics in a separate one); the node list (allocatable CPU) is fetched once and then refreshed about hourly (every 60 polls).
+
+**Selection:** Kubernetes workloads are listed in the options flow like containers and VMs (**Selected Kubernetes workloads**); de-selecting a workload removes its device and entities. Pods owned by Jobs/CronJobs and bare pods are ignored.
 
 ## Development
 

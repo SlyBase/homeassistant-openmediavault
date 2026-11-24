@@ -19,7 +19,7 @@ Applies to `coordinator.py` in this directory.
 | Helper | When to use |
 |--------|-------------|
 | `_fetch_or_empty` | Core data that must always be present (disks, filesystems, services, network). Logs a warning on failure, returns `[]`. |
-| `_fetch_optional` | Plugin-specific RPCs that may be absent on some OMV versions (compose, zfs, kvm). Logs at DEBUG only, returns `[]`. |
+| `_fetch_optional` | Plugin-specific RPCs that may be absent on some OMV versions (compose, zfs, kvm). Logs at DEBUG only, returns `[]`. Pass `collection=` only once the plugin is known to be active (e.g. Kubectl behind the enabled `k3s` service) so a failure marks the collection degraded and blocks registry pruning (Issue #118). |
 | `_fetch_optional_background_json` | RPCs that return an OMV background-task handle (e.g. `getVolumesBg`). Resolves the handle via `_async_read_exec_output` internally. |
 
 Never add `try/except` inside `_async_update_data` to swallow errors — use the helpers above instead.
