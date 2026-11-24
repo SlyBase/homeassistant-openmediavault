@@ -20,6 +20,7 @@ from .entity import (
     get_disk_device_info,
     get_filesystem_device_info,
     get_hub_device_info,
+    get_k8s_workload_device_info,
     get_storage_device_info,
     get_vm_device_info,
     get_zfs_dataset_device_info,
@@ -45,6 +46,8 @@ from .sensor_types import (
     FILESYSTEM_TOTAL_SIZE_SENSOR,
     FILESYSTEM_USED_SIZE_SENSOR,
     GPU_SENSORS,
+    K8S_SENSORS,
+    K8S_WORKLOAD_SENSORS,
     NETWORK_RX_SENSOR,
     NETWORK_TX_SENSOR,
     RAID_SENSOR,
@@ -102,6 +105,8 @@ def _sensor_metric_slug(description: OMVSensorDescription) -> str:
         return "used_percent"
     if description.key == "raid":
         return "health"
+    if description.data_path == "k8s_workloads":
+        return description.key.removeprefix("k8s_workload_")
     for prefix in (
         "disk_",
         "filesystem_",
@@ -167,6 +172,14 @@ def _sensor_suggested_object_id(
             coordinator,
             "zfs_dataset",
             data.get("path") or item_key,
+            metric,
+        )
+    if description.data_path == "k8s_workloads":
+        return build_host_object_id(
+            coordinator,
+            "k8s",
+            data.get("namespace"),
+            data.get("name") or item_key,
             metric,
         )
     return build_host_object_id(coordinator, description.data_path, item_key, metric)
@@ -266,6 +279,12 @@ def get_expected_sensor_registry_state(
     if isinstance(compose_summary, dict):
         for description in COMPOSE_SENSORS:
             if _should_add_description(description, compose_summary):
+                unique_ids.add(f"{entry_id}-{description.key}")
+
+    k8s_summary = coordinator.data.get("k8s_summary", {})
+    if isinstance(k8s_summary, dict):
+        for description in K8S_SENSORS:
+            if _should_add_description(description, k8s_summary):
                 unique_ids.add(f"{entry_id}-{description.key}")
 
     for disk in coordinator.data.get("disk", []):
@@ -389,6 +408,21 @@ def get_expected_sensor_registry_state(
                 device_identifiers,
             )
 
+    # Every workload gets all K8S_WORKLOAD_SENSORS: CPU/memory stay registered
+    # (as unknown) while metrics are missing instead of being pruned.
+    for workload in coordinator.data.get("k8s_workloads", []):
+        if not isinstance(workload, dict):
+            continue
+        item_key = str(workload.get("workload_key") or "")
+        if not item_key:
+            continue
+        for description in K8S_WORKLOAD_SENSORS:
+            unique_ids.add(f"{entry_id}-{description.key}-{item_key}")
+        _collect_device_identifiers(
+            get_k8s_workload_device_info(coordinator, workload),
+            device_identifiers,
+        )
+
     return unique_ids, device_identifiers
 
 
@@ -428,6 +462,14 @@ async def async_setup_entry(
             OMVSensor(coordinator, description)
             for description in COMPOSE_SENSORS
             if _should_add_description(description, compose_summary)
+        )
+
+    k8s_summary = coordinator.data.get("k8s_summary", {})
+    if isinstance(k8s_summary, dict):
+        entities.extend(
+            OMVSensor(coordinator, description)
+            for description in K8S_SENSORS
+            if _should_add_description(description, k8s_summary)
         )
 
     for description in COMPOSE_PROJECT_SENSORS:
@@ -618,6 +660,25 @@ async def async_setup_entry(
                 )
             )
 
+    # No _should_add_description here: CPU/memory are created even while
+    # metrics-server has no data yet and simply report unknown.
+    for workload in coordinator.data.get("k8s_workloads", []):
+        if not isinstance(workload, dict):
+            continue
+        item_key = str(workload.get("workload_key") or "")
+        if not item_key:
+            continue
+        device_info = get_k8s_workload_device_info(coordinator, workload)
+        entities.extend(
+            OMVSensor(
+                coordinator,
+                description,
+                item_key=item_key,
+                device_info=device_info,
+            )
+            for description in K8S_WORKLOAD_SENSORS
+        )
+
     async_add_entities(entities)
 
 
@@ -657,6 +718,8 @@ class OMVSensor(OMVEntity, SensorEntity):
                     device_info = get_vm_device_info(coordinator, item)
                 elif description.data_path == "zfs_datasets":
                     device_info = get_zfs_dataset_device_info(coordinator, item)
+                elif description.data_path == "k8s_workloads":
+                    device_info = get_k8s_workload_device_info(coordinator, item)
                 else:
                     device_info = get_storage_device_info(coordinator, item)
         super().__init__(coordinator, uid, device_info=device_info)

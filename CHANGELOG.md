@@ -4,7 +4,14 @@
 
 ### Added
 
+- Kubernetes workload monitoring via the `openmediavault-k8s` plugin: one device per Deployment/StatefulSet/DaemonSet with state (`running`/`progressing`/`degraded`/`unavailable`/`scaled_down`), pod restarts, CPU (% of node allocatable) and memory (MiB) sensors, gated on the enabled `k3s` service so hosts without the plugin issue no Kubectl RPC.
+- Coordinator data keys `k8s_workloads` (one `Kubectl.getList` for workloads + pods, a separate one for metrics-server PodMetrics, node allocatable CPU cached for ~60 cycles) and `k8s_summary`.
+- Hub-level Kubernetes summary sensors: workloads total, running, not running (only when the `k3s` service exists).
+- "Recreate pods" button per Kubernetes workload: deletes each non-terminating pod via `Kubectl.delete` (DNS-1123-validated names, per-call timeout `grace period + 15 s` clamped to 30–85 s; a client timeout is logged as "still terminating" instead of failing).
+- Options flow selection `selected_k8s_workloads` (all workloads when unset); de-selected or deleted workloads are pruned from the registry, except on a refresh whose Kubectl fetch failed (Issue #118 guard).
 - `OMVAPI.async_call` / `_async_raw_call` accept an optional keyword-only per-call `timeout` (seconds), sent as a per-request `aiohttp.ClientTimeout`.
+- `_fetch_optional` accepts an optional `collection` name that records a failed fetch in `degraded_collections`.
+- English, German, Dutch, Brazilian Portuguese and Swedish translations for all Kubernetes entities, states, the option and the `k8s_command_failed` error.
 
 ### Fixed
 

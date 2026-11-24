@@ -35,6 +35,7 @@
           "selected_compose_projects": "Valda Compose-projekt",
           "selected_containers": "Valda containrar",
           "selected_vms": "Valda VM:ar",
+          "selected_k8s_workloads": "Valda Kubernetes-arbetslaster",
           "selected_cron_jobs": "Cron-jobb med utlösarknapp"
         },
         "data_description": {
@@ -191,6 +192,34 @@
       "vm_state": {
         "name": "{resource} tillstand"
       },
+      "k8s_workload_state": {
+        "name": "{resource} tillstånd",
+        "state": {
+          "running": "Körs",
+          "progressing": "Rullas ut",
+          "degraded": "Försämrad",
+          "unavailable": "Otillgänglig",
+          "scaled_down": "Nedskalad"
+        }
+      },
+      "k8s_workload_restarts": {
+        "name": "{resource} omstarter"
+      },
+      "k8s_workload_cpu": {
+        "name": "{resource} CPU-användning"
+      },
+      "k8s_workload_memory": {
+        "name": "{resource} minnesanvändning"
+      },
+      "k8s_workload_total": {
+        "name": "Kubernetes-arbetslaster totalt"
+      },
+      "k8s_workload_running": {
+        "name": "Kubernetes-arbetslaster som körs"
+      },
+      "k8s_workload_not_running": {
+        "name": "Kubernetes-arbetslaster som inte körs"
+      },
       "ups_battery_charge": {
         "name": "UPS-batteriladdning"
       },
@@ -278,6 +307,9 @@
       "vm_restart": {
         "name": "Starta om"
       },
+      "k8s_workload_recreate_pods": {
+        "name": "Återskapa poddar"
+      },
       "rsync_run": {
         "name": "Kör rsync {name}"
       },
@@ -293,6 +325,11 @@
       "wake_on_lan": {
         "name": "Wake-on-LAN {interface}"
       }
+    }
+  },
+  "exceptions": {
+    "k8s_command_failed": {
+      "message": "Det gick inte att köra {command} för Kubernetes-arbetslasten {resource}. Kontrollera OMV-loggarna."
     }
   },
   "services": {

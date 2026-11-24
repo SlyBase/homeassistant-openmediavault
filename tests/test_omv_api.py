@@ -747,3 +747,28 @@ async def test_async_call_passes_per_call_timeout(hass, mock_aiohttp: aiorespons
     # No override: no per-request timeout, so the session default (30 s) applies.
     assert "timeout" not in without_timeout
     await api.async_close()
+
+
+@pytest.mark.asyncio
+async def test_async_call_timeout_surfaces_as_connection_error_with_timeout_cause(
+    hass,
+    mock_aiohttp: aioresponses,
+) -> None:
+    """A client timeout raises OMVConnectionError with TimeoutError in the chain."""
+    from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=TimeoutError())
+    mock_aiohttp.post("http://192.168.1.1:80/rpc.php", exception=aiohttp.ClientConnectionError("refused"))
+
+    api = OMVAPI(hass=hass, host="192.168.1.1", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+
+    with pytest.raises(OMVConnectionError) as timeout_err:
+        await api.async_call("Kubectl", "delete", {"type": "pod", "name": "p"}, max_retries=0, timeout=45.0)
+    with pytest.raises(OMVConnectionError) as refused_err:
+        await api.async_call("Kubectl", "delete", {"type": "pod", "name": "p"}, max_retries=0, timeout=45.0)
+
+    assert OMVDataUpdateCoordinator._is_timeout_error(timeout_err.value)
+    assert not OMVDataUpdateCoordinator._is_timeout_error(refused_err.value)
+    await api.async_close()

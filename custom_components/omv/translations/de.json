@@ -67,6 +67,7 @@
           "selected_compose_projects": "Ausgewählte Compose-Projekte",
           "selected_containers": "Ausgewählte Container",
           "selected_vms": "Ausgewählte VMs",
+          "selected_k8s_workloads": "Ausgewählte Kubernetes-Workloads",
           "selected_cron_jobs": "Cron-Jobs mit Auslöse-Button"
         },
         "data_description": {
@@ -244,6 +245,34 @@
       "vm_state": {
         "name": "{resource} Zustand"
       },
+      "k8s_workload_state": {
+        "name": "{resource} Zustand",
+        "state": {
+          "running": "Läuft",
+          "progressing": "Wird ausgerollt",
+          "degraded": "Eingeschränkt",
+          "unavailable": "Nicht verfügbar",
+          "scaled_down": "Herunterskaliert"
+        }
+      },
+      "k8s_workload_restarts": {
+        "name": "{resource} Neustarts"
+      },
+      "k8s_workload_cpu": {
+        "name": "{resource} CPU-Auslastung"
+      },
+      "k8s_workload_memory": {
+        "name": "{resource} Speichernutzung"
+      },
+      "k8s_workload_total": {
+        "name": "Kubernetes-Workloads gesamt"
+      },
+      "k8s_workload_running": {
+        "name": "Kubernetes-Workloads laufend"
+      },
+      "k8s_workload_not_running": {
+        "name": "Kubernetes-Workloads nicht laufend"
+      },
       "ups_battery_charge": {
         "name": "USV-Batterieladung"
       },
@@ -337,6 +366,9 @@
       "vm_restart": {
         "name": "Neustart"
       },
+      "k8s_workload_recreate_pods": {
+        "name": "Pods neu erstellen"
+      },
       "rsync_run": {
         "name": "rsync {name} starten"
       },
@@ -366,6 +398,9 @@
     },
     "vm_command_failed": {
       "message": "VM {resource} konnte nicht {command} werden. Bitte die OMV-Logs prüfen."
+    },
+    "k8s_command_failed": {
+      "message": "„{command}“ für Kubernetes-Workload {resource} fehlgeschlagen. Bitte die OMV-Logs prüfen."
     },
     "rsync_execute_failed": {
       "message": "Rsync-Auftrag {name} konnte nicht gestartet werden. Prüfe die OMV-Logs."

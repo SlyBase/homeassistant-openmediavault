@@ -21,6 +21,8 @@ from homeassistant.const import (
     UnitOfTime,
 )
 
+from .coordinator import K8S_WORKLOAD_STATES
+
 
 @dataclass(frozen=True, kw_only=True)
 class OMVSensorDescription(SensorEntityDescription):
@@ -467,6 +469,127 @@ VM_SENSORS: tuple[OMVSensorDescription, ...] = (
         name_key="name",
         value_fn=lambda data: data.get("state"),
         extra_attrs_fn=_vm_attrs,
+    ),
+)
+
+
+def _k8s_workload_attrs(data: dict[str, Any]) -> dict[str, Any]:
+    """Return the Kubernetes workload state attributes.
+
+    Args:
+        data: A normalized record from ``coordinator.data["k8s_workloads"]``.
+
+    Returns:
+        Namespace, kind, name, replica counters, pod count, pod names and
+        images of the workload.
+    """
+    pods = [pod for pod in data.get("pods") or [] if isinstance(pod, dict)]
+    return {
+        "namespace": data.get("namespace"),
+        "kind": data.get("kind"),
+        "name": data.get("name"),
+        "desired_replicas": data.get("desired"),
+        "ready_replicas": data.get("ready"),
+        "available_replicas": data.get("available"),
+        "updated_replicas": data.get("updated"),
+        "pod_count": len(pods),
+        "pods": [pod.get("name") for pod in pods],
+        "images": data.get("images"),
+    }
+
+
+K8S_WORKLOAD_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="k8s_workload_state",
+        translation_key="k8s_workload_state",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(K8S_WORKLOAD_STATES),
+        icon="mdi:kubernetes",
+        data_path="k8s_workloads",
+        is_collection=True,
+        collection_key="workload_key",
+        name_key="name",
+        value_fn=lambda data: data.get("state"),
+        extra_attrs_fn=_k8s_workload_attrs,
+    ),
+    OMVSensorDescription(
+        key="k8s_workload_restarts",
+        translation_key="k8s_workload_restarts",
+        icon="mdi:restart",
+        # Recreated pods restart their counters from 0; TOTAL_INCREASING
+        # treats such a drop as a meter reset instead of a negative delta.
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        data_path="k8s_workloads",
+        is_collection=True,
+        collection_key="workload_key",
+        name_key="name",
+        value_fn=lambda data: data.get("restarts"),
+    ),
+    OMVSensorDescription(
+        key="k8s_workload_cpu",
+        translation_key="k8s_workload_cpu",
+        native_unit_of_measurement=PERCENTAGE,
+        icon="mdi:cpu-64-bit",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        data_path="k8s_workloads",
+        is_collection=True,
+        collection_key="workload_key",
+        name_key="name",
+        value_fn=lambda data: data.get("cpu_percent"),
+        extra_attrs_fn=lambda data: {"cpu_millicores": data.get("cpu_millicores")},
+    ),
+    OMVSensorDescription(
+        key="k8s_workload_memory",
+        translation_key="k8s_workload_memory",
+        native_unit_of_measurement=UnitOfInformation.MEBIBYTES,
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+        data_path="k8s_workloads",
+        is_collection=True,
+        collection_key="workload_key",
+        name_key="name",
+        value_fn=lambda data: data.get("memory_mib"),
+    ),
+)
+
+
+K8S_SENSORS: tuple[OMVSensorDescription, ...] = (
+    OMVSensorDescription(
+        key="k8s_workload_total",
+        translation_key="k8s_workload_total",
+        icon="mdi:kubernetes",
+        data_path="k8s_summary",
+        value_fn=lambda data: data.get("workload_total"),
+        extra_attrs_fn=lambda data: {
+            "running": data.get("workload_running"),
+            "not_running": data.get("workload_not_running"),
+            "pod_total": data.get("pod_total"),
+            "pod_running": data.get("pod_running"),
+        },
+    ),
+    OMVSensorDescription(
+        key="k8s_workload_running",
+        translation_key="k8s_workload_running",
+        icon="mdi:kubernetes",
+        data_path="k8s_summary",
+        value_fn=lambda data: data.get("workload_running"),
+        extra_attrs_fn=lambda data: {
+            "total": data.get("workload_total"),
+            "not_running": data.get("workload_not_running"),
+        },
+    ),
+    OMVSensorDescription(
+        key="k8s_workload_not_running",
+        translation_key="k8s_workload_not_running",
+        icon="mdi:kubernetes",
+        data_path="k8s_summary",
+        value_fn=lambda data: data.get("workload_not_running"),
+        extra_attrs_fn=lambda data: {
+            "total": data.get("workload_total"),
+            "running": data.get("workload_running"),
+        },
     ),
 )
 

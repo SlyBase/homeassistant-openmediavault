@@ -35,6 +35,7 @@
           "selected_compose_projects": "Geselecteerde Compose-projecten",
           "selected_containers": "Geselecteerde containers",
           "selected_vms": "Geselecteerde VM's",
+          "selected_k8s_workloads": "Geselecteerde Kubernetes-workloads",
           "selected_cron_jobs": "Cron-taken met triggerknop"
         },
         "data_description": {
@@ -191,6 +192,34 @@
       "vm_state": {
         "name": "{resource} status"
       },
+      "k8s_workload_state": {
+        "name": "{resource} status",
+        "state": {
+          "running": "Actief",
+          "progressing": "Wordt uitgerold",
+          "degraded": "Gedegradeerd",
+          "unavailable": "Niet beschikbaar",
+          "scaled_down": "Afgeschaald"
+        }
+      },
+      "k8s_workload_restarts": {
+        "name": "{resource} herstarts"
+      },
+      "k8s_workload_cpu": {
+        "name": "{resource} CPU-gebruik"
+      },
+      "k8s_workload_memory": {
+        "name": "{resource} geheugengebruik"
+      },
+      "k8s_workload_total": {
+        "name": "Kubernetes-workloads totaal"
+      },
+      "k8s_workload_running": {
+        "name": "Kubernetes-workloads actief"
+      },
+      "k8s_workload_not_running": {
+        "name": "Kubernetes-workloads niet actief"
+      },
       "ups_battery_charge": {
         "name": "UPS-batterijlading"
       },
@@ -278,6 +307,9 @@
       "vm_restart": {
         "name": "Herstarten"
       },
+      "k8s_workload_recreate_pods": {
+        "name": "Pods opnieuw aanmaken"
+      },
       "rsync_run": {
         "name": "rsync {name} uitvoeren"
       },
@@ -293,6 +325,11 @@
       "wake_on_lan": {
         "name": "Wake-on-LAN {interface}"
       }
+    }
+  },
+  "exceptions": {
+    "k8s_command_failed": {
+      "message": "Uitvoeren van {command} voor Kubernetes-workload {resource} is mislukt. Controleer de OMV-logs."
     }
   },
   "services": {

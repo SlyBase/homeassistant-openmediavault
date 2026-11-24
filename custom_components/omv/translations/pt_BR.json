@@ -35,6 +35,7 @@
           "selected_compose_projects": "Projetos Compose selecionados",
           "selected_containers": "Containers selecionados",
           "selected_vms": "VMs selecionadas",
+          "selected_k8s_workloads": "Workloads Kubernetes selecionados",
           "selected_cron_jobs": "Tarefas cron com botão de acionamento"
         },
         "data_description": {
@@ -191,6 +192,34 @@
       "vm_state": {
         "name": "estado de {resource}"
       },
+      "k8s_workload_state": {
+        "name": "estado de {resource}",
+        "state": {
+          "running": "Em execução",
+          "progressing": "Em atualização",
+          "degraded": "Degradado",
+          "unavailable": "Indisponível",
+          "scaled_down": "Reduzido a zero"
+        }
+      },
+      "k8s_workload_restarts": {
+        "name": "reinicializações de {resource}"
+      },
+      "k8s_workload_cpu": {
+        "name": "uso de CPU de {resource}"
+      },
+      "k8s_workload_memory": {
+        "name": "uso de memória de {resource}"
+      },
+      "k8s_workload_total": {
+        "name": "Total de workloads Kubernetes"
+      },
+      "k8s_workload_running": {
+        "name": "Workloads Kubernetes em execução"
+      },
+      "k8s_workload_not_running": {
+        "name": "Workloads Kubernetes parados"
+      },
       "ups_battery_charge": {
         "name": "Carga da bateria do nobreak"
       },
@@ -278,6 +307,9 @@
       "vm_restart": {
         "name": "Reiniciar"
       },
+      "k8s_workload_recreate_pods": {
+        "name": "Recriar pods"
+      },
       "rsync_run": {
         "name": "Executar rsync {name}"
       },
@@ -293,6 +325,11 @@
       "wake_on_lan": {
         "name": "Wake on LAN {interface}"
       }
+    }
+  },
+  "exceptions": {
+    "k8s_command_failed": {
+      "message": "Falha ao executar {command} no workload Kubernetes {resource}. Verifique os logs do OMV."
     }
   },
   "services": {

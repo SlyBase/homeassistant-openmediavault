@@ -67,6 +67,7 @@
                     "selected_compose_projects": "Selected Compose projects",
                     "selected_containers": "Selected containers",
                     "selected_vms": "Selected VMs",
+                    "selected_k8s_workloads": "Selected Kubernetes workloads",
                     "selected_cron_jobs": "Cron jobs with trigger button"
                 },
                 "data_description": {
@@ -223,6 +224,34 @@
             "vm_state": {
                 "name": "{resource} state"
             },
+            "k8s_workload_state": {
+                "name": "{resource} state",
+                "state": {
+                    "running": "Running",
+                    "progressing": "Progressing",
+                    "degraded": "Degraded",
+                    "unavailable": "Unavailable",
+                    "scaled_down": "Scaled down"
+                }
+            },
+            "k8s_workload_restarts": {
+                "name": "{resource} restarts"
+            },
+            "k8s_workload_cpu": {
+                "name": "{resource} CPU usage"
+            },
+            "k8s_workload_memory": {
+                "name": "{resource} memory usage"
+            },
+            "k8s_workload_total": {
+                "name": "Kubernetes workloads total"
+            },
+            "k8s_workload_running": {
+                "name": "Kubernetes workloads running"
+            },
+            "k8s_workload_not_running": {
+                "name": "Kubernetes workloads not running"
+            },
             "ups_battery_charge": {
                 "name": "UPS battery charge"
             },
@@ -307,6 +336,9 @@
             "vm_restart": {
                 "name": "Restart"
             },
+            "k8s_workload_recreate_pods": {
+                "name": "Recreate pods"
+            },
             "rsync_run": {
                 "name": "Run rsync {name}"
             },
@@ -336,6 +368,9 @@
         },
         "vm_command_failed": {
             "message": "Failed to {command} VM {resource}. Check the OMV logs."
+        },
+        "k8s_command_failed": {
+            "message": "Failed to {command} for Kubernetes workload {resource}. Check the OMV logs."
         },
         "rsync_execute_failed": {
             "message": "Failed to start rsync job {name}. Check the OMV logs."
