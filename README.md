@@ -22,7 +22,7 @@ The original integration relied on a synchronous, poll-based controller that no 
 - CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
 - Per-resource device modeling — disks, RAIDs, filesystems, ZFS pools, and Docker containers each appear as separate HA devices
 - Docker Compose support with per-container state, version, and lifecycle button entities
-- Kubernetes workload monitoring (openmediavault-k8s): per-workload state, restarts, CPU, memory, and a recreate-pods button
+- Kubernetes workload monitoring through the openmediavault-k8s plugin, with state, restarts, CPU and memory per workload plus a button that recreates its pods
 - Native Home Assistant update entity with pending package count, per-package release details in the More Info dialog, a direct link to the OMV updates page, one-click package installation, and reboot-only mode when no further packages are pending
 - Binary sensor for reboot requirement and OMV service health
 - Reboot and shutdown buttons
@@ -168,23 +168,68 @@ Once saved in OMV, the integration picks up the sensor automatically on the next
 - State, status detail, created timestamp, started timestamp, image version
 - Volume size (when reported by OMV)
 
-### Kubernetes (openmediavault-k8s)
+### Kubernetes workloads (requires `openmediavault-k8s`)
 
-**Requirements:** the [`openmediavault-k8s`](https://github.com/openmediavault-plugin-developers/openmediavault-k8s) plugin installed and the **Kubernetes** (`k3s`) service enabled in OMV. Nothing is queried otherwise. CPU and memory additionally need the Kubernetes metrics-server, which k3s bundles and enables by default; without it those two sensors stay `unknown` while everything else keeps working.
+If you run apps with the [openmediavault-k8s](https://github.com/openmediavault/openmediavault/tree/master/deb/openmediavault-k8s) plugin, the integration can show each of your Kubernetes workloads in Home Assistant. It only does this when the plugin is installed and the Kubernetes (`k3s`) service is enabled in OMV. If either of those is missing, the integration sends no Kubernetes requests at all.
 
-One device per Deployment, StatefulSet and DaemonSet (named `Kubernetes <namespace>/<name>`, model = kind, software version = first image tag):
+#### What you get
 
-- **State** — `running`, `progressing` (rollout in progress), `degraded` (fewer ready than desired replicas), `unavailable` (no ready replica), `scaled_down` (0 replicas desired); attributes: namespace, kind, desired/ready/available/updated replicas, pod count, pod names, images
-- **Restarts** — sum of container restarts over the workload's live pods (resets when pods are recreated)
-- **CPU** — usage in % of the summed node allocatable CPU, 2 decimals (attribute `cpu_millicores`, 3 decimals)
-- **Memory** — usage in MiB
-- **Button: Recreate pods** — deletes *all* pods of the workload at once via `Kubectl.delete`; the controller recreates them. Expect a brief downtime for single-replica workloads. kubectl issues the Kubernetes delete immediately and then waits on the OMV side for the pod to terminate (up to its `terminationGracePeriodSeconds`). The integration stops waiting after 10 s per pod; the delete still completes on the NAS and the controller starts the replacement pod, so a pod that is still terminating at that point is only logged at INFO level, not reported as an error. Other OMV requests of the integration (including the next poll) wait at most those ~10 s per pod. There are deliberately no scale/stop/start controls: the plugin exposes no such RPC, only `apply`, and applying partial manifests can strip fields from recipe- or Helm-installed workloads.
+Every Deployment, StatefulSet and DaemonSet becomes its own device, named `Kubernetes <namespace>/<name>`. Each of these devices has four sensors and one button:
 
-On the hub device: Kubernetes workloads total / running / not running.
+- State tells you whether the workload is healthy. The possible values are `running`, `progressing` (a rollout is still going on), `degraded` (some replicas are ready, but not all of them), `unavailable` (no replica is ready) and `scaled_down` (you asked for zero replicas). The attributes list the namespace, the kind, the replica counts, the pod names and the images.
+- Restarts is the total number of container restarts across the pods of the workload. When a pod gets replaced, its count starts again from zero.
+- CPU shows how much of the node's CPU the workload uses, as a percentage. The `cpu_millicores` attribute keeps the raw value, which helps with very quiet apps that round down to 0.00 %.
+- Memory shows how much memory the workload uses, in MiB.
+- The Recreate pods button deletes the pods of the workload so that Kubernetes starts fresh ones. The section below explains how it behaves.
 
-**RPC cost:** two `Kubectl.getList` calls per poll (workloads + pods in one call, pod metrics in a separate one); the node list (allocatable CPU) is fetched once and then refreshed about hourly (every 60 polls).
+The hub device also gets three counters: the total number of workloads, how many of them are running and how many are not.
 
-**Selection:** Kubernetes workloads are listed in the options flow like containers and VMs (**Selected Kubernetes workloads**); de-selecting a workload removes its device and entities. Fresh installations (no saved options yet) monitor all workloads; **existing installations: open the integration options and select the workloads to monitor** — once any resource selection has been saved, new resource types start with nothing selected (the same strict opt-in as for VMs). Pods owned by Jobs/CronJobs and bare pods are ignored.
+Pods that belong to a Job or a CronJob are skipped, and so are pods that no controller owns. They come and go too often to make useful devices.
+
+CPU and memory come from the Kubernetes metrics-server. k3s installs it by default, so you most likely have it already. If your cluster does not have it, those two sensors show `unknown` and everything else keeps working.
+
+#### Choosing which workloads to monitor
+
+The options dialog has a Selected Kubernetes workloads field that works like the fields for containers and VMs. When you remove a workload from that list, its device and entities are removed from Home Assistant as well.
+
+Watch out for one thing when you upgrade an existing installation. Your saved options do not contain the new field yet, so right after the update the integration shows all of your workloads. The options dialog, however, opens with the new field empty, because new resource types are strictly opt-in once you have saved any selection (the VM selection behaves the same way). If you save the dialog without ticking anything there, every Kubernetes workload disappears from Home Assistant. Pick the workloads you care about before you press Submit.
+
+#### How the Recreate pods button works
+
+The button sends one `Kubectl.delete` request for each pod of the workload. A Deployment, StatefulSet or DaemonSet always replaces a pod that was deleted, so a new pod starts right away. The OMV documentation recommends the same move for updating an app: "In most cases, it is sufficient to first delete the image and then the pod of the application to be updated" ([OMV docs](https://docs.openmediavault.org/en/stable/plugins/available/k8s.html)).
+
+Keep in mind that all pods of the workload are deleted at the same time. A workload with a single replica is offline for a few seconds while its new pod starts.
+
+On the NAS, `kubectl delete` waits until the old pod has completely stopped. A pod may take as long as its `terminationGracePeriodSeconds` to stop, and some apps set that to a minute or more. The integration does not wait that long. It stops waiting after 10 seconds per pod and only writes an INFO line to the log. This is safe because the delete is not cancelled when the caller stops waiting. In a test on OMV 8 with openmediavault-k8s 8.2.9-1, the caller was stopped 5 seconds into the delete of a pod with a 45 second grace period. The old pod still finished terminating, and its replacement was running 7 seconds later.
+
+While the button is working, other requests to OMV have to wait, and that includes the next regular update. The 10 second limit keeps that delay short.
+
+You will not find a button to stop, start or scale a workload. The plugin has no RPC that does that, and its only write method is `Kubectl.apply`, which expects a full manifest. Sending a partial manifest could wipe settings from apps that were installed with a recipe or with Helm, so this integration does not use it.
+
+#### How much load this puts on the NAS
+
+Each update makes two extra RPC calls. The first one asks for workloads and pods together, and the second one asks for the pod metrics. The integration also needs to know how much CPU the node has, but it asks for that only about once an hour. On a test system (OMV 8 on an Intel i5-4690T with 32 workloads and 36 pods) the two calls took about 0.26 and 0.11 seconds. Nothing new gets installed in the cluster. The metrics come from the metrics-server that k3s already runs, which used about 8 millicores of CPU and 25 MiB of memory on that system.
+
+#### Why it is built this way
+
+These are the decisions behind the feature, together with where they come from. The OMV forum was offline while this was written ([openmediavault#2301](https://github.com/openmediavault/openmediavault/issues/2301)), so the quotes come from GitHub and from the official documentation.
+
+- The feature talks to OMV and to nothing else. Everything in this integration goes through OMV's JSON-RPC API, and plugin features are read with `_fetch_optional` so that they disappear cleanly when the plugin is not installed. That rule is spelled out in [#158](https://github.com/SlyBase/homeassistant-openmediavault/issues/158). The openmediavault-k8s plugin happens to ship a `Kubectl` RPC service, and its `getList` method returns any Kubernetes resource as JSON. Because of that, you need no kubeconfig, no service account token and no extra port.
+- The feature stays small on purpose. The OMV maintainer describes the plugin as "a single-node Kubernetes environment using K3s; nothing more" ([openmediavault#1722](https://github.com/openmediavault/openmediavault/pull/1722)). He also wrote: "The plugin UI was always intended solely to provide a quick overview. Everything else was meant to be done using external tools." ([openmediavault#2163](https://github.com/openmediavault/openmediavault/issues/2163)). The OMV docs say that OMV "offers a rudimentary UI for managing simple tasks in the cluster" and point to tools like Rancher or k9s for the rest. Following that idea, this feature shows the few numbers you would want on a dashboard and adds one safe action. It does not try to become a Kubernetes management tool.
+- There is no monitoring stack to install. A Prometheus setup would give you much more data, but it costs a lot of memory for a NAS. The kube-state-metrics README alone recommends "250MiB memory" and "0.1 cores" before you even add Prometheus ([kube-state-metrics](https://github.com/kubernetes/kube-state-metrics)). OMV does not offer a recipe for it, and the idea of a monitoring plugin is still an open backlog item ([openmediavault#1833](https://github.com/openmediavault/openmediavault/issues/1833)). Glances does not help here either, because it cannot see containerd containers yet ([nicolargo/glances#2226](https://github.com/nicolargo/glances/issues/2226)).
+- The controls follow the VM feature. When VM support was added, the destructive `force` command was "intentionally not exposed" (see the 2.5.0 entry in the CHANGELOG). The Recreate pods button follows the same idea. Kubernetes is built to recover from deleted pods, but it cannot repair a half-applied manifest.
+
+#### Ideas for the openmediavault-k8s plugin
+
+A few extra RPC methods in the plugin would allow much finer control while keeping the rule that everything goes through OMV. None of them exist today, so treat this list as suggestions for the [openmediavault](https://github.com/openmediavault/openmediavault) project.
+
+- `Kubectl.scale` with type, name, namespace and replicas, running `kubectl scale`. With that method, Home Assistant could offer a real on/off switch for each workload. Scaling to 0 would stop an app, and scaling back to the previous count would start it again.
+- `Kubectl.rolloutRestart` with type, name and namespace, running `kubectl rollout restart`. This replaces the pods one at a time and waits until each new pod is ready, so an app with several replicas stays online. It would make a better default than deleting all pods at once.
+- A `wait` flag on `Kubectl.delete` that maps to `kubectl delete --wait=false`. The call would then return as soon as Kubernetes accepts the delete, and clients would not need a timeout to avoid blocking.
+- Label and field selectors on `Kubectl.getList`. Right now the pod list returns every field of every pod, which is about 190 KB for 36 pods. With a selector, or with a way to ask for specific columns, a client could fetch only the fields it shows.
+- An official way to read metrics, for example a `Kubectl.top` method. Asking `getList` for `pods.metrics.k8s.io` works today, but it relies on `getList` passing the type to kubectl unchanged, which is not a documented feature.
+- A read-only permission for the list and stats methods. Every Kubectl method currently requires the OMV administrator role, so Home Assistant needs an admin account just to read numbers.
+- Suspend and resume for CronJobs, for example by patching `spec.suspend`. That would allow a switch that pauses a scheduled job.
 
 ## Development
 
