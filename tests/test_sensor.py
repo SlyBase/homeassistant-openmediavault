@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from homeassistant.components.sensor import SensorStateClass
+from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.const import EntityCategory
 
-from custom_components.omv.const import DOMAIN
-from custom_components.omv.sensor import OMVSensor, async_setup_entry
+from custom_components.omv.const import DOMAIN, K8S_WORKLOAD_STATES
+from custom_components.omv.entity import get_k8s_workload_device_info
+from custom_components.omv.sensor import OMVSensor, async_setup_entry, get_expected_sensor_registry_state
 from custom_components.omv.sensor_types import (
     COMPOSE_PROJECT_SENSORS,
     COMPOSE_SENSORS,
@@ -27,6 +28,8 @@ from custom_components.omv.sensor_types import (
     FILESYSTEM_SENSOR,
     FILESYSTEM_TOTAL_SIZE_SENSOR,
     FILESYSTEM_USED_SIZE_SENSOR,
+    K8S_SENSORS,
+    K8S_WORKLOAD_SENSORS,
     RAID_SENSOR,
     SYSTEM_SENSORS,
     VM_SENSORS,
@@ -741,3 +744,124 @@ async def test_zfs_pool_sensors_dedupe_across_disks(coordinator, config_entry) -
         "zfs_pool_snapshot_count-tank",
     ):
         assert sum(uid.endswith(suffix) for uid in unique_ids) == 1, suffix
+
+
+# --- Kubernetes workloads (openmediavault-k8s) ---
+
+
+@pytest.mark.asyncio
+async def test_k8s_sensor_setup_creates_workload_and_summary_sensors(coordinator, config_entry) -> None:
+    """Every workload gets all four sensors, even without metrics, plus three hub summaries."""
+    coordinator.data["k8s_workloads"][0].update(cpu_millicores=None, memory_mib=None, cpu_percent=None)
+    added: list[OMVSensor] = []
+
+    await async_setup_entry(coordinator.hass, config_entry, added.extend)
+
+    entry_id = config_entry.entry_id
+    k8s_ids = [entity.unique_id for entity in added if "k8s" in entity.unique_id]
+    assert k8s_ids == [
+        f"{entry_id}-k8s_workload_total",
+        f"{entry_id}-k8s_workload_running",
+        f"{entry_id}-k8s_workload_not_running",
+        f"{entry_id}-k8s_workload_state-media/deployment/jellyfin",
+        f"{entry_id}-k8s_workload_restarts-media/deployment/jellyfin",
+        f"{entry_id}-k8s_workload_cpu-media/deployment/jellyfin",
+        f"{entry_id}-k8s_workload_memory-media/deployment/jellyfin",
+    ]
+    cpu = next(entity for entity in added if entity.unique_id.endswith("k8s_workload_cpu-media/deployment/jellyfin"))
+    assert cpu.native_value is None
+
+    expected_ids, expected_devices = get_expected_sensor_registry_state(coordinator)
+    assert set(k8s_ids) <= expected_ids
+    assert (DOMAIN, f"{entry_id}:k8s_workload:media/deployment/jellyfin") in expected_devices
+
+
+@pytest.mark.asyncio
+async def test_k8s_sensors_absent_without_k3s(coordinator, config_entry) -> None:
+    """Without the k3s service the coordinator yields no k8s data and no entity is created."""
+    coordinator.data.update(k8s_workloads=[], k8s_summary={})
+    added: list[OMVSensor] = []
+
+    await async_setup_entry(coordinator.hass, config_entry, added.extend)
+
+    assert not any("k8s" in entity.unique_id for entity in added)
+
+
+@pytest.mark.asyncio
+async def test_k8s_workload_sensors_states_attributes_and_device(coordinator) -> None:
+    """State/restarts/CPU/memory read the record and share one workload device."""
+    key = "media/deployment/jellyfin"
+    state, restarts, cpu, memory = (OMVSensor(coordinator, d, item_key=key) for d in K8S_WORKLOAD_SENSORS)
+
+    assert state.native_value == "running"
+    assert state.device_class == SensorDeviceClass.ENUM
+    assert state.options == list(K8S_WORKLOAD_STATES)
+    assert state.icon == "mdi:kubernetes"
+    assert state.extra_state_attributes == {
+        "workload_key": key,
+        "namespace": "media",
+        "kind": "Deployment",
+        "name": "jellyfin",
+        "desired_replicas": 1,
+        "ready_replicas": 1,
+        "available_replicas": 1,
+        "updated_replicas": 1,
+        "pod_count": 1,
+        "images": ["docker.io/jellyfin/jellyfin:10.10.3"],
+    }
+    assert state._attr_translation_placeholders == {"resource": "jellyfin"}
+    assert state._attr_suggested_object_id == "nas_k8s_media_deployment_jellyfin_state"
+
+    assert restarts.native_value == 2
+    assert restarts.state_class == SensorStateClass.MEASUREMENT
+    assert restarts.entity_category == EntityCategory.DIAGNOSTIC
+    assert cpu.native_value == 0.31
+    assert cpu.native_unit_of_measurement == "%"
+    assert cpu.suggested_display_precision == 2
+    assert cpu.extra_state_attributes == {"cpu_millicores": 12.5}
+    assert memory.native_value == 256.0
+    assert memory.device_class == SensorDeviceClass.DATA_SIZE
+    assert memory.native_unit_of_measurement == "MiB"
+    assert memory.icon == "mdi:memory"
+
+    entry_id = coordinator.config_entry.entry_id
+    for sensor in (state, restarts, cpu, memory):
+        assert sensor.device_info["identifiers"] == {(DOMAIN, f"{entry_id}:k8s_workload:{key}")}
+    device = state.device_info
+    assert device["name"] == "Kubernetes media/jellyfin"
+    assert device["manufacturer"] == "Kubernetes"
+    assert device["model"] == "Deployment"
+    assert device["sw_version"] == "10.10.3"
+    assert device["via_device_id"] == coordinator.hub_device_id
+
+
+@pytest.mark.asyncio
+async def test_k8s_object_ids_include_the_kind(coordinator) -> None:
+    """A Deployment and a StatefulSet with the same name get distinct object ids; no tag means no sw_version."""
+    statefulset = {
+        **coordinator.data["k8s_workloads"][0],
+        "workload_key": "media/statefulset/jellyfin",
+        "kind": "StatefulSet",
+        "version": "",
+    }
+    coordinator.data["k8s_workloads"].append(statefulset)
+
+    deployment_state = OMVSensor(coordinator, K8S_WORKLOAD_SENSORS[0], item_key="media/deployment/jellyfin")
+    statefulset_state = OMVSensor(coordinator, K8S_WORKLOAD_SENSORS[0], item_key="media/statefulset/jellyfin")
+
+    assert deployment_state._attr_suggested_object_id == "nas_k8s_media_deployment_jellyfin_state"
+    assert statefulset_state._attr_suggested_object_id == "nas_k8s_media_statefulset_jellyfin_state"
+    assert get_k8s_workload_device_info(coordinator, statefulset).get("sw_version") is None
+
+
+@pytest.mark.asyncio
+async def test_k8s_summary_sensors_expose_counts_and_go_unknown_when_empty(coordinator) -> None:
+    """Hub summary sensors read k8s_summary; an empty summary (failed fetch) reads unknown, not 0."""
+    total, running, not_running = (OMVSensor(coordinator, d) for d in K8S_SENSORS)
+
+    assert (total.native_value, running.native_value, not_running.native_value) == (1, 1, 0)
+    assert total.extra_state_attributes == {"running": 1, "not_running": 0, "pod_total": 1, "pod_running": 1}
+    assert total._attr_suggested_object_id == "nas_k8s_workload_total"
+
+    coordinator.data["k8s_summary"] = {}
+    assert total.native_value is None

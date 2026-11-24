@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import gc
 from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime
@@ -183,6 +184,7 @@ def sample_data() -> dict[str, Any]:
         "service": [
             {"name": "ssh", "title": "SSH", "enabled": True, "running": True},
             {"name": "compose", "title": "Docker", "enabled": True, "running": True},
+            {"name": "k3s", "title": "Kubernetes", "enabled": True, "running": True},
         ],
         "network": [
             {
@@ -606,6 +608,42 @@ def sample_data() -> dict[str, Any]:
             },
         ],
         "upgradedList": [],
+        "k8s_workloads": [
+            {
+                "workload_key": "media/deployment/jellyfin",
+                "namespace": "media",
+                "name": "jellyfin",
+                "kind": "Deployment",
+                "images": ["docker.io/jellyfin/jellyfin:10.10.3"],
+                "version": "10.10.3",
+                "desired": 1,
+                "ready": 1,
+                "available": 1,
+                "updated": 1,
+                "state": "running",
+                "pods": [
+                    {
+                        "name": "jellyfin-7d4b9c8f6-abcde",
+                        "phase": "Running",
+                        "ready": True,
+                        "restarts": 2,
+                        "terminating": False,
+                        "grace_period": 30,
+                    }
+                ],
+                "restarts": 2,
+                "cpu_millicores": 12.5,
+                "memory_mib": 256.0,
+                "cpu_percent": 0.31,
+            }
+        ],
+        "k8s_summary": {
+            "workload_total": 1,
+            "workload_running": 1,
+            "workload_not_running": 0,
+            "pod_total": 1,
+            "pod_running": 1,
+        },
         "zfs": [
             {
                 "name": "tank",
@@ -716,3 +754,265 @@ async def coordinator(
         coordinator.project_device_ids[project_key] = project_device.id
 
     return coordinator
+
+
+# Minimal raw Kubectl.getList payloads (openmediavault-k8s), shaped like the
+# live OMV 8 / k3s responses but anonymised and reduced to the fields the
+# coordinator reads. One workload per state, plus the pods the owner mapping
+# must skip (Job, bare pod, ReplicaSet without pod-template-hash label).
+K8S_KUBECTL_PAYLOAD: dict[str, Any] = {
+    "workloads_and_pods": {
+        "total": 18,
+        "data": [
+            # running: multi-container Deployment; version comes from the
+            # first template container, not from the sorted image list.
+            {
+                "kind": "Deployment",
+                "metadata": {"name": "web", "namespace": "web-app"},
+                "spec": {
+                    "replicas": 1,
+                    "template": {
+                        "spec": {
+                            "containers": [
+                                {"name": "web", "image": "ghcr.io/example/web:2.1.0"},
+                                {"name": "proxy", "image": "docker.io/library/nginx:1.27"},
+                            ]
+                        }
+                    },
+                },
+                "status": {"replicas": 1, "readyReplicas": 1, "availableReplicas": 1, "updatedReplicas": 1},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "web-5f7d8c9b6d-abcde",
+                    "namespace": "web-app",
+                    "labels": {"pod-template-hash": "5f7d8c9b6d"},
+                    "ownerReferences": [{"kind": "ReplicaSet", "name": "web-5f7d8c9b6d", "controller": True}],
+                },
+                "spec": {"nodeName": "omv-node", "terminationGracePeriodSeconds": 30},
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [
+                        {"name": "web", "ready": True, "restartCount": 1},
+                        {"name": "proxy", "ready": True, "restartCount": 2},
+                    ],
+                },
+            },
+            # progressing: StatefulSet in the middle of a rollout.
+            {
+                "kind": "StatefulSet",
+                "metadata": {"name": "db", "namespace": "db-app"},
+                "spec": {
+                    "replicas": 2,
+                    "template": {"spec": {"containers": [{"name": "db", "image": "docker.io/library/postgres:17"}]}},
+                },
+                "status": {"replicas": 2, "readyReplicas": 2, "availableReplicas": 2, "updatedReplicas": 1},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "db-0",
+                    "namespace": "db-app",
+                    "ownerReferences": [{"kind": "StatefulSet", "name": "db", "controller": True}],
+                },
+                "spec": {"terminationGracePeriodSeconds": 60},
+                "status": {"phase": "Running", "containerStatuses": [{"name": "db", "ready": True, "restartCount": 0}]},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "db-1",
+                    "namespace": "db-app",
+                    "ownerReferences": [{"kind": "StatefulSet", "name": "db", "controller": True}],
+                },
+                "spec": {"terminationGracePeriodSeconds": 60},
+                "status": {"phase": "Running", "containerStatuses": [{"name": "db", "ready": True, "restartCount": 2}]},
+            },
+            # degraded: one of two replicas ready, plus a terminating pod of
+            # the previous ReplicaSet (different hash, same Deployment).
+            {
+                "kind": "Deployment",
+                "metadata": {"name": "api", "namespace": "api-app"},
+                "spec": {
+                    "replicas": 2,
+                    "template": {"spec": {"containers": [{"name": "api", "image": "ghcr.io/example/api@sha256:abc"}]}},
+                },
+                "status": {"replicas": 2, "readyReplicas": 1, "availableReplicas": 1, "updatedReplicas": 2},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "api-6c8d9f7b5a-qwert",
+                    "namespace": "api-app",
+                    "labels": {"pod-template-hash": "6c8d9f7b5a"},
+                    "ownerReferences": [{"kind": "ReplicaSet", "name": "api-6c8d9f7b5a", "controller": True}],
+                },
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [{"name": "api", "ready": True, "restartCount": 1}],
+                },
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "api-6c8d9f7b5a-yuiop",
+                    "namespace": "api-app",
+                    "labels": {"pod-template-hash": "6c8d9f7b5a"},
+                    "ownerReferences": [{"kind": "ReplicaSet", "name": "api-6c8d9f7b5a", "controller": True}],
+                },
+                "status": {
+                    "phase": "Pending",
+                    "containerStatuses": [{"name": "api", "ready": False, "restartCount": 3}],
+                },
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "api-7d9e8f6a4b-zxcvb",
+                    "namespace": "api-app",
+                    "deletionTimestamp": "2026-11-24T15:10:00Z",
+                    "labels": {"pod-template-hash": "7d9e8f6a4b"},
+                    "ownerReferences": [{"kind": "ReplicaSet", "name": "api-7d9e8f6a4b", "controller": True}],
+                },
+                "spec": {"terminationGracePeriodSeconds": 45},
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [{"name": "api", "ready": True, "restartCount": 5}],
+                },
+            },
+            # unavailable: its only pod is owned by a ReplicaSet without a
+            # pod-template-hash label, so it is not mapped.
+            {
+                "kind": "Deployment",
+                "metadata": {"name": "broken", "namespace": "broken-app"},
+                "spec": {
+                    "replicas": 1,
+                    "template": {"spec": {"containers": [{"name": "broken", "image": "ghcr.io/example/broken:0.1"}]}},
+                },
+                "status": {"replicas": 1, "updatedReplicas": 1, "unavailableReplicas": 1},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "broken-6b9f4d7c8f-hjkl1",
+                    "namespace": "broken-app",
+                    "ownerReferences": [{"kind": "ReplicaSet", "name": "broken-6b9f4d7c8f", "controller": True}],
+                },
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [{"name": "broken", "ready": False, "restartCount": 12}],
+                },
+            },
+            # scaled_down: zero replicas desired, no pods.
+            {
+                "kind": "Deployment",
+                "metadata": {"name": "paused", "namespace": "paused-app"},
+                "spec": {
+                    "replicas": 0,
+                    "template": {"spec": {"containers": [{"name": "paused", "image": "docker.io/library/nginx:1.27"}]}},
+                },
+                "status": {},
+            },
+            # running DaemonSet; untagged image behind a registry port.
+            {
+                "kind": "DaemonSet",
+                "metadata": {"name": "agent", "namespace": "kube-system"},
+                "spec": {
+                    "template": {"spec": {"containers": [{"name": "agent", "image": "registry.local:5000/agent"}]}}
+                },
+                "status": {
+                    "desiredNumberScheduled": 1,
+                    "numberReady": 1,
+                    "numberAvailable": 1,
+                    "updatedNumberScheduled": 1,
+                },
+            },
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "agent-x7k2p",
+                    "namespace": "kube-system",
+                    "ownerReferences": [{"kind": "DaemonSet", "name": "agent", "controller": True}],
+                },
+                "status": {
+                    "phase": "Running",
+                    "containerStatuses": [{"name": "agent", "ready": True, "restartCount": 0}],
+                },
+            },
+            # Skipped pods: Job-owned, bare, and an owner reference without a name.
+            {
+                "kind": "Pod",
+                "metadata": {
+                    "name": "cleanup-29000000-abcde",
+                    "namespace": "web-app",
+                    "ownerReferences": [{"kind": "Job", "name": "cleanup-29000000", "controller": True}],
+                },
+                "status": {"phase": "Succeeded", "containerStatuses": [{"name": "cleanup", "ready": False}]},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {"name": "debug-shell", "namespace": "default"},
+                "status": {"phase": "Running", "containerStatuses": [{"name": "debug", "ready": True}]},
+            },
+            {
+                "kind": "Pod",
+                "metadata": {"name": "orphan", "namespace": "default", "ownerReferences": [{"kind": "DaemonSet"}]},
+                "status": {"phase": "Running"},
+            },
+            # Controller without a namespace is dropped.
+            {"kind": "Deployment", "metadata": {"name": "nameless"}},
+        ],
+    },
+    "pod_metrics": {
+        "total": 6,
+        "data": [
+            {
+                "kind": "PodMetrics",
+                "metadata": {"name": "web-5f7d8c9b6d-abcde", "namespace": "web-app"},
+                "containers": [
+                    {"name": "web", "usage": {"cpu": "250m", "memory": "512Mi"}},
+                    {"name": "proxy", "usage": {"cpu": "34111n", "memory": "54540Ki"}},
+                ],
+            },
+            {
+                "kind": "PodMetrics",
+                "metadata": {"name": "db-0", "namespace": "db-app"},
+                "containers": [{"name": "db", "usage": {"cpu": "12u", "memory": "1Gi"}}],
+            },
+            {
+                "kind": "PodMetrics",
+                "metadata": {"name": "api-6c8d9f7b5a-qwert", "namespace": "api-app"},
+                "containers": [
+                    {"name": "api", "usage": {"cpu": "100m", "memory": "64Mi"}},
+                    "not-a-container",
+                    {"name": "sidecar", "usage": {"cpu": "bogus", "memory": "1KiB"}},
+                ],
+            },
+            {
+                "kind": "PodMetrics",
+                "metadata": {"name": "api-7d9e8f6a4b-zxcvb", "namespace": "api-app"},
+                "containers": [{"name": "api", "usage": {"cpu": "1m", "memory": "1Mi"}}],
+            },
+            {
+                "kind": "PodMetrics",
+                "metadata": {"name": "agent-x7k2p", "namespace": "kube-system"},
+                "containers": [{"name": "agent", "usage": {"cpu": "5m", "memory": "128974848e0"}}],
+            },
+            {"kind": "PodMetrics", "metadata": {"name": "no-containers", "namespace": "default"}},
+        ],
+    },
+    "nodes": {
+        "total": 2,
+        "data": [
+            {"kind": "Node", "metadata": {"name": "omv-node"}, "status": {"allocatable": {"cpu": "4"}}},
+            {"kind": "Node", "metadata": {"name": "omv-node-2"}, "status": {"allocatable": {"cpu": "3500m"}}},
+        ],
+    },
+}
+
+
+@pytest.fixture
+def k8s_kubectl_payload() -> dict[str, Any]:
+    """Return a deep copy of the raw Kubectl.getList payloads (workloads/pods, metrics, nodes)."""
+    return copy.deepcopy(K8S_KUBECTL_PAYLOAD)
