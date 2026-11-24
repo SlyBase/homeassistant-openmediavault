@@ -4,22 +4,19 @@
 
 ### Added
 
-- Kubernetes workload monitoring via the `openmediavault-k8s` plugin: one device per Deployment/StatefulSet/DaemonSet with state (`running`/`progressing`/`degraded`/`unavailable`/`scaled_down`), pod restarts, CPU (% of node allocatable, 2 decimals; `cpu_millicores` attribute with 3 decimals so idle workloads do not read 0) and memory (MiB) sensors, gated on the enabled `k3s` service so hosts without the plugin issue no Kubectl RPC.
-- Coordinator data keys `k8s_workloads` (one `Kubectl.getList` for workloads + pods, a separate one for metrics-server PodMetrics, node allocatable CPU cached for ~60 cycles) and `k8s_summary`.
-- Hub-level Kubernetes summary sensors: workloads total, running, not running (only when the `k3s` service exists).
-- "Recreate pods" button per Kubernetes workload: deletes each non-terminating pod via `Kubectl.delete` (DNS-1123-validated names, fixed 10 s per-call timeout; a client timeout means the delete was requested and the pod is still terminating, so it is logged at INFO instead of failing, because aborting the call does not cancel the delete on OMV).
-- Options flow selection `selected_k8s_workloads` (all workloads when unset); de-selected or deleted workloads are pruned from the registry, except on a refresh whose Kubectl fetch failed (Issue #118 guard).
-- `OMVAPI.async_call` / `_async_raw_call` accept an optional keyword-only per-call `timeout` (seconds), sent as a per-request `aiohttp.ClientTimeout`.
-- `_fetch_optional` accepts an optional `collection` name that records a failed fetch in `degraded_collections`.
-- English, German, Dutch, Brazilian Portuguese and Swedish translations for all Kubernetes entities, states, the option and the `k8s_command_failed` error.
-
-### Documentation
-
-- README: "Kubernetes (openmediavault-k8s)" section (requirements, entities, recreate-pods semantics, RPC cost, selection incl. the opt-in step for existing installations); `CLAUDE.md`: `k8s_workloads`/`k8s_summary` data keys and the verified Kubectl RPC facts.
+- Kubernetes workload devices for the `openmediavault-k8s` plugin. Every Deployment, StatefulSet and DaemonSet gets its own device with a state sensor (`running`, `progressing`, `degraded`, `unavailable` or `scaled_down`), a restarts sensor, a CPU sensor in percent of the node CPU and a memory sensor in MiB. The integration only asks OMV for Kubernetes data while the `k3s` service is enabled.
+- Three new sensors on the hub device count all Kubernetes workloads, the running ones and the ones that are not running.
+- A Recreate pods button on each workload device deletes the pods of that workload so that Kubernetes starts new ones, and it stops waiting after 10 seconds per pod while the delete keeps running on the NAS.
+- The options dialog has a new Selected Kubernetes workloads field, so you can choose which workloads show up in Home Assistant.
+- `OMVAPI.async_call` accepts an optional per-call read `timeout` and raises the new `OMVTimeoutError` when OMV received a request but did not answer in time.
 
 ### Fixed
 
 - Smoke-test CI gate sends the workflow token to the check-runs API and polls the PR head SHA instead of the merge commit, so it no longer fails with curl exit 22 (HTTP error) on PRs such as #159.
+
+### Documentation
+
+- The README describes the new Kubernetes workload devices, and the new `docs/kubernetes.md` page explains the design decisions, the measurements and some ideas for the openmediavault-k8s plugin.
 
 ## [2.10.2] - 2026-11-19
 
