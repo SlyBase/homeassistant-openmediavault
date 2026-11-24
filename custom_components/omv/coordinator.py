@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -25,6 +26,7 @@ from .const import (
     CONF_SELECTED_CRON_JOBS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
+    CONF_SELECTED_K8S_WORKLOADS,
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
@@ -40,6 +42,7 @@ from .exceptions import (
     OMVApiError,
     OMVAuthError,
     OMVConnectionError,
+    OMVTimeoutError,
     OMVTwoFactorRequiredError,
 )
 from .omv_api import OMVAPI
@@ -107,6 +110,63 @@ _NVME_HEALTH_FIELDS = {
 _GPU_CUR_FREQ_PATH = "/sys/class/drm/card0/gt_cur_freq_mhz"
 _GPU_MAX_FREQ_PATH = "/sys/class/drm/card0/gt_max_freq_mhz"
 _GPU_CONFIRMATION_CYCLES = 2
+# Kubernetes (openmediavault-k8s plugin, Kubectl RPC service). One
+# Kubectl.getList call returns all workload controllers plus their pods;
+# PodMetrics (metrics-server) is fetched separately so a missing
+# metrics-server never takes the workloads down with it.
+_K8S_SERVICE_NAME = "k3s"
+_K8S_WORKLOAD_LIST_PARAMS = {
+    "type": "deployments,statefulsets,daemonsets,pods",
+    "start": 0,
+    "limit": -1,
+}
+_K8S_POD_METRICS_LIST_PARAMS = {"type": "pods.metrics.k8s.io", "start": 0, "limit": -1}
+_K8S_NODE_LIST_PARAMS = {"type": "nodes", "start": 0, "limit": -1}
+# Node allocatable CPU only changes when the node is resized; refresh hourly.
+_K8S_NODES_REFRESH_SECONDS = 3600
+_K8S_WORKLOAD_KINDS = ("Deployment", "StatefulSet", "DaemonSet")
+# DNS-1123 subdomain: the format Kubernetes enforces for namespace and pod
+# names. Validated before a name is passed to Kubectl.delete (defence in
+# depth: OMV additionally escapeshellarg()s every argument).
+_K8S_NAME_PATTERN = re.compile(r"[a-z0-9]([-a-z0-9.]*[a-z0-9])?")
+_K8S_NAME_MAX_LENGTH = 253
+_K8S_DEFAULT_GRACE_PERIOD = 30
+# Kubectl.delete runs `kubectl delete`, which sends the API DELETE at once and
+# then blocks until the pod is gone (up to terminationGracePeriodSeconds).
+# Aborting the client call does not cancel the delete: measured live on OMV 8 /
+# openmediavault-k8s 8.2.9-1, kubectl kept running inside omv-engined and the
+# replacement pod was Running 7 s later. A short fixed read timeout therefore
+# loses nothing and caps how long the shared API lock is held per pod; the
+# resulting OMVTimeoutError means "delete requested, pod still terminating".
+_K8S_DELETE_TIMEOUT = 10
+# Binary (Ki, Mi, ...) and decimal (n, u, m, k, M, ...) Kubernetes quantity
+# suffixes as multipliers of the base unit (cores for CPU, bytes for memory).
+_K8S_QUANTITY_SUFFIXES: dict[str, float] = {
+    "Ki": 1024.0,
+    "Mi": 1024.0**2,
+    "Gi": 1024.0**3,
+    "Ti": 1024.0**4,
+    "Pi": 1024.0**5,
+    "Ei": 1024.0**6,
+    "n": 1e-9,
+    "u": 1e-6,
+    "m": 1e-3,
+    "": 1.0,
+    "k": 1e3,
+    "M": 1e6,
+    "G": 1e9,
+    "T": 1e12,
+    "P": 1e15,
+    "E": 1e18,
+}
+# Longest suffix first so "Mi" wins over "M"; the exponent alternative comes
+# first so "1E3" is 1000 while a trailing "E" alone is the exa suffix.
+_K8S_QUANTITY_PATTERN = re.compile(
+    r"(?P<number>[+-]?(?:\d+\.?\d*|\.\d+))(?:(?P<exponent>[eE][+-]?\d+)|(?P<suffix>"
+    + "|".join(sorted((re.escape(suffix) for suffix in _K8S_QUANTITY_SUFFIXES if suffix), key=lambda s: (-len(s), s)))
+    + "))?"
+)
+_BYTES_PER_MIB = 1024 * 1024
 
 
 class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -184,17 +244,27 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.hub_device_id: str | None = None
         self.project_device_ids: dict[str, str] = {}
         self.zfs_pool_device_ids: dict[str, str] = {}
-        # Issue #118: core inventories fetched through _fetch_or_empty whose
-        # RPC failed on the current refresh. A swallowed error collapses such a
-        # collection to [], which looks identical to a genuinely empty
-        # inventory — the registry cleanup must therefore not prune entries
-        # while this is non-empty.
+        # Issue #118: inventories whose RPC failed on the current refresh: the
+        # core ones fetched through _fetch_or_empty plus optional plugin
+        # collections passed to _fetch_optional(collection=...) once the
+        # plugin is known to be active (k8s_workloads). A swallowed error
+        # collapses such a collection to [], which looks identical to a
+        # genuinely empty inventory; the registry cleanup must therefore not
+        # prune entries while this is non-empty.
         self._degraded_collections: set[str] = set()
+        # Kubernetes node cache: allocatable CPU is only needed to turn
+        # workload millicores into a percentage and rarely changes, so
+        # Kubectl.getList {"type": "nodes"} runs on its own slow cadence.
+        self._k8s_nodes_cache: list[dict[str, Any]] = []
+        self._k8s_nodes_last_poll: float | None = None
 
     @property
     def degraded_collections(self) -> frozenset[str]:
-        """Return the core collections that failed to fetch on the last refresh.
+        """Return the collections that failed to fetch on the last refresh.
 
+        Contains core collections (fetched through ``_fetch_or_empty``) and
+        optional plugin collections whose plugin is known to be active
+        (``_fetch_optional(collection=...)``, e.g. ``k8s_workloads``).
         A non-empty result means the current ``data`` is not a verified
         complete inventory (Issue #118), so stale-registry pruning must be
         skipped for this refresh: entities stay registered and report
@@ -400,6 +470,56 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.debug("zfs.scrubPool name=%s response=%s", name, response)
         return response
 
+    async def async_recreate_k8s_pods(self, workload: dict[str, Any]) -> int:
+        """Delete every live pod of one Kubernetes workload so its controller recreates them.
+
+        Pods are deleted one by one with ``Kubectl.delete`` and a fixed
+        ``_K8S_DELETE_TIMEOUT`` read timeout (see the comment there). A read
+        timeout counts as a requested delete; every other error is raised.
+        All names are validated before the first RPC.
+
+        Args:
+            workload: A normalized record from ``coordinator.data["k8s_workloads"]``.
+
+        Returns:
+            The number of delete requests issued (including timed-out ones).
+
+        Raises:
+            ValueError: When the namespace or a pod name is not DNS-1123.
+            OMVApiError: When OMV rejects a delete.
+            OMVConnectionError: When a request could not be sent.
+        """
+        namespace = str(workload.get("namespace") or "")
+        if not self._is_valid_k8s_name(namespace):
+            raise ValueError(f"Invalid Kubernetes namespace: {namespace!r}")
+        targets = [pod for pod in workload.get("pods") or [] if isinstance(pod, dict) and not pod.get("terminating")]
+        for pod in targets:
+            if not self._is_valid_k8s_name(pod.get("name")):
+                raise ValueError(f"Invalid Kubernetes pod name: {pod.get('name')!r}")
+
+        issued = 0
+        for pod in targets:
+            pod_name = str(pod["name"])
+            try:
+                await self.api.async_call(
+                    "Kubectl",
+                    "delete",
+                    {"type": "pod", "name": pod_name, "namespace": namespace},
+                    max_retries=0,
+                    timeout=_K8S_DELETE_TIMEOUT,
+                )
+            except OMVTimeoutError:
+                _LOGGER.debug(
+                    "Kubectl.delete pod=%s/%s timed out after %ss, pod still terminating",
+                    namespace,
+                    pod_name,
+                    _K8S_DELETE_TIMEOUT,
+                )
+            else:
+                _LOGGER.debug("Kubectl.delete pod %s/%s completed", namespace, pod_name)
+            issued += 1
+        return issued
+
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch all coordinator data from OMV, bridging brief recoverable errors with cached data.
 
@@ -502,6 +622,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 raw_upgraded = await self._fetch_optional("Apt", "getUpgradedList", {"start": 0, "limit": 100})
                 upgraded_pkgs = self._records_from_response(raw_upgraded)
 
+            k8s_workloads = await self._async_collect_k8s_workloads(services)
+
             unfiltered_data: dict[str, Any] = {
                 "hwinfo": self._hwinfo,
                 "disk": disks,
@@ -534,6 +656,12 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     )
                 ),
                 "upgradedList": upgraded_pkgs,
+                "k8s_workloads": k8s_workloads,
+                "k8s_summary": (
+                    {}
+                    if "k8s_workloads" in self._degraded_collections
+                    else self._summarize_k8s(k8s_workloads, services)
+                ),
             }
 
             self._inventory_source = unfiltered_data
@@ -629,6 +757,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             CONF_SELECTED_CONTAINERS: [],
             CONF_SELECTED_VMS: [],
             CONF_SELECTED_CRON_JOBS: [],
+            CONF_SELECTED_K8S_WORKLOADS: [],
         }
 
         for disk in data.get("disk", []):
@@ -736,6 +865,17 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not value:
                 continue
             inventory[CONF_SELECTED_CRON_JOBS].append({"value": value, "label": str(job.get("name") or value)})
+
+        for workload in data.get("k8s_workloads", []):
+            if not isinstance(workload, dict):
+                continue
+            value = str(workload.get("workload_key") or "")
+            if not value:
+                continue
+            namespace = str(workload.get("namespace") or "?")
+            name = str(workload.get("name") or value)
+            label = f"{namespace} / {name} ({workload.get('kind') or '?'})"
+            inventory[CONF_SELECTED_K8S_WORKLOADS].append({"value": value, "label": label})
 
         for key, options in inventory.items():
             unique: dict[str, str] = {}
@@ -885,6 +1025,20 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # _selected_values must never apply to it.
         filtered["cron"] = list(data.get("cron", []))
         filtered["upgradedList"] = list(data.get("upgradedList", []))
+        selected_k8s_workloads = self._selected_values(options, CONF_SELECTED_K8S_WORKLOADS)
+        filtered["k8s_workloads"] = self._filter_collection(
+            data.get("k8s_workloads", []),
+            selected_k8s_workloads,
+            lambda item: str(item.get("workload_key") or ""),
+        )
+        # Like compose_summary, the k8s summary counts only what survives the
+        # selection and is gated on the selection-filtered service list. A
+        # failed Kubectl fetch yields {} so the summary sensors go unknown
+        # instead of reporting 0 workloads.
+        if "k8s_workloads" in self._degraded_collections:
+            filtered["k8s_summary"] = {}
+        else:
+            filtered["k8s_summary"] = self._summarize_k8s(filtered["k8s_workloads"], filtered["service"])
         return filtered
 
     async def _async_get_hwinfo(self) -> dict[str, Any]:
@@ -1429,6 +1583,73 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return self._last_stable_gpu
 
+    async def _async_collect_k8s_workloads(self, services: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Fetch and normalize Kubernetes workloads from the openmediavault-k8s plugin.
+
+        Gated on the ``k3s`` service: when it is absent or disabled no Kubectl
+        RPC is issued at all. Otherwise one ``Kubectl.getList`` call returns
+        all Deployments/StatefulSets/DaemonSets plus their pods, a second one
+        the PodMetrics from metrics-server (separate, so a missing
+        metrics-server only blanks CPU/memory), and node allocatable CPU comes
+        from :meth:`_async_fetch_k8s_nodes`'s cache. A failed workload fetch is
+        recorded as the degraded ``k8s_workloads`` collection so the registry
+        cleanup does not prune still-existing workloads (Issue #118).
+
+        Args:
+            services: Normalized (unfiltered) OMV service records.
+
+        Returns:
+            Normalized workload records (see :meth:`_normalize_k8s_workloads`),
+            or ``[]`` when Kubernetes is unavailable or the fetch failed.
+        """
+        if not self._has_k8s_service(services):
+            _LOGGER.debug("Kubernetes (k3s) service absent or disabled; skipping Kubectl RPCs")
+            return []
+        raw_objects = await self._fetch_optional(
+            "Kubectl",
+            "getList",
+            _K8S_WORKLOAD_LIST_PARAMS,
+            collection="k8s_workloads",
+        )
+        if "k8s_workloads" in self._degraded_collections:
+            return []
+        # Metrics and nodes fail permanently when metrics-server is absent:
+        # no retries/backoff on every poll (Issue #67, like CpuTemp).
+        raw_metrics = await self._fetch_optional("Kubectl", "getList", _K8S_POD_METRICS_LIST_PARAMS, max_retries=0)
+        raw_nodes = await self._async_fetch_k8s_nodes()
+        return self._normalize_k8s_workloads(raw_objects, raw_metrics, raw_nodes)
+
+    async def _async_fetch_k8s_nodes(self) -> list[dict[str, Any]]:
+        """Return Kubernetes node records, refreshed every ``_K8S_NODES_REFRESH_SECONDS``.
+
+        Node allocatable CPU is only the denominator of the workload CPU
+        percentage and practically never changes, so ``Kubectl.getList
+        {"type": "nodes"}`` runs when the cache is empty (first poll or every
+        failed fetch so far) and then once per ``_K8S_NODES_REFRESH_SECONDS``.
+        A failed refresh keeps the previous cache and is retried next poll.
+
+        Returns:
+            The (possibly cached) raw node records.
+        """
+        now = time.monotonic()
+        if (
+            self._k8s_nodes_cache
+            and self._k8s_nodes_last_poll is not None
+            and (now - self._k8s_nodes_last_poll) < _K8S_NODES_REFRESH_SECONDS
+        ):
+            _LOGGER.debug(
+                "Using cached Kubernetes node list (%.0fs since last poll)",
+                now - self._k8s_nodes_last_poll,
+            )
+            return self._k8s_nodes_cache
+        response = await self._fetch_optional("Kubectl", "getList", _K8S_NODE_LIST_PARAMS, max_retries=0)
+        records = self._records_from_response(response)
+        if records:
+            self._k8s_nodes_cache = records
+            self._k8s_nodes_last_poll = now
+            _LOGGER.debug("Kubernetes node list refreshed (%d nodes)", len(records))
+        return self._k8s_nodes_cache
+
     async def _fetch_or_empty(
         self,
         service: str,
@@ -1464,6 +1685,7 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         params: dict[str, Any] | None = None,
         *,
         max_retries: int = 3,
+        collection: str | None = None,
     ) -> Any:
         """Fetch optional plugin data and suppress plugin-specific failures.
 
@@ -1475,6 +1697,11 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 calls known to fail permanently on some setups (e.g. missing
                 hardware sensors) so they neither retry with backoff nor log
                 at ERROR on every poll (Issue #67).
+            collection: Name of the inventory this call feeds. Only pass it
+                when the caller already knows the plugin is active (e.g. the
+                k3s service is enabled), so a failure really means the data is
+                missing: it is then recorded in :attr:`degraded_collections`
+                and the stale-registry cleanup is skipped (Issue #118).
         """
         try:
             return await self.api.async_call(service, method, params, max_retries=max_retries)
@@ -1486,6 +1713,8 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 params,
                 err,
             )
+            if collection is not None:
+                self._degraded_collections.add(collection)
             return []
 
     async def _fetch_optional_background_json(
@@ -2533,6 +2762,369 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
         return jobs
 
+    def _normalize_k8s_workloads(
+        self,
+        raw_objects: Any,
+        raw_metrics: Any,
+        raw_nodes: Any,
+    ) -> list[dict[str, Any]]:
+        """Normalize Kubectl.getList payloads into one record per workload controller.
+
+        Pure: no RPC, no state. Pods are attached to their controller through
+        ``metadata.ownerReferences`` (see :meth:`_k8s_pod_owner`); pods of any
+        other owner (Job, CronJob, Node, none) are ignored.
+
+        Args:
+            raw_objects: ``Kubectl.getList`` response for
+                ``deployments,statefulsets,daemonsets,pods``.
+            raw_metrics: ``Kubectl.getList`` response for
+                ``pods.metrics.k8s.io`` (``[]`` when metrics-server is absent).
+            raw_nodes: Node records (``Kubectl.getList`` for ``nodes``).
+
+        Returns:
+            Workload dicts (see :meth:`_normalize_k8s_workload`) sorted by
+            ``workload_key``, each with its pods sorted by name.
+        """
+        controllers: list[dict[str, Any]] = []
+        pods_by_owner: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        for record in self._records_from_response(raw_objects):
+            kind = str(record.get("kind") or "")
+            if kind in _K8S_WORKLOAD_KINDS:
+                controllers.append(record)
+            elif kind == "Pod":
+                owner = self._k8s_pod_owner(record)
+                if owner is not None:
+                    pods_by_owner.setdefault(owner, []).append(self._normalize_k8s_pod(record))
+
+        usage_by_pod = self._k8s_pod_usage(raw_metrics)
+        allocatable_millicores = self._k8s_allocatable_millicores(raw_nodes)
+
+        workloads: list[dict[str, Any]] = []
+        for record in controllers:
+            namespace = str(self._nested_record_value(record, "metadata", "namespace") or "")
+            name = str(self._nested_record_value(record, "metadata", "name") or "")
+            if not namespace or not name:
+                continue
+            pods = sorted(
+                pods_by_owner.get((namespace, str(record["kind"]), name), []),
+                key=lambda pod: str(pod["name"]),
+            )
+            workloads.append(self._normalize_k8s_workload(record, pods, usage_by_pod, allocatable_millicores))
+
+        return sorted(workloads, key=lambda workload: str(workload["workload_key"]))
+
+    def _normalize_k8s_workload(
+        self,
+        record: dict[str, Any],
+        pods: list[dict[str, Any]],
+        usage_by_pod: dict[tuple[str, str], tuple[float | None, float | None]],
+        allocatable_millicores: float | None,
+    ) -> dict[str, Any]:
+        """Normalize one Deployment, StatefulSet or DaemonSet record.
+
+        Args:
+            record: Raw controller object (with ``metadata.namespace``/``name``).
+            pods: Normalized pods of this controller (see :meth:`_normalize_k8s_pod`).
+            usage_by_pod: Per-pod ``(cpu cores, memory bytes)`` from
+                :meth:`_k8s_pod_usage`.
+            allocatable_millicores: Summed node allocatable CPU, or ``None``.
+
+        Returns:
+            Dict with ``workload_key`` (``"<namespace>/<kind_lower>/<name>"``),
+            ``namespace``, ``name``, ``kind``, ``images`` (sorted, unique),
+            ``version`` (tag of the first template container image, ``""``
+            when untagged), ``desired``/``ready``/``available``/``updated``,
+            ``state`` (one of :data:`K8S_WORKLOAD_STATES`), ``pods``,
+            ``restarts`` (sum over non-terminating pods),
+            ``cpu_millicores``/``memory_mib`` (``None`` when no pod has a
+            metrics record) and ``cpu_percent`` (of node allocatable CPU).
+        """
+        kind = str(record.get("kind") or "")
+        namespace = str(self._nested_record_value(record, "metadata", "namespace") or "")
+        name = str(self._nested_record_value(record, "metadata", "name") or "")
+        if kind == "DaemonSet":
+            desired = self._coerce_int(self._nested_record_value(record, "status", "desiredNumberScheduled"))
+            counter_keys = ("numberReady", "numberAvailable", "updatedNumberScheduled")
+        else:
+            desired = self._coerce_int(self._nested_record_value(record, "spec", "replicas"), 1)
+            counter_keys = ("readyReplicas", "availableReplicas", "updatedReplicas")
+        ready, available, updated = (
+            self._coerce_int(self._nested_record_value(record, "status", key)) for key in counter_keys
+        )
+
+        containers = self._nested_record_value(record, "spec", "template", "spec", "containers")
+        container_images = [
+            str(container["image"])
+            for container in (containers if isinstance(containers, list) else [])
+            if isinstance(container, dict) and container.get("image")
+        ]
+
+        cpu_cores: float | None = None
+        memory_bytes: float | None = None
+        for pod in pods:
+            pod_cpu, pod_memory = usage_by_pod.get((namespace, str(pod["name"])), (None, None))
+            if pod_cpu is not None:
+                cpu_cores = (cpu_cores or 0.0) + pod_cpu
+            if pod_memory is not None:
+                memory_bytes = (memory_bytes or 0.0) + pod_memory
+        cpu_millicores = cpu_cores * 1000 if cpu_cores is not None else None
+
+        return {
+            "workload_key": f"{namespace}/{kind.lower()}/{name}",
+            "namespace": namespace,
+            "name": name,
+            "kind": kind,
+            "images": sorted(set(container_images)),
+            "version": self._image_tag(container_images[0]) if container_images else "",
+            "desired": desired,
+            "ready": ready,
+            "available": available,
+            "updated": updated,
+            "state": self._k8s_workload_state(desired, ready, updated),
+            "pods": pods,
+            "restarts": sum(pod["restarts"] for pod in pods if not pod["terminating"]),
+            "cpu_millicores": round(cpu_millicores, 3) if cpu_millicores is not None else None,
+            "memory_mib": round(memory_bytes / _BYTES_PER_MIB, 1) if memory_bytes is not None else None,
+            "cpu_percent": (
+                round(cpu_millicores / allocatable_millicores * 100, 2)
+                if cpu_millicores is not None and allocatable_millicores
+                else None
+            ),
+        }
+
+    def _normalize_k8s_pod(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Reduce one raw Kubernetes pod object to the fields the integration exposes.
+
+        Args:
+            record: Raw ``Pod`` object from ``Kubectl.getList``.
+
+        Returns:
+            Dict with ``name``, ``phase``, ``ready`` (all containers ready),
+            ``restarts`` (sum of ``containerStatuses[].restartCount``),
+            ``terminating`` (``metadata.deletionTimestamp`` set) and
+            ``grace_period`` (``spec.terminationGracePeriodSeconds``,
+            default 30).
+        """
+        raw_statuses = self._nested_record_value(record, "status", "containerStatuses")
+        container_statuses = (
+            [item for item in raw_statuses if isinstance(item, dict)] if isinstance(raw_statuses, list) else []
+        )
+        return {
+            "name": str(self._nested_record_value(record, "metadata", "name") or ""),
+            "phase": str(self._nested_record_value(record, "status", "phase") or "Unknown"),
+            "ready": bool(container_statuses)
+            and all(self._coerce_bool(item.get("ready")) for item in container_statuses),
+            "restarts": sum(self._coerce_int(item.get("restartCount")) for item in container_statuses),
+            "terminating": self._nested_record_value(record, "metadata", "deletionTimestamp") not in (None, ""),
+            "grace_period": self._coerce_int(
+                self._nested_record_value(record, "spec", "terminationGracePeriodSeconds"),
+                _K8S_DEFAULT_GRACE_PERIOD,
+            ),
+        }
+
+    def _k8s_pod_owner(self, record: dict[str, Any]) -> tuple[str, str, str] | None:
+        """Map a pod to the workload controller that owns it.
+
+        A ``ReplicaSet`` owner named ``<deploy>-<pod-template-hash>`` maps to
+        Deployment ``<deploy>``; without a matching ``pod-template-hash`` label
+        the pod is not mapped. ``StatefulSet``/``DaemonSet`` owners map
+        directly.
+
+        Args:
+            record: Raw ``Pod`` object.
+
+        Returns:
+            ``(namespace, kind, name)`` of the owning Deployment, StatefulSet
+            or DaemonSet, or ``None`` for pods owned by anything else (Job,
+            CronJob, Node), by nothing, or by an unrecognizable ReplicaSet.
+        """
+        references = self._nested_record_value(record, "metadata", "ownerReferences")
+        if not isinstance(references, list):
+            return None
+        candidates = [reference for reference in references if isinstance(reference, dict)]
+        if not candidates:
+            return None
+        reference = next((item for item in candidates if item.get("controller")), candidates[0])
+        namespace = str(self._nested_record_value(record, "metadata", "namespace") or "")
+        kind = str(reference.get("kind") or "")
+        name = str(reference.get("name") or "")
+        if not name:
+            return None
+        if kind == "ReplicaSet":
+            template_hash = str(self._nested_record_value(record, "metadata", "labels", "pod-template-hash") or "")
+            if template_hash and name.endswith(f"-{template_hash}"):
+                return (namespace, "Deployment", name[: -len(template_hash) - 1])
+            return None
+        if kind in ("StatefulSet", "DaemonSet"):
+            return (namespace, kind, name)
+        return None
+
+    def _k8s_pod_usage(self, raw_metrics: Any) -> dict[tuple[str, str], tuple[float | None, float | None]]:
+        """Sum PodMetrics container usage per pod.
+
+        Args:
+            raw_metrics: ``Kubectl.getList`` response for ``pods.metrics.k8s.io``.
+
+        Returns:
+            Mapping ``(namespace, pod name) -> (cpu cores, memory bytes)``;
+            either value is ``None`` when no container reported a parseable
+            quantity for it.
+        """
+        usage: dict[tuple[str, str], tuple[float | None, float | None]] = {}
+        for record in self._records_from_response(raw_metrics):
+            namespace = str(self._nested_record_value(record, "metadata", "namespace") or "")
+            name = str(self._nested_record_value(record, "metadata", "name") or "")
+            containers = record.get("containers")
+            if not namespace or not name or not isinstance(containers, list):
+                continue
+            cpu: float | None = None
+            memory: float | None = None
+            for container in containers:
+                if not isinstance(container, dict):
+                    continue
+                container_cpu = self._parse_k8s_quantity(self._nested_record_value(container, "usage", "cpu"))
+                container_memory = self._parse_k8s_quantity(self._nested_record_value(container, "usage", "memory"))
+                if container_cpu is not None:
+                    cpu = (cpu or 0.0) + container_cpu
+                if container_memory is not None:
+                    memory = (memory or 0.0) + container_memory
+            usage[(namespace, name)] = (cpu, memory)
+        return usage
+
+    def _k8s_allocatable_millicores(self, raw_nodes: Any) -> float | None:
+        """Return the summed allocatable CPU of all Kubernetes nodes.
+
+        Args:
+            raw_nodes: Node records (``Kubectl.getList`` for ``nodes``).
+
+        Returns:
+            Total ``status.allocatable.cpu`` in millicores, or ``None`` when no
+            node reports a positive, parseable value.
+        """
+        total_cores = 0.0
+        for record in self._records_from_response(raw_nodes):
+            cores = self._parse_k8s_quantity(self._nested_record_value(record, "status", "allocatable", "cpu"))
+            if cores is not None:
+                total_cores += cores
+        return total_cores * 1000 if total_cores > 0 else None
+
+    @staticmethod
+    def _k8s_workload_state(desired: int, ready: int, updated: int) -> str:
+        """Derive the workload state enum value from its replica counters.
+
+        Args:
+            desired: Desired replicas (DaemonSet: desired scheduled pods).
+            ready: Ready replicas.
+            updated: Replicas already on the current pod template.
+
+        Returns:
+            ``scaled_down`` (nothing desired), ``unavailable`` (nothing
+            ready), ``progressing`` (rollout in progress), ``degraded``
+            (fewer ready than desired) or ``running``.
+        """
+        if desired == 0:
+            return "scaled_down"
+        if ready == 0:
+            return "unavailable"
+        if updated < desired:
+            return "progressing"
+        if ready < desired:
+            return "degraded"
+        return "running"
+
+    @staticmethod
+    def _parse_k8s_quantity(value: Any) -> float | None:
+        """Parse a Kubernetes resource quantity into its base unit.
+
+        Handles plain and decimal numbers (``"2"``, ``"0.5"``), SI suffixes
+        (``"34111n"``, ``"12u"``, ``"250m"``, ``"1000k"``, ``"1M"``,
+        ``"1G"``), binary suffixes (``"54540Ki"``, ``"512Mi"``, ``"1Gi"``,
+        ``"1Ti"``) and decimal exponents (``"1e3"``, ``"128974848e0"``).
+
+        Args:
+            value: A quantity string as found in Kubernetes objects (numbers
+                are accepted as already being in the base unit).
+
+        Returns:
+            The value in base units (cores for CPU, bytes for memory), or
+            ``None`` for anything that is not a valid, finite, non-negative
+            quantity.
+        """
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int | float):
+            number = float(value)
+        elif isinstance(value, str):
+            match = _K8S_QUANTITY_PATTERN.fullmatch(value.strip())
+            if match is None:
+                return None
+            number = float(match.group("number") + (match.group("exponent") or ""))
+            number *= _K8S_QUANTITY_SUFFIXES[match.group("suffix") or ""]
+        else:
+            return None
+        if not math.isfinite(number) or number < 0:
+            return None
+        return number
+
+    def _summarize_k8s(
+        self,
+        workloads: list[dict[str, Any]],
+        services: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        """Summarize Kubernetes workload and pod counts when k3s is enabled.
+
+        Args:
+            workloads: Normalized (and possibly selection-filtered) workloads.
+            services: Normalized OMV service records used for the k3s gate.
+
+        Returns:
+            ``{}`` when the k3s service is absent or disabled, otherwise
+            ``workload_total``, ``workload_running`` (state ``running``),
+            ``workload_not_running``, ``pod_total`` and ``pod_running``
+            (phase ``Running``); terminating pods are not counted.
+        """
+        if not self._has_k8s_service(services):
+            return {}
+        workload_total = 0
+        workload_running = 0
+        pod_total = 0
+        pod_running = 0
+        for workload in workloads:
+            if not isinstance(workload, dict):
+                continue
+            workload_total += 1
+            if workload.get("state") == "running":
+                workload_running += 1
+            for pod in workload.get("pods") or []:
+                if not isinstance(pod, dict) or pod.get("terminating"):
+                    continue
+                pod_total += 1
+                if pod.get("phase") == "Running":
+                    pod_running += 1
+        return {
+            "workload_total": workload_total,
+            "workload_running": workload_running,
+            "workload_not_running": workload_total - workload_running,
+            "pod_total": pod_total,
+            "pod_running": pod_running,
+        }
+
+    @staticmethod
+    def _is_valid_k8s_name(value: Any) -> bool:
+        """Return whether a value is a valid DNS-1123 Kubernetes object name.
+
+        Args:
+            value: Candidate namespace or pod name.
+
+        Returns:
+            True for a lower-case DNS-1123 subdomain of at most 253 chars.
+        """
+        return (
+            isinstance(value, str)
+            and 0 < len(value) <= _K8S_NAME_MAX_LENGTH
+            and _K8S_NAME_PATTERN.fullmatch(value) is not None
+        )
+
     def _normalize_compose(self, response: Any) -> list[dict[str, Any]]:
         """Normalize Docker/Compose containers and extract project relationships."""
         containers: list[dict[str, Any]] = []
@@ -3106,7 +3698,20 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _extract_container_image_tag(self, record: dict[str, Any]) -> str:
         """Return the image tag as a fallback version hint."""
-        image = self._extract_container_image(record)
+        return self._image_tag(self._extract_container_image(record))
+
+    @staticmethod
+    def _image_tag(image: str) -> str:
+        """Return the tag of a container image reference.
+
+        Args:
+            image: Image reference such as ``docker.io/library/nginx:1.27``;
+                a digest (``@sha256:...``) is ignored and a registry port is
+                not mistaken for a tag.
+
+        Returns:
+            The tag (``"1.27"``), or ``""`` for untagged references.
+        """
         if not image:
             return ""
 
@@ -3341,6 +3946,26 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             title = str(service.get("title") or "").strip().lower()
             if name in {"compose", "docker"} or "docker" in title or "compose" in title:
                 return True
+        return False
+
+    def _has_k8s_service(self, services: list[dict[str, Any]]) -> bool:
+        """Return whether the Kubernetes (k3s) service exists and is enabled.
+
+        The openmediavault-k8s plugin registers ``k3s`` in
+        ``Services.getStatus``; Kubectl RPCs are only issued when it is
+        enabled.
+
+        Args:
+            services: Normalized OMV service records.
+
+        Returns:
+            True when a service named ``k3s`` is present and enabled.
+        """
+        for service in services:
+            if not isinstance(service, dict):
+                continue
+            if str(service.get("name") or "").strip().lower() == _K8S_SERVICE_NAME:
+                return self._coerce_bool(service.get("enabled"))
         return False
 
     def _is_container_running(self, container: dict[str, Any]) -> bool:
@@ -3722,6 +4347,20 @@ class OMVDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if value in (None, ""):
             return None
         return round(self._coerce_float(value), 1)
+
+    def _coerce_int(self, value: Any, default: int = 0) -> int:
+        """Coerce a count-like field (replicas, restarts, seconds) to a non-negative int.
+
+        Args:
+            value: Raw field value.
+            default: Returned when the field is absent (``None``/``""``).
+
+        Returns:
+            The truncated, non-negative integer value.
+        """
+        if value in (None, ""):
+            return default
+        return max(0, int(self._coerce_float(value)))
 
     def _coerce_datetime(self, value: Any) -> datetime | None:
         """Best-effort conversion for timestamp-like OMV values."""

@@ -36,6 +36,7 @@ from .const import (
     CONF_SELECTED_CRON_JOBS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
+    CONF_SELECTED_K8S_WORKLOADS,
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
@@ -80,6 +81,7 @@ _RESOURCE_FIELDS: tuple[str, ...] = (
     CONF_SELECTED_COMPOSE_PROJECTS,
     CONF_SELECTED_CONTAINERS,
     CONF_SELECTED_VMS,
+    CONF_SELECTED_K8S_WORKLOADS,
 )
 
 # Cron is deliberately NOT a resource field: its selection is an opt-in for
@@ -473,6 +475,13 @@ class OMVOptionsFlow(OptionsFlow):
                         inventory[CONF_SELECTED_VMS],
                     ),
                 ): self._build_multi_select(inventory[CONF_SELECTED_VMS]),
+                vol.Optional(
+                    CONF_SELECTED_K8S_WORKLOADS,
+                    default=self._default_selection(
+                        CONF_SELECTED_K8S_WORKLOADS,
+                        inventory[CONF_SELECTED_K8S_WORKLOADS],
+                    ),
+                ): self._build_multi_select(inventory[CONF_SELECTED_K8S_WORKLOADS]),
                 vol.Optional(
                     CONF_SELECTED_CRON_JOBS,
                     default=list(self._entry.options.get(CONF_SELECTED_CRON_JOBS, [])),

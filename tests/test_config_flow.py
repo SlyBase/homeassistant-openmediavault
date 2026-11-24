@@ -25,6 +25,7 @@ from custom_components.omv.const import (
     CONF_SELECTED_CRON_JOBS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
+    CONF_SELECTED_K8S_WORKLOADS,
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
@@ -1094,3 +1095,55 @@ async def test_options_flow_cron_jobs_round_trip_and_persist(hass, config_entry)
 
     assert result["type"] == "create_entry"
     assert result["data"][CONF_SELECTED_CRON_JOBS] == ["cron-uuid-0001"]
+
+
+# --- Kubernetes workloads (openmediavault-k8s) ---
+
+_K8S_INVENTORY = {
+    CONF_SELECTED_K8S_WORKLOADS: [
+        {"value": "media/deployment/jellyfin", "label": "media / jellyfin (Deployment)"},
+        {"value": "db-app/statefulset/db", "label": "db-app / db (StatefulSet)"},
+    ]
+}
+
+
+@pytest.mark.asyncio
+async def test_options_flow_offers_k8s_workload_selection(hass, config_entry) -> None:
+    """The options flow lists live workloads and pre-selects all of them on first use."""
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: _K8S_INVENTORY},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+
+    assert result["type"] == "form"
+    field_selector = result["data_schema"].schema[_field_marker(result["data_schema"], CONF_SELECTED_K8S_WORKLOADS)]
+    assert _selector_values(field_selector) == ["db-app/statefulset/db", "media/deployment/jellyfin"]
+    assert result["data_schema"]({})[CONF_SELECTED_K8S_WORKLOADS] == [
+        "db-app/statefulset/db",
+        "media/deployment/jellyfin",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_options_flow_k8s_selection_is_opt_in_after_saved_options(hass) -> None:
+    """With previously saved resource selections the new field starts empty (same as VMs)."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="OMV (nas)",
+        data=USER_INPUT,
+        options={CONF_SELECTED_DISKS: ["sda"]},
+    )
+    config_entry.runtime_data = type(
+        "RuntimeCoordinator",
+        (),
+        {"get_live_inventory": lambda self=None: _K8S_INVENTORY},
+    )()
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+
+    assert result["data_schema"]({})[CONF_SELECTED_K8S_WORKLOADS] == []

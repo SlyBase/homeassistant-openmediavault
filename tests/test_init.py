@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -19,6 +20,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.omv import (
+    _async_cleanup_stale_registry_entries,
     _async_migrate_container_registry_keys,
     _async_migrate_disk_registry_keys,
     _async_persist_login_cookie,
@@ -26,8 +28,9 @@ from custom_components.omv import (
     _login_cookie_store,
     session_handoff,
 )
-from custom_components.omv.const import CONF_SCAN_INTERVAL, CONF_UPDATE_TRACKING_DISABLED, DOMAIN
+from custom_components.omv.const import CONF_SCAN_INTERVAL, CONF_UPDATE_TRACKING_DISABLED, DOMAIN, K8S_WORKLOAD_STATES
 from custom_components.omv.coordinator import OMVDataUpdateCoordinator
+from custom_components.omv.entity import get_k8s_workload_device_info
 
 ENTRY_DATA = {
     CONF_HOST: "192.0.2.10",
@@ -922,3 +925,108 @@ async def test_async_migrate_disk_registry_keys_keeps_filesystem_unique_ids(hass
         entity_registry.async_get_entity_id(DOMAIN, "sensor", f"{entry.entry_id}-disk-ata-Seagate_ST4000VN008_Z123")
         is not None
     )
+
+
+# --- Kubernetes workloads (openmediavault-k8s) ---
+
+
+def _register_stale_k8s_workload(hass, config_entry) -> tuple[str, str]:
+    """Register a device and entity for a workload that no longer exists."""
+    key = "old-app/deployment/gone"
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, f"{config_entry.entry_id}:k8s_workload:{key}")},
+        name="Kubernetes old-app/gone",
+    )
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        DOMAIN,
+        f"{config_entry.entry_id}-k8s_workload_state-{key}",
+        config_entry=config_entry,
+        device_id=device.id,
+    )
+    return f"{config_entry.entry_id}-k8s_workload_state-{key}", device.id
+
+
+@pytest.mark.asyncio
+async def test_cleanup_prunes_removed_k8s_workload(hass, coordinator, config_entry) -> None:
+    """A deleted or de-selected workload loses its entities and device; live ones stay."""
+    unique_id, device_id = _register_stale_k8s_workload(hass, config_entry)
+    live_device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        **get_k8s_workload_device_info(coordinator, coordinator.data["k8s_workloads"][0]),
+    )
+
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+
+    assert dr.async_get(hass).async_get(device_id) is None
+    assert er.async_get(hass).async_get_entity_id("sensor", DOMAIN, unique_id) is None
+    assert dr.async_get(hass).async_get(live_device.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_cleanup_skipped_when_kubectl_fetch_failed(hass, coordinator, config_entry) -> None:
+    """Issue #118 guard: a failed Kubectl fetch must not prune workload entries."""
+    coordinator.data["k8s_workloads"] = []
+    unique_id, device_id = _register_stale_k8s_workload(hass, config_entry)
+    coordinator._degraded_collections = {"k8s_workloads"}
+
+    await _async_cleanup_stale_registry_entries(hass, config_entry, coordinator)
+
+    assert dr.async_get(hass).async_get(device_id) is not None
+    assert er.async_get(hass).async_get_entity_id("sensor", DOMAIN, unique_id)
+
+
+@pytest.mark.asyncio
+async def test_full_setup_exposes_translated_kubernetes_entities(hass, config_entry, k8s_kubectl_payload) -> None:
+    """End to end: a k3s-enabled host yields translated workload entities in the state machine."""
+    config_entry.add_to_hass(hass)
+    kubectl = {
+        "deployments,statefulsets,daemonsets,pods": k8s_kubectl_payload["workloads_and_pods"],
+        "pods.metrics.k8s.io": k8s_kubectl_payload["pod_metrics"],
+        "nodes": k8s_kubectl_payload["nodes"],
+    }
+    responses = {
+        ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+        ("CpuTemp", "get"): {"cputemp": 55.0},
+        ("Services", "getStatus"): [{"name": "k3s", "title": "Kubernetes", "enabled": True, "running": True}],
+        ("Smart", "getList"): {"data": [], "total": 0},
+        ("Nut", "getStats"): "Service disabled",
+    }
+
+    async def async_call(service: str, method: str, params: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        """Serve the Kubectl payloads and minimal core responses; anything else is empty."""
+        if service == "Kubectl":
+            return kubectl[(params or {})["type"]]
+        return responses.get((service, method), [])
+
+    with (
+        patch(
+            "custom_components.omv.OMVAPI.async_connect",
+            new=AsyncMock(return_value={"hostname": "nas", "version": "8.1.2-1"}),
+        ),
+        patch("custom_components.omv.OMVAPI.async_call", new=AsyncMock(side_effect=async_call)),
+        patch("custom_components.omv.OMVAPI.async_close", new=AsyncMock()),
+    ):
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+        # Entity ids follow HA's device-name + translated-name scheme, like containers.
+        state = hass.states.get("sensor.kubernetes_web_app_web_web_state")
+        assert state is not None
+        assert state.state == "running"
+        assert state.attributes["options"] == list(K8S_WORKLOAD_STATES)
+        assert state.attributes["friendly_name"] == "Kubernetes web-app/web web state"
+        assert hass.states.get("sensor.kubernetes_web_app_web_web_cpu_usage").state == "3.33"
+        memory = hass.states.get("sensor.kubernetes_web_app_web_web_memory_usage")
+        assert memory.attributes["unit_of_measurement"] == "MiB"
+        assert hass.states.get("sensor.kubernetes_broken_app_broken_broken_cpu_usage").state == "unknown"
+        assert hass.states.get("sensor.kubernetes_web_app_web_web_restarts").state == "3"
+        assert hass.states.get("sensor.omv_nas_kubernetes_workloads_total").state == "6"
+        button = hass.states.get("button.kubernetes_web_app_web_recreate_pods")
+        assert button is not None
+        assert button.attributes["friendly_name"] == "Kubernetes web-app/web Recreate pods"
+        # A scaled-down workload has nothing to delete, so its button is unavailable.
+        assert hass.states.get("button.kubernetes_paused_app_paused_recreate_pods").state == "unavailable"
+
+        assert await hass.config_entries.async_unload(config_entry.entry_id)

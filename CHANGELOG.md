@@ -2,9 +2,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- Kubernetes workload devices for the `openmediavault-k8s` plugin. Every Deployment, StatefulSet and DaemonSet gets its own device with a state sensor (`running`, `progressing`, `degraded`, `unavailable` or `scaled_down`), a restarts sensor, a CPU sensor in percent of the node CPU and a memory sensor in MiB. The integration only asks OMV for Kubernetes data while the `k3s` service is enabled.
+- Three new sensors on the hub device count all Kubernetes workloads, the running ones and the ones that are not running.
+- A Recreate pods button on each workload device deletes the pods of that workload so that Kubernetes starts new ones, and it stops waiting after 10 seconds per pod while the delete keeps running on the NAS.
+- The options dialog has a new Selected Kubernetes workloads field, so you can choose which workloads show up in Home Assistant.
+- `OMVAPI.async_call` accepts an optional per-call read `timeout` and raises the new `OMVTimeoutError` when OMV received a request but did not answer in time.
+
 ### Fixed
 
 - Smoke-test CI gate sends the workflow token to the check-runs API and polls the PR head SHA instead of the merge commit, so it no longer fails with curl exit 22 (HTTP error) on PRs such as #159.
+
+### Documentation
+
+- The README describes the new Kubernetes workload devices, how the Recreate pods button behaves and how to pick the workloads you want to monitor.
 
 ## [2.10.2] - 2026-11-19
 

@@ -7,7 +7,7 @@ from typing import Any
 from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_SELECTED_CRON_JOBS, DOMAIN
@@ -17,6 +17,7 @@ from .entity import (
     build_host_object_id,
     get_compose_project_device_info,
     get_container_device_info,
+    get_k8s_workload_device_info,
     get_storage_device_info,
     get_vm_device_info,
 )
@@ -111,6 +112,12 @@ def get_expected_button_unique_ids(
         vm_key = str(vm.get("vm_key") or "")
         if vm_key:
             unique_ids.add(f"{entry.entry_id}-vm_restart-{vm_key}")
+    for workload in coordinator.data.get("k8s_workloads", []):
+        if not isinstance(workload, dict):
+            continue
+        workload_key = str(workload.get("workload_key") or "")
+        if workload_key:
+            unique_ids.add(f"{entry.entry_id}-k8s_recreate_pods-{workload_key}")
     for job in coordinator.data.get("rsync", []):
         if not isinstance(job, dict):
             continue
@@ -177,6 +184,11 @@ async def async_setup_entry(
         if not isinstance(vm, dict) or not str(vm.get("vm_key") or ""):
             continue
         entities.append(OMVVmRestartButton(coordinator, vm))
+
+    for workload in coordinator.data.get("k8s_workloads", []):
+        if not isinstance(workload, dict) or not str(workload.get("workload_key") or ""):
+            continue
+        entities.append(OMVK8sRecreatePodsButton(coordinator, workload))
 
     for job in coordinator.data.get("rsync", []):
         if not isinstance(job, dict) or not str(job.get("rsync_key") or ""):
@@ -449,6 +461,99 @@ class OMVVmRestartButton(OMVEntity, ButtonEntity):
                     "resource": str(self._vm.get("name") or self._vm_key),
                     "command": "reboot",
                 },
+            ) from err
+        finally:
+            await self.coordinator.async_request_refresh()
+
+
+class OMVK8sRecreatePodsButton(OMVEntity, ButtonEntity):
+    """Button to recreate all pods of one Kubernetes workload.
+
+    Deletes every non-terminating pod of the workload via ``Kubectl.delete``;
+    the owning Deployment/StatefulSet/DaemonSet controller recreates them.
+    This is the only non-destructive workload verb the openmediavault-k8s
+    plugin offers: scaling or stopping would require ``Kubectl.apply``,
+    which can strip fields from recipe/Helm-installed workloads.
+    """
+
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_translation_key = "k8s_workload_recreate_pods"
+    _attr_icon = "mdi:restart-alert"
+
+    def __init__(self, coordinator: OMVDataUpdateCoordinator, workload: dict[str, Any]) -> None:
+        """Initialize the recreate-pods button.
+
+        Args:
+            coordinator: The OMV data update coordinator.
+            workload: The normalized Kubernetes workload record.
+        """
+        self._workload_key = str(workload.get("workload_key") or "")
+        self._display_name = f"{workload.get('namespace') or ''}/{workload.get('name') or self._workload_key}"
+        self._attr_suggested_object_id = build_host_object_id(
+            coordinator,
+            "k8s",
+            workload.get("namespace"),
+            workload.get("kind"),
+            workload.get("name") or self._workload_key,
+            "recreate_pods",
+        )
+        super().__init__(
+            coordinator,
+            f"k8s_recreate_pods-{self._workload_key}",
+            device_info=get_k8s_workload_device_info(coordinator, workload),
+        )
+
+    def _current_workload(self) -> dict[str, Any] | None:
+        """Return this button's workload from the current coordinator data.
+
+        Returns:
+            The normalized workload record, or ``None`` when it is gone.
+        """
+        return next(
+            (
+                item
+                for item in (self.coordinator.data or {}).get("k8s_workloads", [])
+                if isinstance(item, dict) and item.get("workload_key") == self._workload_key
+            ),
+            None,
+        )
+
+    @property
+    def available(self) -> bool:
+        """Return True only while the workload exists and has a pod to delete."""
+        workload = self._current_workload()
+        return (
+            super().available
+            and workload is not None
+            and any(isinstance(pod, dict) and not pod.get("terminating") for pod in workload.get("pods") or [])
+        )
+
+    async def async_press(self) -> None:
+        """Delete this workload's pods so its controller recreates them.
+
+        The pod list is read from the current coordinator data at press time
+        (pod names change with every recreation).
+
+        Raises:
+            ServiceValidationError: When the workload is no longer known.
+            HomeAssistantError: When a name fails validation or a
+                Kubectl.delete RPC fails (a read timeout while a pod is still
+                terminating is not a failure).
+        """
+        workload = self._current_workload()
+        if workload is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="k8s_workload_not_found",
+                translation_placeholders={"resource": self._display_name},
+            )
+        try:
+            await self.coordinator.async_recreate_k8s_pods(workload)
+        except (OMVApiError, OMVConnectionError, ValueError) as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="k8s_recreate_pods_failed",
+                translation_placeholders={"resource": self._display_name},
             ) from err
         finally:
             await self.coordinator.async_request_refresh()

@@ -221,6 +221,19 @@ def get_zfs_dataset_device_identifier(coordinator: OMVDataUpdateCoordinator, dat
     return (DOMAIN, f"{coordinator.config_entry.entry_id}:zfs_dataset:{dataset_key}")
 
 
+def get_k8s_workload_device_identifier(coordinator: OMVDataUpdateCoordinator, workload_key: str) -> tuple[str, str]:
+    """Return the stable device registry identifier tuple for a Kubernetes workload.
+
+    Args:
+        coordinator: The data update coordinator.
+        workload_key: The workload's ``"<namespace>/<kind_lower>/<name>"`` key.
+
+    Returns:
+        The ``(DOMAIN, "<entry_id>:k8s_workload:<workload_key>")`` identifier.
+    """
+    return (DOMAIN, f"{coordinator.config_entry.entry_id}:k8s_workload:{workload_key}")
+
+
 def disk_is_smart_eligible(disk: dict[str, Any]) -> bool:
     """Return True if a disk should receive SMART-derived entities.
 
@@ -454,6 +467,35 @@ def get_vm_device_info(
         name=f"VM {display_name}",
         manufacturer="QEMU/KVM",
         model="Virtual Machine",
+        configuration_url=coordinator.api.base_url,
+    )
+
+
+def get_k8s_workload_device_info(
+    coordinator: OMVDataUpdateCoordinator,
+    workload: dict[str, Any],
+) -> DeviceInfo:
+    """Return device info for a Kubernetes workload (Deployment/StatefulSet/DaemonSet).
+
+    Args:
+        coordinator: The data update coordinator.
+        workload: A normalized record from ``coordinator.data["k8s_workloads"]``.
+
+    Returns:
+        A device named ``Kubernetes <namespace>/<name>`` below the hub device,
+        with the workload kind as model and the normalized ``version`` (tag
+        of the first pod-template image) as ``sw_version``.
+    """
+    workload_key = str(workload.get("workload_key") or "")
+    namespace = str(workload.get("namespace") or "")
+    name = str(workload.get("name") or workload_key)
+    return DeviceInfo(
+        identifiers={get_k8s_workload_device_identifier(coordinator, workload_key)},
+        via_device_id=_require_device_id(_hub_device_id(coordinator)),
+        name=f"Kubernetes {namespace}/{name}" if namespace else f"Kubernetes {name}",
+        manufacturer="Kubernetes",
+        model=_normalized_device_value(workload.get("kind")) or "Workload",
+        sw_version=_normalized_device_value(workload.get("version")),
         configuration_url=coordinator.api.base_url,
     )
 

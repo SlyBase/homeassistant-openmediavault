@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+import copy
 import json
-from unittest.mock import AsyncMock, Mock
+import logging
+from collections.abc import Callable, Coroutine
+from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
 
+import aiohttp
 import pytest
+from aioresponses import aioresponses
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -16,6 +22,7 @@ from custom_components.omv.const import (
     CONF_SELECTED_CONTAINERS,
     CONF_SELECTED_DISKS,
     CONF_SELECTED_FILESYSTEMS,
+    CONF_SELECTED_K8S_WORKLOADS,
     CONF_SELECTED_NETWORK_INTERFACES,
     CONF_SELECTED_RAIDS,
     CONF_SELECTED_SERVICES,
@@ -25,9 +32,15 @@ from custom_components.omv.const import (
     CONF_SMART_POLLING_DISABLED,
     DEFAULT_MAX_CONSECUTIVE_FAILURES,
     DOMAIN,
+    K8S_WORKLOAD_STATES,
 )
-from custom_components.omv.coordinator import OMVDataUpdateCoordinator
-from custom_components.omv.exceptions import OMVApiError, OMVConnectionError
+from custom_components.omv.coordinator import (
+    _K8S_DELETE_TIMEOUT,
+    _K8S_NODES_REFRESH_SECONDS,
+    OMVDataUpdateCoordinator,
+)
+from custom_components.omv.exceptions import OMVApiError, OMVConnectionError, OMVTimeoutError
+from custom_components.omv.omv_api import OMVAPI
 
 
 async def _success_async_call(service, method, params=None, **kwargs):
@@ -4388,3 +4401,552 @@ async def test_normalize_raids_does_not_list_array_as_own_member(hass, config_en
     )
     assert len(raids) == 1
     assert raids[0]["member_disks"] == [], "md0 must not be a member of itself"
+
+
+# --- Kubernetes workloads (openmediavault-k8s) ---
+
+_K3S_SERVICE = {"name": "k3s", "title": "Kubernetes", "enabled": True, "running": True}
+_K8S_ALL_KEYS = [
+    "api-app/deployment/api",
+    "broken-app/deployment/broken",
+    "db-app/statefulset/db",
+    "kube-system/daemonset/agent",
+    "paused-app/deployment/paused",
+    "web-app/deployment/web",
+]
+
+
+def _k8s_coordinator(hass, config_entry) -> OMVDataUpdateCoordinator:
+    """Return a bare coordinator with a mocked API and no data loaded."""
+    config_entry.add_to_hass(hass)
+    api = Mock()
+    api.base_url = "http://192.0.2.10:80"
+    api.async_call = AsyncMock()
+    return OMVDataUpdateCoordinator(hass, config_entry, api, scan_interval=60)
+
+
+def _k8s_normalized(coordinator: OMVDataUpdateCoordinator, payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Normalize the raw Kubectl payload and index the workloads by workload_key."""
+    workloads = coordinator._normalize_k8s_workloads(
+        payload["workloads_and_pods"], payload["pod_metrics"], payload["nodes"]
+    )
+    return {workload["workload_key"]: workload for workload in workloads}
+
+
+def _k8s_kubectl(payload: dict[str, Any]) -> dict[str, Any]:
+    """Map Kubectl.getList types to their raw payloads."""
+    return {
+        "deployments,statefulsets,daemonsets,pods": payload["workloads_and_pods"],
+        "pods.metrics.k8s.io": payload["pod_metrics"],
+        "nodes": payload["nodes"],
+    }
+
+
+def _k8s_update_async_call(
+    services: list[dict[str, Any]], kubectl: dict[str, Any]
+) -> Callable[..., Coroutine[Any, Any, Any]]:
+    """Build an RPC fake for a full refresh; ``kubectl`` maps getList types to a payload or exception."""
+
+    async def async_call(service: str, method: str, params: dict[str, Any] | None = None, **kwargs: Any) -> Any:
+        """Return the canned response for one RPC (or raise the canned error)."""
+        if service == "Kubectl":
+            result = kubectl[(params or {})["type"]]
+            if isinstance(result, Exception):
+                raise result
+            return copy.deepcopy(result)
+        responses = {
+            ("System", "getInformation"): {"hostname": "nas", "version": "8.1.2-1"},
+            ("CpuTemp", "get"): {"cputemp": 55.0},
+            ("FileSystemMgmt", "enumerateFilesystems"): [],
+            ("Services", "getStatus"): services,
+            ("Network", "enumerateDevices"): [],
+            ("DiskMgmt", "enumerateDevices"): [],
+            ("Smart", "getListBg"): [],
+            ("Smart", "getList"): {"data": [], "total": 0},
+            ("compose", "getContainerList"): {"data": []},
+            ("compose", "getFileList"): {"data": []},
+            ("Compose", "getVolumesBg"): {"data": []},
+            ("Kvm", "getVmList"): {"data": [], "total": 0},
+            ("TempMon", "getSensorsList"): {"data": [], "total": 0},
+            ("zfs", "listPools"): [],
+            ("Nut", "getStats"): "Service disabled",
+            ("Rsync", "getList"): [],
+            ("Cron", "getList"): [],
+            ("MdMgmt", "enumerateDevices"): [],
+        }
+        return responses[(service, method)]
+
+    return async_call
+
+
+def _kubectl_calls(api: Any) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Return ``(params, kwargs)`` of every Kubectl RPC in call order."""
+    return [(call.args[2], call.kwargs) for call in api.async_call.await_args_list if call.args[0] == "Kubectl"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2", 2.0),
+        ("0.5", 0.5),
+        ("250m", 0.25),
+        ("34111n", 0.000034111),
+        ("12u", 0.000012),
+        ("3500m", 3.5),
+        ("54540Ki", 54540 * 1024.0),
+        ("512Mi", 512 * 1024.0**2),
+        ("1Gi", 1024.0**3),
+        ("1Ti", 1024.0**4),
+        ("1000k", 1_000_000.0),
+        ("1M", 1_000_000.0),
+        ("1G", 1_000_000_000.0),
+        ("2E", 2e18),
+        ("1e3", 1000.0),
+        ("1E3", 1000.0),
+        ("128974848e0", 128974848.0),
+        (" 4 ", 4.0),
+        (4, 4.0),
+        (0.25, 0.25),
+        ("0", 0.0),
+    ],
+)
+def test_parse_k8s_quantity_valid(value: Any, expected: float) -> None:
+    """Kubernetes CPU and memory quantities are converted to cores/bytes."""
+    assert OMVDataUpdateCoordinator._parse_k8s_quantity(value) == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [None, "", "abc", "12x", "1KiB", "Ki", "m", "1.2.3", "-1", "-250m", "1e999", True, [], {}, "nan", "inf", "x1"],
+)
+def test_parse_k8s_quantity_rejects_garbage(value: Any) -> None:
+    """Anything that is not a finite, non-negative quantity yields None."""
+    assert OMVDataUpdateCoordinator._parse_k8s_quantity(value) is None
+
+
+async def test_normalize_k8s_maps_pods_and_derives_every_state(hass, config_entry, k8s_kubectl_payload) -> None:
+    """Pods map to their controllers through ownerReferences; replica counters drive every state."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    by_key = _k8s_normalized(coordinator, k8s_kubectl_payload)
+
+    # Sorted, one record per Deployment/StatefulSet/DaemonSet; the namespace-less
+    # controller is dropped, and Job, bare and nameless-owner pods attach nowhere.
+    assert list(by_key) == _K8S_ALL_KEYS
+    all_pods = [pod["name"] for workload in by_key.values() for pod in workload["pods"]]
+    assert not {"cleanup-29000000-abcde", "debug-shell", "orphan"} & set(all_pods)
+    assert {key: workload["state"] for key, workload in by_key.items()} == {
+        "api-app/deployment/api": "degraded",
+        "broken-app/deployment/broken": "unavailable",
+        "db-app/statefulset/db": "progressing",
+        "kube-system/daemonset/agent": "running",
+        "paused-app/deployment/paused": "scaled_down",
+        "web-app/deployment/web": "running",
+    }
+    assert {workload["state"] for workload in by_key.values()} == set(K8S_WORKLOAD_STATES)
+
+    web = by_key["web-app/deployment/web"]
+    assert (web["namespace"], web["name"], web["kind"]) == ("web-app", "web", "Deployment")
+    assert (web["desired"], web["ready"], web["available"], web["updated"]) == (1, 1, 1, 1)
+    assert web["pods"] == [
+        {
+            "name": "web-5f7d8c9b6d-abcde",
+            "phase": "Running",
+            "ready": True,
+            "restarts": 3,
+            "terminating": False,
+            "grace_period": 30,
+        }
+    ]
+    assert web["restarts"] == 3
+
+    agent = by_key["kube-system/daemonset/agent"]
+    assert (agent["kind"], agent["desired"], agent["ready"], agent["available"], agent["updated"]) == (
+        "DaemonSet",
+        1,
+        1,
+        1,
+        1,
+    )
+    assert [pod["name"] for pod in agent["pods"]] == ["agent-x7k2p"]
+
+    db = by_key["db-app/statefulset/db"]
+    assert [pod["name"] for pod in db["pods"]] == ["db-0", "db-1"]
+    assert db["pods"][0]["grace_period"] == 60
+    assert db["restarts"] == 2
+
+    # ReplicaSet owner without a pod-template-hash label: the pod is not mapped.
+    broken = by_key["broken-app/deployment/broken"]
+    assert broken["pods"] == []
+    assert broken["restarts"] == 0
+
+    paused = by_key["paused-app/deployment/paused"]
+    assert (paused["desired"], paused["pods"], paused["restarts"]) == (0, [], 0)
+
+
+async def test_normalize_k8s_excludes_terminating_pod_from_restarts(hass, config_entry, k8s_kubectl_payload) -> None:
+    """Pods of an older ReplicaSet map to the same Deployment; a terminating pod is listed but not counted."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    api = _k8s_normalized(coordinator, k8s_kubectl_payload)["api-app/deployment/api"]
+
+    assert [(pod["name"], pod["terminating"], pod["ready"]) for pod in api["pods"]] == [
+        ("api-6c8d9f7b5a-qwert", False, True),
+        ("api-6c8d9f7b5a-yuiop", False, False),
+        ("api-7d9e8f6a4b-zxcvb", True, True),
+    ]
+    assert api["pods"][2]["restarts"] == 5
+    assert api["pods"][2]["grace_period"] == 45
+    assert api["restarts"] == 4
+
+
+async def test_normalize_k8s_images_and_version(hass, config_entry, k8s_kubectl_payload) -> None:
+    """images is sorted and unique; version is the tag of the first template container image."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    by_key = _k8s_normalized(coordinator, k8s_kubectl_payload)
+
+    web = by_key["web-app/deployment/web"]
+    assert web["images"] == ["docker.io/library/nginx:1.27", "ghcr.io/example/web:2.1.0"]
+    assert web["version"] == "2.1.0"
+    assert by_key["db-app/statefulset/db"]["version"] == "17"
+    assert by_key["kube-system/daemonset/agent"]["version"] == ""  # registry port, no tag
+    assert by_key["api-app/deployment/api"]["version"] == ""  # digest only
+
+
+@pytest.mark.parametrize(
+    ("image", "expected"),
+    [
+        ("docker.io/library/nginx:1.27", "1.27"),
+        ("registry.local:5000/app", ""),
+        ("registry.local:5000/app:2.0@sha256:abc", "2.0"),
+        ("nginx@sha256:abc", ""),
+        ("", ""),
+    ],
+)
+def test_image_tag(image: str, expected: str) -> None:
+    """Registry ports and digests are not tags."""
+    assert OMVDataUpdateCoordinator._image_tag(image) == expected
+
+
+async def test_normalize_k8s_sums_metrics_and_cpu_percent(hass, config_entry, k8s_kubectl_payload) -> None:
+    """Containers are summed per pod, pods per workload; CPU percent uses both nodes ("4" + "3500m")."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    by_key = _k8s_normalized(coordinator, k8s_kubectl_payload)
+
+    web = by_key["web-app/deployment/web"]
+    # 250m + 34111n = 250.034 millicores; 512Mi + 54540Ki = 565.26 MiB; 7500m allocatable
+    assert web["cpu_millicores"] == 250.034
+    assert web["memory_mib"] == 565.3
+    assert web["cpu_percent"] == 3.33
+
+    # Unparseable container values and non-dict containers are ignored; the
+    # terminating pod still consumes resources and keeps its metrics.
+    api = by_key["api-app/deployment/api"]
+    assert api["cpu_millicores"] == 101.0
+    assert api["memory_mib"] == 65.0
+    assert api["cpu_percent"] == 1.35
+
+    db = by_key["db-app/statefulset/db"]
+    assert db["cpu_millicores"] == 0.012  # 12u, kept at 3 decimals so idle pods do not read 0
+    assert db["memory_mib"] == 1024.0
+    assert db["cpu_percent"] == 0.0
+
+    assert by_key["kube-system/daemonset/agent"]["memory_mib"] == 123.0  # 128974848e0 bytes
+
+    for key in ("broken-app/deployment/broken", "paused-app/deployment/paused"):
+        assert by_key[key]["cpu_millicores"] is None
+        assert by_key[key]["memory_mib"] is None
+        assert by_key[key]["cpu_percent"] is None
+
+
+async def test_normalize_k8s_without_metrics_or_nodes(hass, config_entry, k8s_kubectl_payload) -> None:
+    """Missing metrics blank CPU/memory; missing nodes blank only the percentage."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    raw = k8s_kubectl_payload["workloads_and_pods"]
+
+    without_metrics = coordinator._normalize_k8s_workloads(raw, [], k8s_kubectl_payload["nodes"])
+    assert [workload["workload_key"] for workload in without_metrics] == _K8S_ALL_KEYS
+    assert all(w["cpu_millicores"] is None and w["memory_mib"] is None for w in without_metrics)
+    assert all(w["cpu_percent"] is None for w in without_metrics)
+
+    without_nodes = coordinator._normalize_k8s_workloads(raw, k8s_kubectl_payload["pod_metrics"], [])
+    web = next(w for w in without_nodes if w["workload_key"] == "web-app/deployment/web")
+    assert web["cpu_millicores"] == 250.034
+    assert web["cpu_percent"] is None
+
+
+async def test_normalize_k8s_is_defensive_against_malformed_payloads(hass, config_entry) -> None:
+    """Garbage records and missing fields never raise."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    raw = {
+        "total": 5,
+        "data": [
+            "not-a-dict",
+            {"kind": "Deployment", "metadata": None, "spec": [], "status": "x"},
+            {"kind": "Deployment", "metadata": {"name": "lonely", "namespace": "ns"}},
+            {"kind": "Pod", "metadata": {"name": "p", "namespace": "ns", "ownerReferences": "bogus"}},
+            {"kind": "Pod", "metadata": {"name": "q", "namespace": "ns", "ownerReferences": ["bogus"]}},
+        ],
+    }
+
+    workloads = coordinator._normalize_k8s_workloads(raw, {"data": [{"metadata": {}}, 3]}, None)
+
+    assert len(workloads) == 1
+    lonely = workloads[0]
+    assert lonely["workload_key"] == "ns/deployment/lonely"
+    assert lonely["desired"] == 1  # spec.replicas absent -> default 1
+    assert lonely["state"] == "unavailable"
+    assert (lonely["images"], lonely["version"], lonely["pods"]) == ([], "", [])
+
+
+@pytest.mark.parametrize(
+    "services",
+    [
+        [],
+        [{"name": "compose", "title": "Docker Compose", "enabled": True, "running": True}],
+        [{**_K3S_SERVICE, "enabled": False, "running": False}],
+    ],
+)
+async def test_k8s_no_kubectl_call_without_enabled_k3s_service(
+    hass, config_entry, k8s_kubectl_payload, services
+) -> None:
+    """Without an enabled k3s service no Kubectl RPC is issued and both keys are empty."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    coordinator.api.async_call = AsyncMock(
+        side_effect=_k8s_update_async_call(services, _k8s_kubectl(k8s_kubectl_payload))
+    )
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert _kubectl_calls(coordinator.api) == []
+    assert data["k8s_workloads"] == []
+    assert data["k8s_summary"] == {}
+
+
+async def test_k8s_update_fetches_workloads_metrics_and_nodes(hass, config_entry, k8s_kubectl_payload) -> None:
+    """With k3s enabled three Kubectl.getList calls run; metrics and nodes without retries."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    coordinator.api.async_call = AsyncMock(
+        side_effect=_k8s_update_async_call([_K3S_SERVICE], _k8s_kubectl(k8s_kubectl_payload))
+    )
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert _kubectl_calls(coordinator.api) == [
+        ({"type": "deployments,statefulsets,daemonsets,pods", "start": 0, "limit": -1}, {"max_retries": 3}),
+        ({"type": "pods.metrics.k8s.io", "start": 0, "limit": -1}, {"max_retries": 0}),
+        ({"type": "nodes", "start": 0, "limit": -1}, {"max_retries": 0}),
+    ]
+    assert [workload["workload_key"] for workload in data["k8s_workloads"]] == _K8S_ALL_KEYS
+    assert data["k8s_summary"] == {
+        "workload_total": 6,
+        "workload_running": 2,
+        "workload_not_running": 4,
+        "pod_total": 6,
+        "pod_running": 5,
+    }
+    assert "k8s_workloads" not in coordinator.degraded_collections
+
+
+async def test_k8s_metrics_failure_keeps_workloads(hass, config_entry, k8s_kubectl_payload) -> None:
+    """A missing metrics-server only blanks CPU/memory; workloads stay and nothing is degraded."""
+    kubectl = _k8s_kubectl(k8s_kubectl_payload)
+    kubectl["pods.metrics.k8s.io"] = OMVApiError("RPC Kubectl.getList failed: the server doesn't have a resource type")
+    coordinator = _k8s_coordinator(hass, config_entry)
+    coordinator.api.async_call = AsyncMock(side_effect=_k8s_update_async_call([_K3S_SERVICE], kubectl))
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert [workload["workload_key"] for workload in data["k8s_workloads"]] == _K8S_ALL_KEYS
+    assert all(w["cpu_percent"] is None and w["memory_mib"] is None for w in data["k8s_workloads"])
+    assert not coordinator.degraded_collections
+
+
+async def test_k8s_workload_fetch_failure_marks_collection_degraded(hass, config_entry, k8s_kubectl_payload) -> None:
+    """A failed workload fetch is flagged (Issue #118), skips the follow-up calls and blanks the summary."""
+    kubectl = _k8s_kubectl(k8s_kubectl_payload)
+    kubectl["deployments,statefulsets,daemonsets,pods"] = OMVConnectionError("timeout")
+    coordinator = _k8s_coordinator(hass, config_entry)
+    coordinator.api.async_call = AsyncMock(side_effect=_k8s_update_async_call([_K3S_SERVICE], kubectl))
+    await coordinator.async_init({"hostname": "nas", "version": "8.1.2-1"})
+
+    data = await coordinator._async_update_data()
+
+    assert data["k8s_workloads"] == []
+    assert data["k8s_summary"] == {}
+    assert coordinator.filter_data_by_selection(data, {})["k8s_summary"] == {}
+    assert "k8s_workloads" in coordinator.degraded_collections
+    assert [params["type"] for params, _ in _kubectl_calls(coordinator.api)] == [
+        "deployments,statefulsets,daemonsets,pods"
+    ]
+
+
+async def test_k8s_node_cache_is_time_based(hass, config_entry, k8s_kubectl_payload) -> None:
+    """Nodes are fetched on the first poll, then again only after _K8S_NODES_REFRESH_SECONDS."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    coordinator.api.async_call = AsyncMock(return_value=k8s_kubectl_payload["nodes"])
+
+    for offset in (0, _K8S_NODES_REFRESH_SECONDS - 1):
+        with patch("custom_components.omv.coordinator.time.monotonic", return_value=1000.0 + offset):
+            nodes = await coordinator._async_fetch_k8s_nodes()
+    assert coordinator.api.async_call.await_count == 1
+    assert [node["metadata"]["name"] for node in nodes] == ["omv-node", "omv-node-2"]
+
+    with patch(
+        "custom_components.omv.coordinator.time.monotonic",
+        return_value=1000.0 + _K8S_NODES_REFRESH_SECONDS,
+    ):
+        await coordinator._async_fetch_k8s_nodes()
+    assert coordinator.api.async_call.await_count == 2
+
+
+async def test_k8s_node_cache_retries_while_empty_and_keeps_old_on_failure(
+    hass, config_entry, k8s_kubectl_payload
+) -> None:
+    """An empty cache is refetched every poll; a failed refresh keeps the old cache."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("boom"))
+
+    assert await coordinator._async_fetch_k8s_nodes() == []
+    assert await coordinator._async_fetch_k8s_nodes() == []
+    assert coordinator.api.async_call.await_count == 2
+
+    coordinator.api.async_call = AsyncMock(return_value=k8s_kubectl_payload["nodes"])
+    cached = await coordinator._async_fetch_k8s_nodes()
+    assert len(cached) == 2
+
+    coordinator.api.async_call = AsyncMock(side_effect=OMVApiError("boom"))
+    coordinator._k8s_nodes_last_poll = -_K8S_NODES_REFRESH_SECONDS
+    assert await coordinator._async_fetch_k8s_nodes() == cached
+    assert coordinator.api.async_call.await_count == 1
+
+
+async def test_filter_data_by_selection_k8s_workloads(hass, config_entry, k8s_kubectl_payload) -> None:
+    """No selection passes everything; a selection filters and re-summarizes on the filtered services."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    workloads = list(_k8s_normalized(coordinator, k8s_kubectl_payload).values())
+    data = {"service": [_K3S_SERVICE], "k8s_workloads": workloads, "k8s_summary": {}}
+
+    unfiltered = coordinator.filter_data_by_selection(data, {})
+    assert [workload["workload_key"] for workload in unfiltered["k8s_workloads"]] == _K8S_ALL_KEYS
+    assert unfiltered["k8s_summary"]["workload_total"] == 6
+
+    selected = coordinator.filter_data_by_selection(
+        data,
+        {CONF_SELECTED_K8S_WORKLOADS: ["api-app/deployment/api", "web-app/deployment/web"]},
+    )
+    assert [workload["workload_key"] for workload in selected["k8s_workloads"]] == [
+        "api-app/deployment/api",
+        "web-app/deployment/web",
+    ]
+    assert selected["k8s_summary"] == {
+        "workload_total": 2,
+        "workload_running": 1,
+        "workload_not_running": 1,
+        "pod_total": 3,
+        "pod_running": 2,
+    }
+    # Like compose, de-selecting the k3s service hides the summary.
+    assert coordinator.filter_data_by_selection(data, {CONF_SELECTED_SERVICES: ["ssh"]})["k8s_summary"] == {}
+    assert len(data["k8s_workloads"]) == 6
+    assert coordinator.filter_data_by_selection({}, {})["k8s_workloads"] == []
+    assert coordinator.filter_data_by_selection({}, {})["k8s_summary"] == {}
+
+
+async def test_build_inventory_lists_k8s_workloads(hass, config_entry, k8s_kubectl_payload) -> None:
+    """The options flow offers every workload with a namespace / name (kind) label."""
+    coordinator = _k8s_coordinator(hass, config_entry)
+    workloads = list(_k8s_normalized(coordinator, k8s_kubectl_payload).values())
+
+    options = OMVDataUpdateCoordinator.build_inventory({"k8s_workloads": [*workloads, "bogus", {}]})[
+        CONF_SELECTED_K8S_WORKLOADS
+    ]
+
+    assert [option["value"] for option in options] == _K8S_ALL_KEYS
+    assert {"value": "web-app/deployment/web", "label": "web-app / web (Deployment)"} in options
+    assert {"value": "kube-system/daemonset/agent", "label": "kube-system / agent (DaemonSet)"} in options
+
+
+async def test_recreate_k8s_pods_uses_fixed_timeout_and_skips_terminating(coordinator) -> None:
+    """One Kubectl.delete per live pod, sequentially, each with the fixed 10 s read timeout."""
+    coordinator.api.async_call = AsyncMock(return_value=None)
+    workload = {
+        "namespace": "ns",
+        "pods": [
+            {"name": "p-0", "terminating": False, "grace_period": 0},
+            {"name": "p-old", "terminating": True, "grace_period": 45},
+            {"name": "p-600", "terminating": False, "grace_period": 600},
+            "not-a-pod",
+        ],
+    }
+
+    assert await coordinator.async_recreate_k8s_pods(workload) == 2
+
+    assert [(call.args, call.kwargs) for call in coordinator.api.async_call.await_args_list] == [
+        (("Kubectl", "delete", {"type": "pod", "name": "p-0", "namespace": "ns"}), {"max_retries": 0, "timeout": 10}),
+        (("Kubectl", "delete", {"type": "pod", "name": "p-600", "namespace": "ns"}), {"max_retries": 0, "timeout": 10}),
+    ]
+    assert _K8S_DELETE_TIMEOUT == 10
+
+
+@pytest.mark.parametrize(
+    ("namespace", "pod_name"),
+    [
+        ("Bad_NS", "ok-pod"),
+        ("ok-ns", "pod; rm -rf /"),
+        ("ok-ns", "-leading-dash"),
+        ("ok-ns", "x" * 254),
+        ("", "ok-pod"),
+        ("ok-ns", None),
+    ],
+)
+async def test_recreate_k8s_pods_rejects_invalid_names(coordinator, namespace, pod_name) -> None:
+    """Names that are not DNS-1123 are rejected before any RPC is issued."""
+    coordinator.api.async_call = AsyncMock()
+    workload = {
+        "namespace": namespace,
+        "pods": [{"name": "valid-first", "terminating": False}, {"name": pod_name, "terminating": False}],
+    }
+
+    with pytest.raises(ValueError):
+        await coordinator.async_recreate_k8s_pods(workload)
+    coordinator.api.async_call.assert_not_awaited()
+
+
+async def test_recreate_k8s_pods_read_timeout_counts_as_requested(coordinator, caplog) -> None:
+    """An OMVTimeoutError (request sent, no answer yet) is logged at DEBUG and the next pod follows."""
+    coordinator.api.async_call = AsyncMock(side_effect=[OMVTimeoutError("read"), None])
+    workload = {"namespace": "db-app", "pods": [{"name": "db-0"}, {"name": "db-1"}]}
+
+    with caplog.at_level(logging.DEBUG, logger="custom_components.omv.coordinator"):
+        assert await coordinator.async_recreate_k8s_pods(workload) == 2
+
+    records = [record for record in caplog.records if record.name == "custom_components.omv.coordinator"]
+    assert not [record for record in records if record.levelno >= logging.INFO]
+    assert "Kubectl.delete pod=db-app/db-0 timed out after 10s, pod still terminating" in [
+        record.getMessage() for record in records
+    ]
+
+
+async def test_recreate_k8s_pods_on_real_api_distinguishes_read_and_connect_timeouts(coordinator) -> None:
+    """Through OMVAPI: an aiohttp read timeout counts as sent, a connect timeout raises."""
+    api = OMVAPI(hass=coordinator.hass, host="192.0.2.10", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    coordinator.api = api
+    workload = {"namespace": "ns", "pods": [{"name": "p-1"}, {"name": "p-2"}]}
+
+    try:
+        with aioresponses() as mocked:
+            mocked.post("http://192.0.2.10:80/rpc.php", exception=aiohttp.SocketTimeoutError("read"))
+            mocked.post("http://192.0.2.10:80/rpc.php", payload={"response": None, "error": None})
+            assert await coordinator.async_recreate_k8s_pods(workload) == 2
+
+        with aioresponses() as mocked:
+            mocked.post("http://192.0.2.10:80/rpc.php", exception=aiohttp.ConnectionTimeoutError("connect"))
+            with pytest.raises(OMVConnectionError) as exc_info:
+                await coordinator.async_recreate_k8s_pods(workload)
+        assert not isinstance(exc_info.value, OMVTimeoutError)
+    finally:
+        await api.async_close()

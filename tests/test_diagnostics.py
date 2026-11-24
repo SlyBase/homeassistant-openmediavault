@@ -111,3 +111,13 @@ async def test_diagnostics_returns_expected_structure(hass, coordinator) -> None
     assert "data" in result
     assert "data" in result["entry"]
     assert "options" in result["entry"]
+
+
+async def test_diagnostics_include_k8s_workloads(hass, coordinator, config_entry) -> None:
+    """Diagnostics carry the Kubernetes collections (names, images and counts only)."""
+    result = await _collect(hass, config_entry, coordinator)
+
+    workloads = result["data"]["k8s_workloads"]
+    assert [workload["workload_key"] for workload in workloads] == ["media/deployment/jellyfin"]
+    assert workloads[0]["images"] == ["docker.io/jellyfin/jellyfin:10.10.3"]
+    assert result["data"]["k8s_summary"]["workload_total"] == 1

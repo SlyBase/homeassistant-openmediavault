@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
+import aiohttp
 import pytest
-from homeassistant.exceptions import HomeAssistantError
+from aioresponses import aioresponses
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.omv.button import (
     OMVApplyConfigButton,
@@ -13,6 +16,7 @@ from custom_components.omv.button import (
     OMVComposeSystemButton,
     OMVContainerRestartButton,
     OMVCronRunButton,
+    OMVK8sRecreatePodsButton,
     OMVRebootButton,
     OMVRsyncRunButton,
     OMVShutdownButton,
@@ -23,8 +27,9 @@ from custom_components.omv.button import (
     async_setup_entry,
     get_expected_button_unique_ids,
 )
-from custom_components.omv.const import CONF_SELECTED_CRON_JOBS
-from custom_components.omv.exceptions import OMVApiError
+from custom_components.omv.const import CONF_SELECTED_CRON_JOBS, DOMAIN
+from custom_components.omv.exceptions import OMVApiError, OMVConnectionError, OMVTimeoutError
+from custom_components.omv.omv_api import OMVAPI
 
 
 @pytest.mark.asyncio
@@ -37,7 +42,7 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 29
+    assert len(added) == 30
     assert added[2].unique_id.endswith("standby")
     assert added[4].unique_id.endswith("01-compose_up-paperless")
     assert added[5].unique_id.endswith("02-compose_down-paperless")
@@ -47,10 +52,12 @@ async def test_async_setup_entry_adds_buttons(coordinator, config_entry) -> None
     assert added[19].unique_id.endswith("98-compose_image_prune")
     assert added[20].unique_id.endswith("99-compose_container_prune")
     assert added[4]._attr_suggested_object_id == "nas_01_compose_paperless_up"
-    assert added[-5].unique_id.endswith("container_restart-ctr-db")
-    assert added[-5]._attr_suggested_object_id == "nas_container_db_restart"
-    assert added[-4].unique_id.endswith("vm_restart-vm-uuid-1234")
-    assert added[-4]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
+    assert added[-6].unique_id.endswith("container_restart-ctr-db")
+    assert added[-6]._attr_suggested_object_id == "nas_container_db_restart"
+    assert added[-5].unique_id.endswith("vm_restart-vm-uuid-1234")
+    assert added[-5]._attr_suggested_object_id == "nas_vm_homeassistant_restart"
+    assert added[-4].unique_id.endswith("k8s_recreate_pods-media/deployment/jellyfin")
+    assert added[-4]._attr_suggested_object_id == "nas_k8s_media_deployment_jellyfin_recreate_pods"
     assert added[-3].unique_id.endswith("rsync_run-rsync-uuid-0001")
     assert added[-3]._attr_suggested_object_id == "nas_rsync_backup_media_run"
     assert added[-2].unique_id.endswith("rsync_run-rsync-uuid-0002")
@@ -69,7 +76,7 @@ async def test_async_setup_entry_omits_prune_buttons_without_docker_service(coor
 
     await async_setup_entry(coordinator.hass, config_entry, add_entities)
 
-    assert len(added) == 27
+    assert len(added) == 28
     assert not any(entity.unique_id.endswith("98-compose_image_prune") for entity in added)
     assert not any(entity.unique_id.endswith("99-compose_container_prune") for entity in added)
 
@@ -694,3 +701,180 @@ async def test_zfs_scrub_button_dedupes_across_disks(coordinator, config_entry) 
     unique_ids = [entity.unique_id for entity in added]
     assert len(unique_ids) == len(set(unique_ids))
     assert sum(uid.endswith("zfs_scrub-tank") for uid in unique_ids) == 1
+
+
+# --- Kubernetes workloads (openmediavault-k8s) ---
+
+
+def _k8s_db_workload() -> dict[str, Any]:
+    """Return a normalized two-pod StatefulSet record (plus one terminating pod)."""
+    return {
+        "workload_key": "db-app/statefulset/db",
+        "namespace": "db-app",
+        "name": "db",
+        "kind": "StatefulSet",
+        "pods": [
+            {"name": "db-0", "phase": "Running", "terminating": False, "grace_period": 60},
+            {"name": "db-1", "phase": "Running", "terminating": False, "grace_period": 60},
+            {"name": "db-old", "phase": "Running", "terminating": True, "grace_period": 60},
+        ],
+    }
+
+
+def _k8s_button(coordinator, key: str = "db-app/statefulset/db") -> OMVK8sRecreatePodsButton:
+    """Add the db workload to the coordinator data and build the button for ``key``."""
+    coordinator.data["k8s_workloads"] = [*coordinator.data["k8s_workloads"], _k8s_db_workload()]
+    workload = next(w for w in coordinator.data["k8s_workloads"] if w["workload_key"] == key)
+    coordinator.async_request_refresh = AsyncMock()
+    return OMVK8sRecreatePodsButton(coordinator, workload)
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_setup_and_expected_unique_ids(coordinator, config_entry) -> None:
+    """One recreate-pods button per workload, included in the cleanup unique-id set."""
+    added: list = []
+    await async_setup_entry(coordinator.hass, config_entry, added.extend)
+
+    buttons = [entity for entity in added if isinstance(entity, OMVK8sRecreatePodsButton)]
+    assert [button.unique_id for button in buttons] == [
+        f"{config_entry.entry_id}-k8s_recreate_pods-media/deployment/jellyfin"
+    ]
+    assert buttons[0].unique_id in get_expected_button_unique_ids(config_entry, coordinator)
+    assert buttons[0].icon == "mdi:restart-alert"
+    assert buttons[0].translation_key == "k8s_workload_recreate_pods"
+    assert buttons[0].device_info["identifiers"] == {
+        (DOMAIN, f"{config_entry.entry_id}:k8s_workload:media/deployment/jellyfin")
+    }
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_deletes_each_live_pod(coordinator) -> None:
+    """Pressing deletes every non-terminating pod with the fixed timeout, then refreshes."""
+    button = _k8s_button(coordinator)
+    coordinator.api.async_call = AsyncMock(return_value=None)
+
+    await button.async_press()
+
+    assert [(call.args, call.kwargs) for call in coordinator.api.async_call.await_args_list] == [
+        (
+            ("Kubectl", "delete", {"type": "pod", "name": "db-0", "namespace": "db-app"}),
+            {"max_retries": 0, "timeout": 10},
+        ),
+        (
+            ("Kubectl", "delete", {"type": "pod", "name": "db-1", "namespace": "db-app"}),
+            {"max_retries": 0, "timeout": 10},
+        ),
+    ]
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_read_timeout_is_not_an_error(coordinator) -> None:
+    """A read timeout means the delete was requested: the press succeeds."""
+    button = _k8s_button(coordinator)
+    coordinator.api.async_call = AsyncMock(side_effect=[OMVTimeoutError("read"), OMVTimeoutError("read")])
+
+    await button.async_press()
+
+    assert coordinator.api.async_call.await_count == 2
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        OMVApiError("RPC Kubectl.delete failed: NotFound"),
+        OMVConnectionError("Connection refused"),
+        OMVConnectionError("Connection to 192.0.2.10 failed: Connection timeout to host"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_k8s_button_other_errors_raise_translated_error(coordinator, error) -> None:
+    """Every failure other than a read timeout stops the command and surfaces k8s_recreate_pods_failed."""
+    button = _k8s_button(coordinator)
+    coordinator.api.async_call = AsyncMock(side_effect=error)
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "k8s_recreate_pods_failed"
+    assert exc_info.value.translation_placeholders == {"resource": "db-app/db"}
+    assert coordinator.api.async_call.await_count == 1
+    coordinator.async_request_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_connect_timeout_on_real_api_surfaces_error(coordinator) -> None:
+    """Through OMVAPI: an aiohttp connect timeout sent nothing, so the button fails."""
+    button = _k8s_button(coordinator)
+    api = OMVAPI(hass=coordinator.hass, host="192.0.2.10", username="admin", password="***")
+    api._session_id = "sess1"
+    await api._async_ensure_session()
+    coordinator.api = api
+
+    try:
+        with aioresponses() as mocked, pytest.raises(HomeAssistantError) as exc_info:
+            mocked.post("http://192.0.2.10:80/rpc.php", exception=aiohttp.ConnectionTimeoutError("connect"))
+            await button.async_press()
+    finally:
+        await api.async_close()
+
+    assert exc_info.value.translation_key == "k8s_recreate_pods_failed"
+    assert isinstance(exc_info.value.__cause__, OMVConnectionError)
+    assert not isinstance(exc_info.value.__cause__, OMVTimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_invalid_name_raises_translated_error(coordinator) -> None:
+    """A name that fails DNS-1123 validation maps to the translated error without any RPC."""
+    button = _k8s_button(coordinator)
+    coordinator.data["k8s_workloads"][-1]["pods"][0]["name"] = "Invalid Name"
+    coordinator.api.async_call = AsyncMock()
+
+    with pytest.raises(HomeAssistantError) as exc_info:
+        await button.async_press()
+
+    assert exc_info.value.translation_key == "k8s_recreate_pods_failed"
+    coordinator.api.async_call.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_uses_current_pods_and_rejects_vanished_workload(coordinator) -> None:
+    """Pod names are read at press time; a vanished workload raises ServiceValidationError."""
+    button = _k8s_button(coordinator, "media/deployment/jellyfin")
+    coordinator.api.async_call = AsyncMock(return_value=None)
+
+    workload = coordinator.data["k8s_workloads"][0]
+    workload["pods"] = [{**workload["pods"][0], "name": "jellyfin-7d4b9c8f6-newpd"}]
+    await button.async_press()
+    assert coordinator.api.async_call.await_args.args[2]["name"] == "jellyfin-7d4b9c8f6-newpd"
+
+    coordinator.data["k8s_workloads"] = []
+    with pytest.raises(ServiceValidationError) as exc_info:
+        await button.async_press()
+    assert exc_info.value.translation_key == "k8s_workload_not_found"
+    assert exc_info.value.translation_placeholders == {"resource": "media/jellyfin"}
+
+
+@pytest.mark.asyncio
+async def test_k8s_button_available_only_with_a_live_pod(coordinator) -> None:
+    """The button is available only while its workload exists and has a non-terminating pod."""
+    button = _k8s_button(coordinator, "media/deployment/jellyfin")
+    coordinator.last_update_success = True
+    assert button.available is True
+
+    workload = coordinator.data["k8s_workloads"][0]
+    workload["pods"] = [{**workload["pods"][0], "terminating": True}]
+    assert button.available is False
+
+    workload["pods"] = []
+    assert button.available is False
+
+    coordinator.data["k8s_workloads"] = []
+    assert button.available is False
+
+    coordinator.data["k8s_workloads"] = [_k8s_db_workload()]
+    db_button = OMVK8sRecreatePodsButton(coordinator, _k8s_db_workload())
+    assert db_button.available is True
+    coordinator.last_update_success = False
+    assert db_button.available is False

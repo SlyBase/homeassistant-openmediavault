@@ -22,6 +22,7 @@ The original integration relied on a synchronous, poll-based controller that no 
 - CPU, memory, temperature, filesystem, disk, SMART, network, RAID, and optional ZFS monitoring
 - Per-resource device modeling — disks, RAIDs, filesystems, ZFS pools, and Docker containers each appear as separate HA devices
 - Docker Compose support with per-container state, version, and lifecycle button entities
+- Kubernetes workload monitoring through the openmediavault-k8s plugin, with state, restarts, CPU and memory per workload plus a button that recreates its pods
 - Native Home Assistant update entity with pending package count, per-package release details in the More Info dialog, a direct link to the OMV updates page, one-click package installation, and reboot-only mode when no further packages are pending
 - Binary sensor for reboot requirement and OMV service health
 - Reboot and shutdown buttons
@@ -92,7 +93,7 @@ After setup, the options flow lets you adjust:
 - The scan interval
 - The SMART polling interval — how often SMART data (status, attributes, disk temperature) is read. Reading SMART wakes disks from standby, so a larger interval lets disks spin down for power saving. Defaults to the scan interval.
 - Whether SMART polling is disabled entirely — disks are then never woken by the integration, but SMART status, SMART attributes, and disk temperature entities become unavailable
-- Which disks, filesystems, network interfaces, services, RAIDs, ZFS pools, Compose projects, and containers are monitored — resources not selected simply disappear from Home Assistant
+- Which disks, filesystems, network interfaces, services, RAIDs, ZFS pools, Compose projects, containers, and Kubernetes workloads are monitored — resources not selected simply disappear from Home Assistant
 
 ## Entities
 
@@ -166,6 +167,30 @@ Once saved in OMV, the integration picks up the sensor automatically on the next
 
 - State, status detail, created timestamp, started timestamp, image version
 - Volume size (when reported by OMV)
+
+### Kubernetes workload devices (one device per workload, requires `openmediavault-k8s`)
+
+If you run apps with the [openmediavault-k8s](https://github.com/openmediavault/openmediavault/tree/master/deb/openmediavault-k8s) plugin, the integration can show each of your Kubernetes workloads in Home Assistant. It only does this when the plugin is installed and the Kubernetes (`k3s`) service is enabled in OMV. If either of those is missing, the integration sends no Kubernetes requests at all.
+
+Every Deployment, StatefulSet and DaemonSet becomes its own device, named `Kubernetes <namespace>/<name>`, with four sensors and one button:
+
+- State tells you whether the workload is healthy. The possible values are `running`, `progressing` (a rollout is still going on), `degraded` (some replicas are ready, but not all of them), `unavailable` (no replica is ready) and `scaled_down` (you asked for zero replicas). The attributes list the workload key, the namespace, the kind, the replica counts, the number of pods and the images.
+- Restarts is the total number of container restarts across the pods of the workload. When a pod gets replaced, its count starts again from zero, and the sensor is listed with the diagnostic entities.
+- CPU shows how much of the node's CPU the workload uses, as a percentage. The `cpu_millicores` attribute keeps the raw value, which helps with very quiet apps that round down to 0.00 %.
+- Memory shows how much memory the workload uses, in MiB.
+- The Recreate pods button deletes the pods of the workload so that Kubernetes starts fresh ones. The paragraph below explains how it behaves.
+
+The hub device also gets three counters: the total number of workloads, how many of them are running and how many are not.
+
+Pods that belong to a Job or a CronJob are skipped, and so are pods that no controller owns. They come and go too often to make useful devices.
+
+CPU and memory come from the Kubernetes metrics-server. k3s installs it by default, so you most likely have it already. If your cluster does not have it, those two sensors show `unknown` and everything else keeps working.
+
+The options dialog has a Selected Kubernetes workloads field that works like the fields for containers and VMs, and removing a workload from that list also removes its device and entities. Watch out for one thing when you upgrade an existing installation. Right after the update the integration shows all of your workloads, but the options dialog opens with the new field empty, because new resource types are strictly opt-in once you have saved any selection (the VM selection behaves the same way). On existing installations, open the integration options and select the workloads to monitor before you press Submit, otherwise every Kubernetes workload disappears from Home Assistant.
+
+The Recreate pods button deletes all pods of the workload at the same time, and the Deployment, StatefulSet or DaemonSet then starts new pods right away. A workload with a single replica is therefore offline for a few seconds while its new pod starts. On the NAS, `kubectl delete` waits until each old pod has completely stopped, which can take as long as its `terminationGracePeriodSeconds`. The integration stops waiting after 10 seconds per pod and only writes a debug line to the log, because the delete keeps running on the NAS anyway. If OMV cannot be reached at all, the button reports an error instead. The button is unavailable while the workload has no pod that could be deleted. You will not find a button to stop, start or scale a workload, because the plugin only offers `Kubectl.apply` for changes, and a partial manifest could wipe settings from apps that were installed with a recipe or with Helm.
+
+Each update makes two extra RPC calls, one for the workloads and pods and one for the pod metrics, and the node CPU size is only fetched about once an hour.
 
 ## Development
 

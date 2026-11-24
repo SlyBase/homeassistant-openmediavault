@@ -61,3 +61,14 @@ CONF_SELECTED_COMPOSE_PROJECTS = "selected_compose_projects"
 CONF_SELECTED_VMS = "selected_vms"
 # Opt-in (kein Datenfilter): Cron-Buttons nur für explizit ausgewählte Jobs
 CONF_SELECTED_CRON_JOBS = "selected_cron_jobs"
+# Kubernetes workloads (openmediavault-k8s): Deployments/StatefulSets/DaemonSets
+# keyed by "<namespace>/<kind>/<name>"
+CONF_SELECTED_K8S_WORKLOADS = "selected_k8s_workloads"
+# Options of the k8s_workload_state ENUM sensor, in evaluation order.
+K8S_WORKLOAD_STATES: tuple[str, ...] = (
+    "scaled_down",
+    "unavailable",
+    "progressing",
+    "degraded",
+    "running",
+)
